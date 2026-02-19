@@ -1,0 +1,4 @@
+{
+  "name": "engineering-discipline",
+  "description": "Engineering discipline layer that enforces measure-twice-cut-once behavior for all coding tasks"
+}
