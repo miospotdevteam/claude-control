@@ -122,7 +122,7 @@ This is a loop. Follow it mechanically.
 │     b. Find next pending group/sub-step                 │
 │     c. Execute the group/sub-step                       │
 │     d. Update the sub-plan on disk (mark it [x])        │
-│     e. Checkpoint: update masterPlan Progress field      │
+│     e. Checkpoint: update masterPlan Progress field     │
 │     f. IF all groups/sub-steps complete:                │
 │        - Mark sub-plan [x] complete                     │
 │        - Mark master step [x] complete                  │
@@ -139,11 +139,11 @@ This is a loop. Follow it mechanically.
 │     d. Write final Result to masterPlan                 │
 │     e. Update Completed Summary                         │
 │                                                         │
-│  6. IF all steps are now [x] complete:                   │
-│     a. Move plan folder from active/ to completed/       │
-│     b. Report completion to the user                     │
+│  6. IF all steps are now [x] complete:                  │
+│     a. Move plan folder from active/ to completed/      │
+│     b. Report completion to the user                    │
 │                                                         │
-│  7. ELSE: Loop back to step 1                            │
+│  7. ELSE: Loop back to step 1                           │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
