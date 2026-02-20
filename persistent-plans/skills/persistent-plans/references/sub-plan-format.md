@@ -158,7 +158,6 @@ bunx tsc --noEmit
 # Lint
 bun run lint
 ```
-```
 
 ### How to organize Groups
 
