@@ -1,7 +1,6 @@
 # Recommended CLAUDE.md Addition
 
-Add this block to your project's CLAUDE.md to remind Claude about persistent
-plans on every session.
+Add this block to your project's CLAUDE.md to remind Claude about persistent plans on every session.
 
 ---
 
