@@ -10,21 +10,18 @@ Copy this template exactly when creating a new plan. Every field exists for a re
 ## Context
 
 <2-3 sentences: what the user asked for, what project this is, key constraints.
-Write this so a fresh context window understands the task without needing the
-original conversation.>
+Write this so a fresh context window understands the task without needing the original conversation.>
 
 ## Discovery Summary
 
-<Key findings from the exploration phase. This section is your gift to your
-future compacted self. Include:
+<Key findings from the exploration phase. This section is your gift to your future compacted self. Include:
 - Relevant file paths and what they contain
 - Existing patterns and conventions found
 - Dependencies and shared utilities that matter
 - Architecture decisions that constrain the implementation
 - Anything you learned that you'd have to re-discover without this section
 
-Write enough that a fresh context window does NOT need to re-explore the
-codebase. If you skimp here, your compacted self pays the price.>
+Write enough that a fresh context window does NOT need to re-explore the codebase. If you skimp here, your compacted self pays the price.>
 
 ## Steps
 
@@ -32,10 +29,8 @@ codebase. If you skimp here, your compacted self pays the price.>
 - **Status**: [ ] pending
 - **Sub-plan**: none
 - **Files involved**: `src/foo.ts`, `src/bar.ts`
-- **Description**: What needs to happen in this step. Be specific enough that
-  a fresh context window can execute this without guessing.
-- **Acceptance criteria**: How to know this step is done — concrete, verifiable
-  conditions (e.g., "tsc --noEmit passes", "new route returns 200", "test X
+- **Description**: What needs to happen in this step. Be specific enough that a fresh context window can execute this without guessing.
+- **Acceptance criteria**: How to know this step is done — concrete, verifiable conditions (e.g., "tsc --noEmit passes", "new route returns 200", "test X
   passes").
 - **Progress**:
   - [ ] <sub-task description> (files: `foo.ts`, `bar.ts`)
@@ -66,8 +61,7 @@ If nothing is blocked, write "None.">
 
 ## Completed Summary
 
-<Updated as steps complete. This is a running log so the next context window
-doesn't have to re-discover what's been done. Format:
+<Updated as steps complete. This is a running log so the next context window doesn't have to re-discover what's been done. Format:
 
 - **Step 1** (complete): Created apiClient.ts with typed wrappers. Used existing
   AuthContext pattern. Updated 3 consumer files.
@@ -107,8 +101,7 @@ After the first sub-task and partway through the second:
   - [x] Update auth middleware (files: `middleware.ts`)
   - [~] Update API client — api.ts done, types.ts remaining
   - [ ] Update consumer pages (files: `login.tsx`, `signup.tsx`, `profile.tsx`)
-- **Result**: (partial) middleware.ts updated to use new token format. Using
-  existing refreshToken() utility from src/lib/auth.ts.
+- **Result**: (partial) middleware.ts updated to use new token format. Using existing refreshToken() utility from src/lib/auth.ts.
 ```
 
 ### When to add Progress items
@@ -155,8 +148,7 @@ Even small tasks get plans, but they can be minimal. The Progress field is optio
 # Plan: Fix Login Button Alignment
 
 ## Context
-The login button on /auth/login is misaligned on mobile viewports. User reported
-it in the last session.
+The login button on /auth/login is misaligned on mobile viewports. User reported it in the last session.
 
 ## Discovery Summary
 - Login page: src/app/(auth)/login/page.tsx
