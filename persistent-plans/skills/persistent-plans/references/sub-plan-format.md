@@ -1,8 +1,7 @@
 # Sub-plan Template
 
 Use this template when a master step is too large for a single context window.
-Sub-plans break one master step into smaller pieces, each completable within
-a single context window.
+Sub-plans break one master step into smaller pieces, each completable within a single context window.
 
 ## When to create a sub-plan
 
@@ -16,8 +15,7 @@ A step MUST get a sub-plan when ANY of these are true:
 - The step description contains words like **"all", "every", "sweep", "migrate
   all", "across the codebase"**
 
-These are objective, countable criteria. Count files and sub-tasks — do not
-try to estimate tokens.
+These are objective, countable criteria. Count files and sub-tasks — do not try to estimate tokens.
 
 ---
 
@@ -99,10 +97,7 @@ curl -s localhost:3000/api/users | jq '.data[0] | keys'
 
 ## Template: Sweep sub-plan (with Groups)
 
-For repetitive work across many files (replacing patterns, migrating calls,
-adding consistent changes). Organize by **file groups**, not individual files.
-This gives recovery granularity at the group level — if compaction happens
-between groups, the sub-plan shows exactly which groups are done.
+For repetitive work across many files (replacing patterns, migrating calls, adding consistent changes). Organize by **file groups**, not individual files. This gives recovery granularity at the group level — if compaction happens between groups, the sub-plan shows exactly which groups are done.
 
 ```markdown
 # Sub-plan: <Sweep Title>
