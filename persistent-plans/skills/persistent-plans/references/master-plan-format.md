@@ -1,9 +1,6 @@
 # masterPlan.md Template
 
-Copy this template exactly when creating a new plan. Every field exists for a
-reason — the Discovery Summary and Completed Summary are what allow seamless
-resumption after compaction. The Progress field within each step is what allows
-resumption mid-step when auto-compaction fires without warning.
+Copy this template exactly when creating a new plan. Every field exists for a reason — the Discovery Summary and Completed Summary are what allow seamless resumption after compaction. The Progress field within each step is what allows resumption mid-step when auto-compaction fires without warning.
 
 ---
 
@@ -90,12 +87,9 @@ Start with "None yet." and update as needed.>
 
 ## The Progress Field
 
-The **Progress** field is a checklist of sub-tasks within a step. It serves as
-a fine-grained save point — when auto-compaction fires mid-step, the checked
-items tell your next context window exactly where to resume.
+The **Progress** field is a checklist of sub-tasks within a step. It serves as a fine-grained save point — when auto-compaction fires mid-step, the checked items tell your next context window exactly where to resume.
 
-**Update the Progress checklist after every 2-3 file edits.** This is the
-autosave mechanism that prevents lost work.
+**Update the Progress checklist after every 2-3 file edits.** This is the autosave mechanism that prevents lost work.
 
 ### Example: Progress during execution
 
@@ -155,8 +149,7 @@ When all steps are complete, the plan folder is moved from `active/` to `complet
 
 ## Small Task Plans
 
-Even small tasks get plans, but they can be minimal. The Progress field is
-optional for truly simple steps:
+Even small tasks get plans, but they can be minimal. The Progress field is optional for truly simple steps:
 
 ```markdown
 # Plan: Fix Login Button Alignment
