@@ -39,21 +39,15 @@ PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
 LIB_DIR="${SCRIPT_DIR}/lib"
 CONFIG_FILE="$PROJECT_ROOT/.claude/software-discipline.local.md"
 
-CONFIG_JUST_CREATED=false
 if [ ! -f "$CONFIG_FILE" ] && [ -d "$PROJECT_ROOT" ]; then
   # Auto-detect stack on first session
   config_content=$(python3 "$LIB_DIR/detect-stack.py" "$PROJECT_ROOT" 2>/dev/null) || true
   if [ -n "$config_content" ]; then
     mkdir -p "$PROJECT_ROOT/.claude"
     printf '%s' "$config_content" > "$CONFIG_FILE"
-    CONFIG_JUST_CREATED=true
+    # Create marker for UserPromptSubmit onboarding hook
+    touch "$PROJECT_ROOT/.claude/.onboarding-pending"
   fi
-fi
-
-# Detect whether project has a CLAUDE.md
-HAS_CLAUDE_MD=false
-if [ -f "$PROJECT_ROOT/CLAUDE.md" ] || [ -f "$PROJECT_ROOT/.claude/CLAUDE.md" ]; then
-  HAS_CLAUDE_MD=true
 fi
 
 # Read config as JSON (empty object if missing/broken)
@@ -211,9 +205,6 @@ export PLANS_SKILL_FILE_PATH="$PLANS_SKILL_FILE"
 export ACTIVE_PLAN_SUMMARY="$active_plan_summary"
 export SKILL_INVENTORY="$skill_inventory"
 export PROJECT_CONFIG_JSON
-export CONFIG_JUST_CREATED
-export HAS_CLAUDE_MD
-export PLUGIN_ROOT
 
 python3 << 'PYEOF'
 import json
@@ -226,9 +217,6 @@ plans_file = os.environ.get("PLANS_SKILL_FILE_PATH", "")
 active_summary = os.environ.get("ACTIVE_PLAN_SUMMARY", "")
 skill_inventory = os.environ.get("SKILL_INVENTORY", "")
 config_json_str = os.environ.get("PROJECT_CONFIG_JSON", "{}")
-config_just_created = os.environ.get("CONFIG_JUST_CREATED", "false") == "true"
-has_claude_md = os.environ.get("HAS_CLAUDE_MD", "false") == "true"
-plugin_root = os.environ.get("PLUGIN_ROOT", "")
 
 def read_file(path):
     try:
@@ -273,106 +261,8 @@ try:
 except (json.JSONDecodeError, TypeError):
     pass
 
-# Build first-run onboarding block
-onboarding_block = ""
-if config_just_created:
-    # Read recommended plugins reference
-    rec_plugins_path = os.path.join(plugin_root, "skills", "software-discipline",
-                                     "references", "recommended-plugins.md")
-    rec_plugins_content = ""
-    try:
-        with open(rec_plugins_path, "r") as f:
-            rec_plugins_content = f.read()
-    except Exception:
-        pass
-
-    # Read CLAUDE.md snippet template
-    claude_md_snippet_path = os.path.join(plugin_root, "skills", "software-discipline",
-                                           "references", "claude-md-snippet.md")
-    claude_md_snippet = ""
-    try:
-        with open(claude_md_snippet_path, "r") as f:
-            claude_md_snippet = f.read()
-    except Exception:
-        pass
-
-    # Summarize detected stack for the greeting
-    stack_summary = ""
-    try:
-        config = json.loads(config_json_str)
-        s = config.get("stack", {})
-        bits = []
-        if s.get("language"): bits.append(s["language"])
-        if s.get("frontend"): bits.append(s["frontend"])
-        if s.get("backend"): bits.append(s["backend"])
-        if s.get("package_manager"): bits.append(s["package_manager"])
-        if s.get("monorepo"): bits.append("monorepo")
-        if bits:
-            stack_summary = ", ".join(bits)
-    except (json.JSONDecodeError, TypeError):
-        pass
-
-    lines = []
-    lines.append("## FIRST-RUN ONBOARDING — Act on this NOW")
-    lines.append("")
-    lines.append("The software-discipline plugin just ran for the **first time** in this project.")
-    lines.append(f"A config file was auto-created at `.claude/software-discipline.local.md`"
-                 + (f" with detected stack: **{stack_summary}**." if stack_summary else "."))
-    lines.append("")
-    lines.append("**Your immediate task** (before doing anything else the user asks):")
-    lines.append("")
-    lines.append("1. **Greet the user** and tell them software-discipline detected their project stack.")
-    lines.append("   Show what was detected (from the Project Profile above).")
-    lines.append("")
-    lines.append("2. **Offer to enrich the config** by exploring the codebase deeper.")
-    lines.append("   If they say yes, read key files (package.json, tsconfig, project structure)")
-    lines.append("   and update `.claude/software-discipline.local.md` with richer content:")
-    lines.append("   verification commands, gotchas, blast radius areas, conventions.")
-    lines.append("   Use brainstorming style — one question at a time, multiple choice where possible.")
-    lines.append("")
-
-    if not has_claude_md:
-        lines.append("3. **Offer to create a CLAUDE.md** — this project has none.")
-        lines.append("   If they agree, create `.claude/CLAUDE.md` using this template as a starting point:")
-        lines.append("")
-        if claude_md_snippet:
-            # Extract just the markdown code block content from the snippet
-            lines.append("   ```")
-            for snippet_line in claude_md_snippet.split("\n"):
-                lines.append(f"   {snippet_line}")
-            lines.append("   ```")
-        lines.append("   Tailor it to the detected stack. Ask the user if they want to add")
-        lines.append("   project-specific conventions, coding style preferences, or other notes.")
-        lines.append("")
-
-    lines.append(f"{'4' if not has_claude_md else '3'}. **Suggest useful plugins** to install.")
-    lines.append("   Check which official Anthropic plugins would benefit this project.")
-    lines.append("   For each suggestion, ask whether to install at user, project, or global scope")
-    lines.append("   (explain: user = all your projects, project = just this repo, global = all users on machine).")
-    lines.append("   Install using: `claude plugin install <name>@claude-plugins-official --scope <scope>`")
-    lines.append("")
-
-    if rec_plugins_content:
-        lines.append("### Recommended plugins reference")
-        lines.append("")
-        lines.append(rec_plugins_content)
-        lines.append("")
-
-    lines.append("**Important**: Use a conversational, brainstorming style. One question at a time.")
-    lines.append("Don't dump everything at once. Guide the user through setup step by step.")
-    lines.append("If the user declines any step, skip it gracefully and move to the next.")
-    lines.append("Once onboarding is complete (or declined), proceed normally with whatever the user asked.")
-
-    onboarding_block = "\n".join(lines)
-
 # Build context message
-parts = []
-
-# Onboarding goes FIRST so Claude sees it before the massive skill files
-if onboarding_block:
-    parts.extend([onboarding_block, "", "---", ""])
-
-parts.extend([
+parts = [
     "**Below is the software-discipline skill — follow it for all coding tasks:**",
     "",
     skill_content,
@@ -388,7 +278,7 @@ parts.extend([
     "**Persistent Plans (companion skill — follow for all task planning):**",
     "",
     plans_content,
-])
+]
 
 if project_profile:
     parts.extend(["", "---", "", project_profile])
