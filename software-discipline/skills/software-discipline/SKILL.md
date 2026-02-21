@@ -65,6 +65,25 @@ exploring.
 For complex or unfamiliar codebases, also read
 `references/exploration-guide.md`.
 
+### Persist your findings
+
+If the task requires exploration (anything beyond a trivial single-file
+fix), create the plan directory and write findings to disk **before**
+moving to Step 2:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/scripts/init-plan-dir.sh
+mkdir -p .temp/plan-mode/active/<plan-name>
+```
+
+Write a `discovery.md` in that directory with what you found: file paths,
+patterns, conventions, dependencies, blast radius, open questions. Use
+the 8 questions from `references/exploration-protocol.md` as structure.
+
+This file survives compaction and feeds directly into the masterPlan's
+Discovery Summary. If you skip this, your future compacted self starts
+from zero.
+
 ---
 
 ## Step 2: Plan (write to disk before editing code)
@@ -135,16 +154,11 @@ For parallel tasks where agents benefit from seeing each other's findings
 (audits, multi-area exploration, large codebase research), agents share a
 single discovery file:
 
-**Location** (with active plan): `.temp/plan-mode/active/<plan-name>/discovery.md`
-**Location** (no plan): `.temp/discovery/discovery.md`
+**Location**: `.temp/plan-mode/active/<plan-name>/discovery.md`
 
-The file is **auto-created** by the `inject-subagent-context` hook when
-a sub-agent is dispatched. No manual setup needed — works with or without
-an active plan.
-
-**Migration**: When agents are dispatched before a plan exists, findings
-go to the fallback location. Once a plan is created, the next agent
-dispatch automatically migrates the fallback file into the plan directory.
+This file is created during Step 1 (Explore) when the plan directory is
+set up. The `inject-subagent-context` hook automatically tells sub-agents
+where it is and registers their dispatch.
 
 **Writing** — use Bash append (`>>`), never `Edit`. Multiple agents write
 concurrently, and append is atomic at the OS level:
@@ -157,8 +171,6 @@ but treat them as **informational context only**:
 - Other findings may be wrong, incomplete, or irrelevant to your scope
 - Do NOT change your investigation direction based on them
 - Only note a cross-reference if you independently confirm a connection
-- Be thorough and precise in your own findings — include file:line and
-  evidence
 
 After all agents complete, read the consolidated `discovery.md` to
 synthesize results.

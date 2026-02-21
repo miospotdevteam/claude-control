@@ -1,104 +1,71 @@
 ---
 name: brainstorming
-description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
-attribution: "Based on the brainstorming skill from superpowers by Jesse Vincent (https://github.com/obra/superpowers), MIT License."
+description: "Use before any creative work — new features, components, behavior changes. Turns vague ideas into concrete designs through collaborative dialogue before any code is written. Adapted from superpowers by Jesse Vincent (github.com/obra/superpowers, MIT License)."
 ---
 
-# Brainstorming Ideas Into Designs
+# Brainstorming
 
-## Overview
+Turn ideas into designs before writing code. Understand what you're
+building, explore approaches, get approval, then plan.
 
-Help turn ideas into fully formed designs and specs through natural
-collaborative dialogue.
+**No code until the design is approved.** No exceptions, no matter how
+simple the task seems. Simple tasks are where unexamined assumptions
+waste the most time.
 
-Start by understanding the current project context, then ask questions one
-at a time to refine the idea. Once you understand what you're building,
-present the design and get user approval.
+---
 
-<HARD-GATE>
-Do NOT invoke any implementation skill, write any code, scaffold any
-project, or take any implementation action until you have presented a
-design and the user has approved it. This applies to EVERY project
-regardless of perceived simplicity.
-</HARD-GATE>
+## The Steps
 
-## Anti-Pattern: "This Is Too Simple To Need A Design"
+### 1. Understand the context
 
-Every project goes through this process. A todo list, a single-function
-utility, a config change — all of them. "Simple" projects are where
-unexamined assumptions cause the most wasted work. The design can be short
-(a few sentences for truly simple projects), but you MUST present it and
-get approval.
+Read the codebase before asking anything. Check files, docs, recent
+commits — build a picture of what exists and how things work. You need
+this context to ask good questions.
 
-## Checklist
+### 2. Ask questions — one at a time
 
-You MUST complete these steps in order:
+Explore the idea through conversation. One question per message. Prefer
+multiple choice when the options are clear, open-ended when they're not.
 
-1. **Explore project context** — check files, docs, recent commits
-2. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
-3. **Propose 2-3 approaches** — with trade-offs and your recommendation
-4. **Present design** — in sections scaled to their complexity, get user approval after each section
-5. **Save the design** — write to `.temp/plan-mode/active/<plan-name>/design.md`
-6. **Transition to implementation** — create the masterPlan.md in the same plan directory using the persistent-plans skill
+Focus on:
+- What problem does this solve?
+- Who is it for?
+- What does success look like?
+- What are the constraints?
 
-## Process Flow
+Keep going until you could explain the feature to another engineer.
 
-```
-Explore project context
-        ↓
-Ask clarifying questions (one at a time)
-        ↓
-Propose 2-3 approaches with trade-offs
-        ↓
-Present design sections → User approves? → No → Revise
-        ↓ Yes
-Save design to .temp/plan-mode/active/<plan-name>/design.md
-        ↓
-Create masterPlan.md (persistent-plans)
-```
+### 3. Propose approaches
 
-**The terminal state is creating a persistent plan.** Do NOT start writing
-code. The ONLY next step after brainstorming is writing the masterPlan.md
-using the persistent-plans skill.
+Present 2-3 different ways to build it. For each one: what it looks like,
+what it's good at, what the trade-offs are. Lead with your recommendation
+and say why.
 
-## The Process
+### 4. Present the design
 
-**Understanding the idea:**
-- Check out the current project state first (files, docs, recent commits)
-- Ask questions one at a time to refine the idea
-- Prefer multiple choice questions when possible, but open-ended is fine too
-- Only one question per message — if a topic needs more exploration, break it into multiple questions
-- Focus on understanding: purpose, constraints, success criteria
+Walk through the design section by section. Scale detail to complexity —
+a few sentences for straightforward parts, more for nuanced ones. After
+each section, check: does this look right?
 
-**Exploring approaches:**
-- Propose 2-3 different approaches with trade-offs
-- Present options conversationally with your recommendation and reasoning
-- Lead with your recommended option and explain why
+Cover what's relevant: architecture, components, data flow, error
+handling, testing. Skip sections that don't apply.
 
-**Presenting the design:**
-- Once you believe you understand what you're building, present the design
-- Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
-- Ask after each section whether it looks right so far
-- Cover: architecture, components, data flow, error handling, testing
-- Be ready to go back and clarify if something doesn't make sense
+### 5. Save and transition
 
-## After the Design
+Once approved:
+1. Write the design to `.temp/plan-mode/active/<plan-name>/design.md`
+2. Create `masterPlan.md` in the same directory using the persistent-plans
+   skill — the design feeds directly into the plan's Context and Discovery
+   Summary
 
-**Save the design:**
-- Initialize the plan directory: `bash ${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/scripts/init-plan-dir.sh`
-- Write the validated design to `.temp/plan-mode/active/<plan-name>/design.md`
-- This becomes the reference document for the implementation plan
+**Stop here.** The next step is the implementation plan, not code.
 
-**Create the implementation plan:**
-- Write `masterPlan.md` in the same plan directory following the persistent-plans skill
-- The design.md feeds directly into the plan's Context and Discovery Summary sections
-- Do NOT invoke any other skill or start coding
+---
 
-## Key Principles
+## Principles
 
-- **One question at a time** — Don't overwhelm with multiple questions
-- **Multiple choice preferred** — Easier to answer than open-ended when possible
-- **YAGNI ruthlessly** — Remove unnecessary features from all designs
-- **Explore alternatives** — Always propose 2-3 approaches before settling
-- **Incremental validation** — Present design, get approval before moving on
-- **Be flexible** — Go back and clarify when something doesn't make sense
+- **One question at a time** — don't overwhelm
+- **YAGNI** — cut anything that isn't clearly needed
+- **Explore before committing** — always consider alternatives
+- **Validate incrementally** — get approval as you go, not all at once
+- **Stay flexible** — circle back when something doesn't add up
