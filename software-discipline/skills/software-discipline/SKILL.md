@@ -135,10 +135,16 @@ For parallel tasks where agents benefit from seeing each other's findings
 (audits, multi-area exploration, large codebase research), agents share a
 single discovery file:
 
-**Location**: `.temp/plan-mode/active/<plan-name>/discovery.md`
+**Location** (with active plan): `.temp/plan-mode/active/<plan-name>/discovery.md`
+**Location** (no plan): `.temp/discovery/discovery.md`
 
 The file is **auto-created** by the `inject-subagent-context` hook when
-a sub-agent is dispatched and an active plan exists. No manual setup needed.
+a sub-agent is dispatched. No manual setup needed — works with or without
+an active plan.
+
+**Migration**: When agents are dispatched before a plan exists, findings
+go to the fallback location. Once a plan is created, the next agent
+dispatch automatically migrates the fallback file into the plan directory.
 
 **Writing** — use Bash append (`>>`), never `Edit`. Multiple agents write
 concurrently, and append is atomic at the OS level:

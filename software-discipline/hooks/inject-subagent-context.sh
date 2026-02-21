@@ -45,9 +45,10 @@ fi
 # Pass data via environment variables for safe JSON handling
 export HOOK_INPUT="$INPUT"
 export HOOK_ACTIVE_PLAN="$active_plan_path"
+export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
 
 python3 << 'PYEOF'
-import json, sys, os, pathlib
+import json, sys, os, pathlib, shutil
 
 input_data = json.loads(os.environ["HOOK_INPUT"])
 tool_input = input_data.get("tool_input", {})
@@ -127,9 +128,7 @@ elif category == "review":
 else:
     preamble_lines.extend(code_editing_rules)
 
-# --- Active plan and discovery.md ---
-
-discovery_file = None
+# --- Active plan ---
 
 if active_plan:
     plan_dir = pathlib.Path(active_plan).parent
@@ -142,54 +141,89 @@ if active_plan:
         "  update after each sub-task so compaction can't lose your progress.",
     ])
 
-    # Auto-create shared discovery file if it doesn't exist
-    discovery_file = plan_dir / "discovery.md"
-    if not discovery_file.exists():
-        discovery_file.write_text(
-            "# Discovery Log\n\n"
-            "Shared findings from parallel agents. "
-            "Each agent appends under its own section.\n"
+# --- Discovery file (works with or without an active plan) ---
+
+project_root = os.environ.get("HOOK_PROJECT_ROOT", "")
+discovery_header = (
+    "# Discovery Log\n\n"
+    "Shared findings from parallel agents. "
+    "Each agent appends under its own section.\n"
+)
+
+fallback_dir = pathlib.Path(project_root) / ".temp" / "discovery"
+fallback_file = fallback_dir / "discovery.md"
+
+if active_plan:
+    # Plan-scoped discovery
+    discovery_file = pathlib.Path(active_plan).parent / "discovery.md"
+
+    # Migrate: if a fallback discovery exists from pre-plan agents, adopt it
+    if fallback_file.exists() and not discovery_file.exists():
+        shutil.move(str(fallback_file), str(discovery_file))
+        # Clean up empty fallback dir
+        try:
+            fallback_dir.rmdir()
+        except OSError:
+            pass  # dir not empty or already gone
+    elif fallback_file.exists() and discovery_file.exists():
+        # Both exist — append fallback content into plan-scoped file
+        with open(fallback_file) as f:
+            fallback_content = f.read()
+        with open(discovery_file, "a") as f:
+            f.write(f"\n\n# --- Migrated from pre-plan discovery ---\n{fallback_content}")
+        fallback_file.unlink()
+        try:
+            fallback_dir.rmdir()
+        except OSError:
+            pass
+else:
+    # Fallback: session-scoped discovery when no plan exists.
+    # When a plan is created later, the next agent dispatch migrates this file.
+    fallback_dir.mkdir(parents=True, exist_ok=True)
+    discovery_file = fallback_file
+
+if not discovery_file.exists():
+    discovery_file.write_text(discovery_header)
+
+# Register this agent's dispatch in discovery.md for sibling awareness
+focus = original_prompt.split("\n")[0][:150].strip()
+if focus:
+    with open(discovery_file, "a") as f:
+        f.write(
+            f"\n## Agent dispatched: {subagent_type or 'unknown'}"
+            f" — {focus}\n"
         )
 
-    # Register this agent's dispatch in discovery.md for sibling awareness
-    focus = original_prompt.split("\n")[0][:150].strip()
-    if focus:
-        with open(discovery_file, "a") as f:
-            f.write(
-                f"\n## Agent dispatched: {subagent_type or 'unknown'}"
-                f" — {focus}\n"
-            )
+# Cross-agent awareness instructions
+preamble_lines.extend([
+    "",
+    "## Cross-Agent Awareness",
+    "Other agents may be running in parallel on related tasks.",
+    f"Read {discovery_file} to see what they're investigating.",
+    "Treat their entries as informational — do not change your approach based on them.",
+])
 
-    # Discovery instructions — tailored by category
+if category == "research":
     preamble_lines.extend([
         "",
-        "## Cross-Agent Awareness",
-        "Other agents may be running in parallel on related tasks.",
-        f"Read {discovery_file} to see what they're investigating.",
-        "Treat their entries as informational — do not change your approach based on them.",
+        "## REQUIRED: Write Findings to Discovery Log",
+        f"Before you return your final answer, you MUST append your findings to: {discovery_file}",
+        "",
+        "Use Bash to append (>> file) — never Edit, because multiple agents write concurrently:",
+        f"  printf '\\n## [Your Focus Area]\\n- **finding** `file:line` — description\\n' >> {discovery_file}",
+        "",
+        "Write ALL key findings — file paths, types found, patterns, counts, anomalies.",
+        "Include file:line references and evidence. Be thorough — this file is how parallel",
+        "agents share knowledge and how the parent agent gets structured data.",
     ])
-
-    if category == "research":
-        preamble_lines.extend([
-            "",
-            "## REQUIRED: Write Findings to Discovery Log",
-            f"Before you return your final answer, you MUST append your findings to: {discovery_file}",
-            "",
-            "Use Bash to append (>> file) — never Edit, because multiple agents write concurrently:",
-            f"  printf '\\n## [Your Focus Area]\\n- **finding** `file:line` — description\\n' >> {discovery_file}",
-            "",
-            "Write ALL key findings — file paths, types found, patterns, counts, anomalies.",
-            "Include file:line references and evidence. Be thorough — this file is how parallel",
-            "agents share knowledge and how the parent agent gets structured data.",
-        ])
-    elif category == "code-editing":
-        preamble_lines.extend([
-            "",
-            "## Discovery Log",
-            f"If you make significant findings during your work, append them to: {discovery_file}",
-            "Use Bash to append (>> file) — never Edit, because multiple agents write concurrently.",
-        ])
-    # Review agents: no discovery write requirement (they report via their return value)
+elif category == "code-editing":
+    preamble_lines.extend([
+        "",
+        "## Discovery Log",
+        f"If you make significant findings during your work, append them to: {discovery_file}",
+        "Use Bash to append (>> file) — never Edit, because multiple agents write concurrently.",
+    ])
+# Review agents: no discovery write requirement (they report via their return value)
 
 preamble = "\n".join(preamble_lines)
 
