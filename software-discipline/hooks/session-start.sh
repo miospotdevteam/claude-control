@@ -366,7 +366,13 @@ if config_just_created:
     onboarding_block = "\n".join(lines)
 
 # Build context message
-parts = [
+parts = []
+
+# Onboarding goes FIRST so Claude sees it before the massive skill files
+if onboarding_block:
+    parts.extend([onboarding_block, "", "---", ""])
+
+parts.extend([
     "**Below is the software-discipline skill — follow it for all coding tasks:**",
     "",
     skill_content,
@@ -382,13 +388,10 @@ parts = [
     "**Persistent Plans (companion skill — follow for all task planning):**",
     "",
     plans_content,
-]
+])
 
 if project_profile:
     parts.extend(["", "---", "", project_profile])
-
-if onboarding_block:
-    parts.extend(["", "---", "", onboarding_block])
 
 if active_summary:
     parts.extend(["", "---", "", active_summary])
