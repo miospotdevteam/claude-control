@@ -111,7 +111,7 @@ Read the relevant checklist BEFORE starting the associated step:
 | Git | Committing or branching | `references/git-checklist.md` |
 | Linting | After any code changes | `references/linting-checklist.md` |
 | Dependencies | Adding, removing, or updating packages | `references/dependency-checklist.md` |
-| API Contracts | Touching API endpoints, tRPC routers, or client API calls | `references/api-contracts-checklist.md` |
+| API Contracts | Touching Hono route handlers, API endpoints, or client API calls | `references/api-contracts-checklist.md` |
 | Exploration | Before planning any task | `references/exploration-protocol.md` |
 
 Each checklist points to a deep guide for comprehensive coverage.
@@ -130,16 +130,29 @@ Follow this loop mechanically:
 3. Mark it `[~] in-progress` — **write to disk NOW**
 4. If the step has a sub-plan, read it and follow its groups/sub-steps
 5. Execute the step, applying the core rules below
-6. **Checkpoint every 2-3 file edits**: update Progress checklist on disk
-7. When done: mark `[x] complete`, write Result, update Completed Summary
+6. **After each sub-task: mark its Progress item `[x]` on disk immediately.**
+   Do NOT wait until the step is done to update all progress items at once.
+   Each `- [ ]` item becomes `- [x]` the moment that sub-task is complete.
+7. When ALL progress items are `[x]`: mark step `[x] complete`, write Result,
+   update Completed Summary
 8. If all steps complete: move plan folder to `completed/`, report to user
 9. Else: loop back to step 1
 
-### The checkpoint question
+### Progress updates are NOT optional
 
-After every few edits, ask yourself: **"If auto-compaction fired RIGHT NOW,
-would my plan file let me resume exactly where I left off?"** If no, update
-the plan file before doing anything else.
+**The Progress checklist is a live checkpoint, not a decoration.** If
+auto-compaction fires mid-step, the checked items tell your next context
+window exactly where to resume.
+
+Rules:
+- Mark each `- [ ]` item `- [x]` as soon as you finish it — before starting
+  the next sub-task
+- If a sub-task is partially done, mark it `- [~]` with a note about what
+  remains
+- **Never mark a step `[x] complete` if its Progress items are still `[ ]`**.
+  That means you skipped tracking — go back and check them off first.
+- After every 2-3 file edits, ask: "If compaction fired RIGHT NOW, would my
+  plan file let me resume exactly where I left off?" If no, update it now.
 
 ### Result fields matter
 

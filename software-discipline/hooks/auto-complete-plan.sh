@@ -29,10 +29,11 @@ if [ ! -f "$FILE_PATH" ]; then
 fi
 
 # Check if all steps are complete
-pending=$(grep -c '\[ \] pending' "$FILE_PATH" 2>/dev/null) || true
-active=$(grep -c '\[~\] in-progress' "$FILE_PATH" 2>/dev/null) || true
-blocked=$(grep -c '\[!\] blocked' "$FILE_PATH" 2>/dev/null) || true
-done_count=$(grep -c '\[x\] complete' "$FILE_PATH" 2>/dev/null) || true
+# Match both "[ ] pending" (template format) and bare "[ ]" (common usage)
+pending=$(grep -cE '\[ \]' "$FILE_PATH" 2>/dev/null) || true
+active=$(grep -cE '\[~\]' "$FILE_PATH" 2>/dev/null) || true
+blocked=$(grep -cE '\[!\]' "$FILE_PATH" 2>/dev/null) || true
+done_count=$(grep -cE '\[x\]' "$FILE_PATH" 2>/dev/null) || true
 
 remaining=$((pending + active + blocked))
 

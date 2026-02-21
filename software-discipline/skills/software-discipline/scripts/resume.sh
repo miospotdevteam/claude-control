@@ -82,7 +82,8 @@ sed -n '/^## Context/,/^## /{/^## Context/d;/^## /d;p;}' "$latest" | head -5
 echo ""
 
 # Find in-progress steps first (highest priority)
-in_progress=$(grep -n '\[~\] in-progress' "$latest" || true)
+# Match both "[ ] pending" (template format) and bare "[ ]" (common usage)
+in_progress=$(grep -nE '\[~\]' "$latest" || true)
 if [ -n "$in_progress" ]; then
   echo "--- IN PROGRESS (resume here) ---"
   # Show the step headers for in-progress steps
@@ -96,7 +97,7 @@ if [ -n "$in_progress" ]; then
 fi
 
 # Find next pending steps
-pending=$(grep -n '\[ \] pending' "$latest" || true)
+pending=$(grep -nE '\[ \]' "$latest" || true)
 if [ -n "$pending" ]; then
   echo "--- Next pending steps ---"
   first_pending_line=$(echo "$pending" | head -1 | cut -d: -f1)
@@ -119,13 +120,13 @@ for sub in "$dir"/sub-plan-*.md; do
     subname="$(basename "$sub")"
     echo "--- Active sub-plan: $subname ---"
     # Show first pending/in-progress sub-step
-    grep -n -E '\[ \] pending|\[~\] in-progress' "$sub" | head -3
+    grep -nE '\[ \]|\[~\]' "$sub" | head -3
     echo ""
   fi
 done
 
 # Check for blocked items
-blocked=$(grep -n '\[!\] blocked' "$latest" || true)
+blocked=$(grep -nE '\[!\]' "$latest" || true)
 if [ -n "$blocked" ]; then
   echo "--- BLOCKED ---"
   echo "$blocked"

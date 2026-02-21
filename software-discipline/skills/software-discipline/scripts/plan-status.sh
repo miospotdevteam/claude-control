@@ -65,10 +65,11 @@ show_plans() {
     echo "----------------------------------------"
 
     # Count step statuses
-    pending=$(grep -c '\[ \] pending' "$plan" 2>/dev/null || true)
-    in_progress=$(grep -c '\[~\] in-progress' "$plan" 2>/dev/null || true)
-    complete=$(grep -c '\[x\] complete' "$plan" 2>/dev/null || true)
-    blocked=$(grep -c '\[!\] blocked' "$plan" 2>/dev/null || true)
+    # Match both "[ ] pending" (template format) and bare "[ ]" (common usage)
+    pending=$(grep -cE '\[ \]' "$plan" 2>/dev/null || true)
+    in_progress=$(grep -cE '\[~\]' "$plan" 2>/dev/null || true)
+    complete=$(grep -cE '\[x\]' "$plan" 2>/dev/null || true)
+    blocked=$(grep -cE '\[!\]' "$plan" 2>/dev/null || true)
 
     echo "  Steps:  $complete done  |  $in_progress active  |  $pending pending  |  $blocked blocked"
 

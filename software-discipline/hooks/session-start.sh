@@ -52,21 +52,22 @@ if [ -d "$ACTIVE_DIR" ]; then
     plan_name="$(basename "$(dirname "$latest")")"
 
     # Check if the plan has any non-complete steps
-    has_pending=$(grep -c '\[ \] pending\|\[~\] in-progress\|\[!\] blocked' "$latest" 2>/dev/null) || true
+    # Match both "[ ] pending" (template format) and bare "[ ]" (common usage)
+    has_pending=$(grep -cE '\[ \]|\[~\]|\[!\]' "$latest" 2>/dev/null) || true
 
     if [ "$has_pending" -gt 0 ]; then
-      done_count=$(grep -c '\[x\] complete' "$latest" 2>/dev/null) || true
-      active_count=$(grep -c '\[~\] in-progress' "$latest" 2>/dev/null) || true
-      pending_count=$(grep -c '\[ \] pending' "$latest" 2>/dev/null) || true
-      blocked_count=$(grep -c '\[!\] blocked' "$latest" 2>/dev/null) || true
+      done_count=$(grep -cE '\[x\]' "$latest" 2>/dev/null) || true
+      active_count=$(grep -cE '\[~\]' "$latest" 2>/dev/null) || true
+      pending_count=$(grep -cE '\[ \]' "$latest" 2>/dev/null) || true
+      blocked_count=$(grep -cE '\[!\]' "$latest" 2>/dev/null) || true
 
       # Find the next step to work on
       next_step=""
       if [ "$active_count" -gt 0 ]; then
-        next_step=$(grep -B5 '\[~\] in-progress' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
+        next_step=$(grep -B5 -E '\[~\]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
         [ -n "$next_step" ] && next_step="IN PROGRESS: $next_step"
       elif [ "$pending_count" -gt 0 ]; then
-        next_step=$(grep -B5 '\[ \] pending' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
+        next_step=$(grep -B5 -E '\[ \]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
         [ -n "$next_step" ] && next_step="NEXT: $next_step"
       fi
 
@@ -75,7 +76,7 @@ if [ -d "$ACTIVE_DIR" ]; then
       plan_dir="$(dirname "$latest")"
       for sub in "$plan_dir"/sub-plan-*.md; do
         [ -f "$sub" ] || continue
-        if grep -q '\[~\] in-progress\|\[ \] pending' "$sub" 2>/dev/null; then
+        if grep -qE '\[~\]|\[ \]' "$sub" 2>/dev/null; then
           subname="$(basename "$sub")"
           active_subplan="Active sub-plan: $subname"
           break

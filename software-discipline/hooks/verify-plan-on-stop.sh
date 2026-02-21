@@ -63,9 +63,10 @@ if [ -z "$latest" ] || [ ! -f "$latest" ]; then
 fi
 
 # Count step statuses
-pending_count=$(grep -c '\[ \] pending' "$latest" 2>/dev/null) || true
-active_count=$(grep -c '\[~\] in-progress' "$latest" 2>/dev/null) || true
-blocked_count=$(grep -c '\[!\] blocked' "$latest" 2>/dev/null) || true
+# Match both "[ ] pending" (template format) and bare "[ ]" (common usage)
+pending_count=$(grep -cE '\[ \]' "$latest" 2>/dev/null) || true
+active_count=$(grep -cE '\[~\]' "$latest" 2>/dev/null) || true
+blocked_count=$(grep -cE '\[!\]' "$latest" 2>/dev/null) || true
 
 remaining=$((pending_count + active_count))
 
