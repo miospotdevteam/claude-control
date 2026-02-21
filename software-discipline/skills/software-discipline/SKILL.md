@@ -41,6 +41,21 @@ Look for installed skills that match these needs:
 
 If no specialized skill exists, use the checklists and guides in `references/`.
 
+### First-run onboarding
+
+When software-discipline runs in a project for the first time, the
+SessionStart hook auto-detects the stack and creates
+`.claude/software-discipline.local.md`. On that first session, additional
+onboarding instructions are injected into the context telling you to:
+
+1. Tell the user what was detected
+2. Offer to enrich the config by exploring the codebase
+3. Offer to create a CLAUDE.md if the project has none
+4. Suggest useful official plugins and offer to install them
+
+Follow those instructions when they appear. On subsequent sessions (config
+already exists), no onboarding is injected — proceed normally.
+
 ---
 
 ## Step 1: Explore (mandatory before any edit)
