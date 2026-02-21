@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Auto-detect project stack and generate .claude/software-discipline.local.md.
+"""Auto-detect project stack and generate .claude/look-before-you-leap.local.md.
 
 Usage: python3 detect-stack.py <project_root>
 

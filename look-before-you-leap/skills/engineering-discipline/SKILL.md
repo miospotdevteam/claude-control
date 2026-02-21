@@ -159,7 +159,7 @@ sources of "it works in my head but not on the machine" failures.
 ### Run verification commands
 
 After making changes, run the project's verification tools. Check
-`${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/references/verification-commands.md`
+`${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/verification-commands.md`
 for framework-specific commands, but the general approach is:
 
 1. **Type checker** — `tsc --noEmit`, `mypy`, `cargo check`, etc.

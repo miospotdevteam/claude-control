@@ -76,7 +76,7 @@ Before creating your first plan, run the initialization script to set up
 this directory and ensure `.temp/` is gitignored:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/scripts/init-plan-dir.sh
+bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 ```
 
 ---
@@ -92,7 +92,7 @@ When the user gives you a task:
    `.temp/plan-mode/active/<plan-name>/masterPlan.md`.
 
 The masterPlan format is documented in
-`${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/references/master-plan-format.md`.
+`${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/master-plan-format.md`.
 Read that file for the exact template. The critical sections are:
 
 - **Context**: What the user asked for and key constraints
@@ -132,7 +132,7 @@ A step MUST get its own sub-plan when ANY of these are true:
 - The step description contains words like **"all", "every", "sweep",
   "migrate all", "across the codebase"**
 
-See `${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/references/sub-plan-format.md`
+See `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/sub-plan-format.md`
 for the template.
 
 ---
@@ -323,6 +323,6 @@ engineering-discipline ensures the work is done correctly.
 
 Read these when you need the detailed templates:
 
-- `${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/references/master-plan-format.md` — exact masterPlan.md template
-- `${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/references/sub-plan-format.md` — sub-plan template with Groups
-- `${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/references/claude-md-snippet.md` — recommended CLAUDE.md additions
+- `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/master-plan-format.md` — exact masterPlan.md template
+- `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/sub-plan-format.md` — sub-plan template with Groups
+- `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/claude-md-snippet.md` — recommended CLAUDE.md additions

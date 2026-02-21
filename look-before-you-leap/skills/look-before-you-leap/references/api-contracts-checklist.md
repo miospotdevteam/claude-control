@@ -5,7 +5,7 @@ shared package (not inside individual apps). If the frontend and backend
 disagree on a type, there's a bug — the only question is when you'll find it.
 
 > **Config-aware**: The `check-api-contracts` hook reads your project's
-> `.claude/software-discipline.local.md` for `structure.shared_api_package`,
+> `.claude/look-before-you-leap.local.md` for `structure.shared_api_package`,
 > `stack.backend`, and `stack.validation`. The advice below uses generic
 > terms — substitute your project's actual values.
 

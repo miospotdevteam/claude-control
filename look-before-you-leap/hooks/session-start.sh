@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SessionStart hook for software-discipline plugin.
+# SessionStart hook for look-before-you-leap plugin.
 #
 # On every session start (including after compaction/resume), this hook:
 # 1. Reads all three SKILL.md files (conductor + engineering-discipline + persistent-plans)
@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-SKILL_FILE="${PLUGIN_ROOT}/skills/software-discipline/SKILL.md"
+SKILL_FILE="${PLUGIN_ROOT}/skills/look-before-you-leap/SKILL.md"
 ENGINEERING_SKILL_FILE="${PLUGIN_ROOT}/skills/engineering-discipline/SKILL.md"
 PLANS_SKILL_FILE="${PLUGIN_ROOT}/skills/persistent-plans/SKILL.md"
 
@@ -37,7 +37,7 @@ PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
 
 # --- Section 1.5: Project config detection ---
 LIB_DIR="${SCRIPT_DIR}/lib"
-CONFIG_FILE="$PROJECT_ROOT/.claude/software-discipline.local.md"
+CONFIG_FILE="$PROJECT_ROOT/.claude/look-before-you-leap.local.md"
 
 if [ ! -f "$CONFIG_FILE" ] && [ -d "$PROJECT_ROOT" ]; then
   # Auto-detect stack on first session
@@ -128,7 +128,7 @@ if [ -d "$ACTIVE_DIR" ]; then
         active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
         [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
         [ -n "$active_subplan" ] && active_plan_summary+=$'\n'"$active_subplan"
-        active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the software-discipline skill."
+        active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
       else
         active_plan_summary="NOTE: Active plan exists but is owned by another Claude session"
         active_plan_summary+=$'\n'"Plan: $plan_name"
@@ -153,7 +153,7 @@ if [ -d "$PLUGINS_DIR" ]; then
 
     # Skip ourselves
     plugin_name="$(basename "$plugin_dir")"
-    if [ "$plugin_name" = "software-discipline" ]; then
+    if [ "$plugin_name" = "look-before-you-leap" ]; then
       continue
     fi
 
@@ -257,13 +257,13 @@ try:
         if active_disciplines:
             profile_parts.append(f"Active disciplines: {', '.join(active_disciplines)}")
         if profile_parts:
-            project_profile = "**Project Profile** (auto-detected, edit .claude/software-discipline.local.md to customize):\n" + "\n".join(f"- {p}" for p in profile_parts)
+            project_profile = "**Project Profile** (auto-detected, edit .claude/look-before-you-leap.local.md to customize):\n" + "\n".join(f"- {p}" for p in profile_parts)
 except (json.JSONDecodeError, TypeError):
     pass
 
 # Build context message
 parts = [
-    "**Below is the software-discipline skill — follow it for all coding tasks:**",
+    "**Below is the look-before-you-leap skill — follow it for all coding tasks:**",
     "",
     skill_content,
     "",

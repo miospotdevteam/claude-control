@@ -1,5 +1,5 @@
 ---
-name: software-discipline
+name: look-before-you-leap
 description: >
   Unified engineering discipline for ALL coding tasks. Three layers: this file (the conductor), quick-reference checklists, and deep guides. Enforces structured exploration before planning, persistent plans that survive compaction, disciplined execution with blast radius tracking and type safety, and multi-discipline coverage (testing, UI consistency, security, git, linting, dependencies). Use for every task that touches source files — no exceptions, no shortcuts.
 ---
@@ -43,9 +43,9 @@ If no specialized skill exists, use the checklists and guides in `references/`.
 
 ### First-run onboarding
 
-When software-discipline runs in a project for the first time, the
+When look-before-you-leap runs in a project for the first time, the
 SessionStart hook auto-detects the stack and creates
-`.claude/software-discipline.local.md`. On that first session, additional
+`.claude/look-before-you-leap.local.md`. On that first session, additional
 onboarding instructions are injected into the context telling you to:
 
 1. Tell the user what was detected
@@ -87,7 +87,7 @@ fix), create the plan directory and write findings to disk **before**
 moving to Step 2:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/scripts/init-plan-dir.sh
+bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 mkdir -p .temp/plan-mode/active/<plan-name>
 ```
 
@@ -110,7 +110,7 @@ Use the template in `references/master-plan-format.md`. Plans live in
 
 Initialize the plan directory if needed:
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/scripts/init-plan-dir.sh
+bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 ```
 
 ### Discipline checklists
@@ -223,7 +223,7 @@ This plugin enforces discipline through hooks, not just instructions:
 
 - **PreToolUse(Edit|Write)**: Blocks code edits if no active plan exists
   in `.temp/plan-mode/active/`. Allows edits to `.temp/` (plan files).
-  Bypass for trivial changes: create `.temp/plan-mode/.no-plan`.
+  Bypass for trivial changes: `echo $PPID > .temp/plan-mode/.no-plan` (session-scoped, auto-expires when session ends).
 - **PreToolUse(Task)**: Automatically injects engineering discipline into
   every sub-agent prompt. Sub-agents receive the core rules (no scope cuts,
   no type shortcuts, blast radius, verification) plus active plan path.
@@ -234,7 +234,7 @@ This plugin enforces discipline through hooks, not just instructions:
 
 ## Reference Files
 
-All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/`:
+All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 
 ### Process & Templates
 - `references/exploration-protocol.md` — 8-question exploration checklist

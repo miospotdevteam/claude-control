@@ -1,4 +1,0 @@
-{
-  "name": "persistent-plans",
-  "description": "Persistent plan files on disk that survive context compaction — ensures Claude never loses track of multi-step tasks"
-}

@@ -48,9 +48,18 @@ print(data.get('cwd', ''))
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 
-# Check for explicit bypass
-if [ -f "$PROJECT_ROOT/.temp/plan-mode/.no-plan" ]; then
-  exit 0
+# Check for explicit bypass (session-scoped: contains PID of creating session)
+NO_PLAN_FILE="$PROJECT_ROOT/.temp/plan-mode/.no-plan"
+if [ -f "$NO_PLAN_FILE" ]; then
+  bypass_pid=$(cat "$NO_PLAN_FILE" 2>/dev/null) || true
+  if [ -n "$bypass_pid" ] && kill -0 "$bypass_pid" 2>/dev/null; then
+    # Creating session is still alive — allow
+    exit 0
+  else
+    # Session ended or file has no PID — stale bypass, remove it
+    rm -f "$NO_PLAN_FILE"
+    # Fall through to deny
+  fi
 fi
 
 # Check for active plan
@@ -79,13 +88,13 @@ output = {
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",
         "permissionDecisionReason": (
-            "No active plan found. The software-discipline plugin requires a plan "
+            "No active plan found. The look-before-you-leap plugin requires a plan "
             "before editing code.\n\n"
             "To create a plan:\n"
             "1. Explore the codebase (read files, grep consumers)\n"
             "2. Write a masterPlan.md to .temp/plan-mode/active/<plan-name>/masterPlan.md\n"
             "3. Then proceed with edits\n\n"
-            "To bypass for trivial changes: create .temp/plan-mode/.no-plan"
+            "To bypass for trivial changes: echo $PPID > .temp/plan-mode/.no-plan"
         )
     }
 }

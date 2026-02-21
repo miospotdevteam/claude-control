@@ -4,7 +4,7 @@
 # Safe to run multiple times — only creates what's missing.
 #
 # Usage: bash <this-script>
-# Called from the software-discipline skill before creating the first plan.
+# Called from the look-before-you-leap skill before creating the first plan.
 
 set -euo pipefail
 

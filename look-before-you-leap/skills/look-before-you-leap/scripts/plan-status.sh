@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shows status of all active plans (default) or all plans (--all).
 # Usage: bash .temp/plan-mode/scripts/plan-status.sh [--all]
-#        bash <plugin-root>/skills/software-discipline/scripts/plan-status.sh [--all]
+#        bash <plugin-root>/skills/look-before-you-leap/scripts/plan-status.sh [--all]
 #
 # Works on both macOS and Linux.
 

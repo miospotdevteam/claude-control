@@ -1,21 +1,18 @@
 # claude-code-setup
 
-Three Claude Code plugins: `software-discipline` (unified, recommended), `engineering-discipline`, and `persistent-plans`. The unified plugin combines and extends the individual ones.
+Single Claude Code plugin: `look-before-you-leap`. Enforces structured exploration, persistent plans, disciplined execution, and multi-discipline coverage for all coding tasks.
 
 ## Repo Layout
 
-- `software-discipline/` — Unified plugin with three-layer architecture (conductor, checklists, deep guides)
-- `engineering-discipline/` — Standalone behavioral override plugin (explore before editing, verify work, no shortcuts)
-- `persistent-plans/` — Standalone workflow plugin (plans on disk survive context compaction)
-- Plugins are symlinked to `~/.claude/plugins/` — when modifying files, the symlink keeps them in sync
+- `look-before-you-leap/` — The plugin (three-layer architecture: conductor, checklists, deep guides)
+- Everything else is in `look-before-you-leap/` — hooks, skills, references, scripts
 
 ## Editing Rules
 
 - These are Claude Code plugins, not application code. Changes affect how Claude behaves across all projects.
-- When editing any plugin file, verify the symlink at `~/.claude/plugins/<plugin-name>` points to the repo copy.
 - Shell scripts must work on both macOS and Linux (different `stat` flags, `find` options, etc.).
 - SKILL.md files use YAML frontmatter — keep the `description` field accurate when changing behavior.
-- Do not install both `software-discipline` and the individual plugins simultaneously — they duplicate context injection.
+- Test hooks with `bash -n` after editing. Test Python sections by running the hook and checking JSON output.
 
 ## Plan Mode
 

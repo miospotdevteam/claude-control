@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read .claude/software-discipline.local.md and output config as JSON.
+"""Read .claude/look-before-you-leap.local.md and output config as JSON.
 
 Usage: python3 read-config.py <project_root>
 
@@ -101,7 +101,7 @@ def main():
         return
 
     project_root = sys.argv[1]
-    config_path = f"{project_root}/.claude/software-discipline.local.md"
+    config_path = f"{project_root}/.claude/look-before-you-leap.local.md"
 
     try:
         with open(config_path) as f:

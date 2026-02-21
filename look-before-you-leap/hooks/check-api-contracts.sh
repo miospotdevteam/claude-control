@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse hook: Soft warning when editing API boundary files.
 #
-# Config-driven: reads .claude/software-discipline.local.md for stack info.
+# Config-driven: reads .claude/look-before-you-leap.local.md for stack info.
 # Detects files that define or consume API contracts (route handlers,
 # API routes, frontend API calls) and reminds Claude to check for
 # shared schemas in the appropriate package.

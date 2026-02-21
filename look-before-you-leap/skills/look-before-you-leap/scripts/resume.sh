@@ -2,7 +2,7 @@
 # Shows what to resume after compaction or session restart.
 # Only scans active/ — completed plans are never resumed.
 # Usage: bash .temp/plan-mode/scripts/resume.sh
-#        bash <plugin-root>/skills/software-discipline/scripts/resume.sh
+#        bash <plugin-root>/skills/look-before-you-leap/scripts/resume.sh
 #
 # Works on both macOS and Linux.
 

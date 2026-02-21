@@ -1,6 +1,6 @@
 # Recommended CLAUDE.md Addition
 
-Add this block to your project's `CLAUDE.md` to reinforce software-discipline
+Add this block to your project's `CLAUDE.md` to reinforce look-before-you-leap
 behavior on every session.
 
 ---
@@ -8,7 +8,7 @@ behavior on every session.
 ```markdown
 ## Software Discipline
 
-All tasks use the software-discipline plugin. This is the default operating
+All tasks use the look-before-you-leap plugin. This is the default operating
 mode — not optional.
 
 ### Plan Mode

@@ -36,7 +36,7 @@ fi
 rm -f "$MARKER"
 
 # Read config JSON for stack info
-CONFIG_FILE="$PROJECT_ROOT/.claude/software-discipline.local.md"
+CONFIG_FILE="$PROJECT_ROOT/.claude/look-before-you-leap.local.md"
 PROJECT_CONFIG_JSON=$(python3 "$LIB_DIR/read-config.py" "$PROJECT_ROOT" 2>/dev/null) || PROJECT_CONFIG_JSON="{}"
 
 # Detect CLAUDE.md
@@ -61,7 +61,7 @@ plugin_root = os.environ.get("PLUGIN_ROOT", "")
 
 # Read recommended plugins reference
 rec_plugins_content = ""
-rec_plugins_path = os.path.join(plugin_root, "skills", "software-discipline",
+rec_plugins_path = os.path.join(plugin_root, "skills", "look-before-you-leap",
                                  "references", "recommended-plugins.md")
 try:
     with open(rec_plugins_path, "r") as f:
@@ -71,7 +71,7 @@ except Exception:
 
 # Read CLAUDE.md snippet template
 claude_md_snippet = ""
-claude_md_snippet_path = os.path.join(plugin_root, "skills", "software-discipline",
+claude_md_snippet_path = os.path.join(plugin_root, "skills", "look-before-you-leap",
                                        "references", "claude-md-snippet.md")
 try:
     with open(claude_md_snippet_path, "r") as f:
@@ -97,8 +97,8 @@ except (json.JSONDecodeError, TypeError):
 
 # Build onboarding instructions
 lines = []
-lines.append("FIRST-RUN SETUP: The software-discipline plugin just ran for the first time in this project.")
-lines.append(f"A config was auto-created at .claude/software-discipline.local.md"
+lines.append("FIRST-RUN SETUP: The look-before-you-leap plugin just ran for the first time in this project.")
+lines.append(f"A config was auto-created at .claude/look-before-you-leap.local.md"
              + (f" with detected stack: {stack_summary}." if stack_summary else "."))
 lines.append("")
 lines.append("Before doing anything else, walk the user through setup:")
@@ -107,7 +107,7 @@ lines.append("1. Tell the user what was detected and show the stack summary.")
 lines.append("")
 lines.append("2. Offer to enrich the config by exploring the codebase deeper.")
 lines.append("   If yes, read key files (package.json, tsconfig, project structure)")
-lines.append("   and update .claude/software-discipline.local.md with richer content:")
+lines.append("   and update .claude/look-before-you-leap.local.md with richer content:")
 lines.append("   verification commands, gotchas, blast radius areas, conventions.")
 lines.append("   Use brainstorming style — one question at a time, multiple choice where possible.")
 lines.append("")

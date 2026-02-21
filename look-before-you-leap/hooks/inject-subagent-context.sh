@@ -104,7 +104,7 @@ category = classify_agent(subagent_type)
 
 # Base rules — always injected
 base_rules = [
-    "## Engineering Discipline (injected by software-discipline plugin)",
+    "## Engineering Discipline (injected by look-before-you-leap plugin)",
     f"Agent type: {subagent_type or 'unknown'} | Category: {category}",
     "",
     "Follow these rules for ALL work in this task:",
