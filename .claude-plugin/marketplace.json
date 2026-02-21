@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-code-setup",
+  "description": "Custom engineering discipline plugins for Claude Code",
+  "owner": {
+    "name": "Roberto Bortolaso"
+  },
+  "plugins": [
+    {
+      "name": "software-discipline",
+      "description": "Unified engineering discipline, persistent plans, and multi-discipline coverage for all coding tasks",
+      "source": "./software-discipline",
+      "category": "development"
+    }
+  ]
+}
