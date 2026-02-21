@@ -1,0 +1,105 @@
+{
+  "skill_name": "software-discipline",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Update the shared Button component to accept a new 'variant' prop",
+      "expected_output": "The model finds all Button consumers before making changes, ensures backwards compatibility, and verifies no consumers break",
+      "assertions": [
+        "Uses Grep to find every file that imports or uses the Button component",
+        "Reads at least 2-3 consumer files to understand current usage patterns",
+        "Makes the new prop optional (backwards compatible) or updates all consumers",
+        "Uses proper TypeScript types for the variant prop (not 'any' or 'string')",
+        "After changing the component, checks that consumers still compile",
+        "Runs type checker or linter after the change",
+        "Reports the list of consumers found and whether they need updates"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Port the image generation feature from /reference/canvas-app into this project",
+      "expected_output": "The model writes a complete plan, tracks every feature, ports them all or explicitly flags what couldn't be ported",
+      "assertions": [
+        "Writes a plan to .temp/plan-mode/active/ with a structured Discovery Summary",
+        "Lists all features/files to port before starting",
+        "Does NOT silently drop any features from the plan",
+        "If a feature is blocked, explicitly says so with a reason",
+        "Verifies new packages are installed (checks package.json)",
+        "Verifies environment variables are documented",
+        "Runs type checker after porting is complete",
+        "Final summary accounts for every item in the original plan"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Fix this broken test in src/utils/auth.test.ts",
+      "expected_output": "The model reads auth.ts and consumers before editing, fixes the test, searches for similar breakage, runs the test suite",
+      "assertions": [
+        "Reads auth.ts (the module under test) before editing the test file",
+        "Uses Grep to find other files that import from auth.ts",
+        "Checks for existing test patterns in sibling test files",
+        "Runs the test suite after making changes",
+        "Does NOT use 'as any' or type-unsafe workarounds",
+        "Reports what was fixed and confirms tests pass"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Add user profile editing to the settings page with form validation",
+      "expected_output": "The model completes thorough exploration answering all 8 protocol questions before writing a plan, including consumer analysis and test infrastructure discovery",
+      "assertions": [
+        "Reads the exploration-protocol.md reference before starting",
+        "Identifies all files in scope (settings page, API routes, types, tests)",
+        "Finds consumers of any shared components or utilities it will modify",
+        "Discovers existing form validation patterns in the codebase",
+        "Identifies the test framework and existing test patterns",
+        "Writes a Discovery Summary with all 8 sections populated",
+        "Confidence rating is Medium or higher before proceeding to plan",
+        "Does NOT start editing files before completing exploration"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Add unit tests for the payment processing module",
+      "expected_output": "The model writes tests before or alongside implementation changes, covers happy path, error path, and edge cases, and avoids test theater",
+      "assertions": [
+        "Reads existing test files to learn the project's testing patterns",
+        "Identifies the test framework and test utilities available",
+        "Writes tests covering happy path, at least one error path, and edge cases",
+        "Tests verify behavior, not implementation details",
+        "Tests actually fail when the feature code is removed (not test theater)",
+        "Uses existing test utilities and fixtures rather than reimplementing",
+        "Runs the test suite to verify all tests pass"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Continue working on the feature from where I left off",
+      "expected_output": "The model reads the active plan from disk, identifies where work stopped, and resumes from the correct step without re-doing completed work",
+      "assertions": [
+        "Checks .temp/plan-mode/active/ for an active plan before doing anything",
+        "Reads the masterPlan.md completely",
+        "Identifies the next pending or in-progress step",
+        "If a step is in-progress, checks the Progress checklist for what's done",
+        "States to the user which step it is resuming from",
+        "Does NOT restart from the beginning",
+        "Does NOT re-do work that the Completed Summary shows is done",
+        "Continues the execution loop from the correct point"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Build a new dashboard page that shows user analytics with charts",
+      "expected_output": "The model checks for existing design tokens, components, and patterns before building the UI, and maintains visual consistency with the rest of the application",
+      "assertions": [
+        "Searches for existing chart/visualization components before creating new ones",
+        "Reads the Tailwind config or theme file for design tokens",
+        "Reads 2-3 existing pages to understand layout and spacing patterns",
+        "Uses existing components from the UI library rather than creating duplicates",
+        "Uses design tokens for colors, spacing, and typography (no hardcoded values)",
+        "Follows the existing page structure and naming conventions",
+        "Tests responsive behavior at project breakpoints"
+      ]
+    }
+  ]
+}
