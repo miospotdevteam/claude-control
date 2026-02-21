@@ -24,6 +24,16 @@
         ]
       },
       {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/check-api-contracts.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "Task",
         "hooks": [
           {

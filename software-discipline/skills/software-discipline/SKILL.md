@@ -111,6 +111,7 @@ Read the relevant checklist BEFORE starting the associated step:
 | Git | Committing or branching | `references/git-checklist.md` |
 | Linting | After any code changes | `references/linting-checklist.md` |
 | Dependencies | Adding, removing, or updating packages | `references/dependency-checklist.md` |
+| API Contracts | Touching API endpoints, tRPC routers, or client API calls | `references/api-contracts-checklist.md` |
 | Exploration | Before planning any task | `references/exploration-protocol.md` |
 
 Each checklist points to a deep guide for comprehensive coverage.
