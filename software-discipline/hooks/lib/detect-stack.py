@@ -53,7 +53,9 @@ def detect_language(root):
     return ""
 
 
-def detect_runtime(language):
+def detect_runtime(language, package_manager):
+    if package_manager == "bun":
+        return "bun"
     if language in ("typescript", "javascript"):
         return "node"
     return ""
@@ -118,9 +120,10 @@ def collect_all_deps(root):
     return all_deps
 
 
-def detect_from_deps(deps):
+def detect_from_deps(deps, root_scripts=None, package_manager=""):
     """Detect frameworks/tools from dependency names."""
     result = {}
+    scripts = root_scripts or {}
 
     # Frontend
     frontend_map = {
@@ -177,7 +180,7 @@ def detect_from_deps(deps):
             result["styling"] = name
             break
 
-    # Testing
+    # Testing — check deps first, then fall back to script patterns
     testing_map = {
         "vitest": "vitest",
         "jest": "jest",
@@ -189,6 +192,11 @@ def detect_from_deps(deps):
         if dep in deps:
             result["testing"] = name
             break
+    # If no testing dep found, check if scripts use bun test
+    if "testing" not in result and package_manager == "bun":
+        test_script = scripts.get("test", "")
+        if "bun test" in test_script or "bun run test" in test_script:
+            result["testing"] = "bun-test"
 
     # ORM / DB
     orm_map = {
@@ -215,9 +223,10 @@ def detect_structure(root, is_monorepo):
         return {}
 
     structure = {}
+    shared_packages = []
 
     # Scan apps/ and packages/ for package names
-    for workspace_parent, config_key in [("apps", None), ("packages", None)]:
+    for workspace_parent in ("apps", "packages", "services", "libs"):
         parent = f"{root}/{workspace_parent}"
         if not dir_exists(parent):
             continue
@@ -229,20 +238,24 @@ def detect_structure(root, is_monorepo):
                 name = pkg.get("name", "")
                 entry_path = f"{workspace_parent}/{entry}"
 
-                # Heuristic: if the package looks like a shared API package
-                if "api" in entry.lower() and workspace_parent == "packages":
-                    structure["shared_api_package"] = name
-                    structure["shared_dir"] = entry_path
+                if workspace_parent == "packages":
+                    # Heuristic: if the package looks like a shared API package
+                    if "api" in entry.lower():
+                        structure["shared_api_package"] = name
+                    # Collect all shared packages
+                    if name:
+                        shared_packages.append(entry_path)
 
-                # Heuristic: api app
-                if entry.lower() in ("api", "server", "backend") and workspace_parent == "apps":
-                    structure["api_dir"] = entry_path
-
-                # Heuristic: web app
-                if entry.lower() in ("web", "app", "client", "frontend") and workspace_parent == "apps":
-                    structure["web_dir"] = entry_path
+                elif workspace_parent == "apps":
+                    if entry.lower() in ("api", "server", "backend"):
+                        structure["api_dir"] = entry_path
+                    elif entry.lower() in ("web", "app", "client", "frontend"):
+                        structure["web_dir"] = entry_path
         except OSError:
             pass
+
+    if shared_packages:
+        structure["shared_packages"] = shared_packages
 
     return structure
 
@@ -252,16 +265,48 @@ def should_enable_api_contracts(detected):
     return bool(detected.get("backend"))
 
 
+def detect_verification_commands(root):
+    """Extract verification commands from root package.json scripts."""
+    pkg = read_json(f"{root}/package.json")
+    if not pkg:
+        return {}
+
+    scripts = pkg.get("scripts", {})
+    if not scripts:
+        return {}
+
+    commands = {}
+
+    # Map well-known script names to verification categories
+    script_map = {
+        "typecheck": "typecheck", "type-check": "typecheck", "tsc": "typecheck",
+        "tsgo": "typecheck", "check-types": "typecheck",
+        "lint": "lint", "eslint": "lint",
+        "test": "test", "test:unit": "test",
+        "build": "build",
+    }
+
+    for script_name, category in script_map.items():
+        if script_name in scripts and category not in commands:
+            commands[category] = f"{script_name}"
+
+    return commands
+
+
 def build_config(root):
     language = detect_language(root)
-    runtime = detect_runtime(language)
     package_manager = detect_package_manager(root)
+    runtime = detect_runtime(language, package_manager)
     is_monorepo = detect_monorepo(root)
 
+    root_pkg = read_json(f"{root}/package.json")
+    root_scripts = root_pkg.get("scripts", {}) if root_pkg else {}
+
     deps = collect_all_deps(root) if language in ("typescript", "javascript") else set()
-    from_deps = detect_from_deps(deps)
+    from_deps = detect_from_deps(deps, root_scripts, package_manager)
 
     structure = detect_structure(root, is_monorepo)
+    verification = detect_verification_commands(root)
 
     stack = {}
     if language:
@@ -278,10 +323,10 @@ def build_config(root):
         "plan_enforcement": True,
     }
 
-    return stack, structure, disciplines
+    return stack, structure, disciplines, verification
 
 
-def render_config(stack, structure, disciplines):
+def render_config(stack, structure, disciplines, verification):
     """Render the full .local.md file content."""
     lines = ["---"]
 
@@ -293,6 +338,16 @@ def render_config(stack, structure, disciplines):
     if structure:
         lines.append("structure:")
         for k, v in structure.items():
+            if isinstance(v, list):
+                lines.append(f"  {k}:")
+                for item in v:
+                    lines.append(f"    - {item}")
+            else:
+                lines.append(f"  {k}: {_yaml_val(v)}")
+
+    if verification:
+        lines.append("verification:")
+        for k, v in verification.items():
             lines.append(f"  {k}: {_yaml_val(v)}")
 
     if disciplines:
@@ -322,8 +377,8 @@ def main():
         sys.exit(1)
 
     root = sys.argv[1].rstrip("/")
-    stack, structure, disciplines = build_config(root)
-    print(render_config(stack, structure, disciplines), end="")
+    stack, structure, disciplines, verification = build_config(root)
+    print(render_config(stack, structure, disciplines, verification), end="")
 
 
 if __name__ == "__main__":

@@ -30,20 +30,37 @@ def parse_frontmatter(text):
     lines = match.group(1).split('\n')
     result = {}
     current_parent = None
+    current_child_list = None  # (parent_key, child_key) when collecting list items
 
     for line in lines:
         # Skip blank lines and comments
         stripped = line.strip()
         if not stripped or stripped.startswith('#'):
+            current_child_list = None
             current_parent = None if not stripped else current_parent
             continue
 
+        # List item (e.g. "    - packages/i18n")
+        list_match = re.match(r'^\s+-\s+(.+)', line)
+        if list_match and current_child_list:
+            parent_key, child_key = current_child_list
+            result[parent_key][child_key].append(_coerce(list_match.group(1).strip()))
+            continue
+
+        # End any active list collection when we hit a non-list line
+        current_child_list = None
+
         # Indented line (child of current parent)
         if line.startswith('  ') and current_parent is not None:
-            child_match = re.match(r'^\s+([\w_]+)\s*:\s*(.+)', line)
+            child_match = re.match(r'^\s+([\w_]+)\s*:\s*(.*)', line)
             if child_match:
                 key, val = child_match.group(1), child_match.group(2).strip()
-                result[current_parent][key] = _coerce(val)
+                if val:
+                    result[current_parent][key] = _coerce(val)
+                else:
+                    # Child key with no value — start collecting list items
+                    result[current_parent][key] = []
+                    current_child_list = (current_parent, key)
             continue
 
         # Top-level key
