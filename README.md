@@ -1,6 +1,6 @@
 # claude-control
 
-Claude Code plugins that make Opus 4.6 behave like a disciplined engineer instead of a fast-but-sloppy one.
+Claude Code plugins that make Claude behave like a disciplined engineer instead of a fast-but-sloppy one.
 
 ## The Problem
 
@@ -86,6 +86,12 @@ ln -s ~/claude-control/persistent-plans ~/.claude/plugins/persistent-plans
 
 **Do not install both options at once.** software-discipline includes everything from the individual plugins. Installing both would duplicate the context injection.
 
+### Per-project config
+
+On first session in a project, the plugin auto-detects the stack (language, frameworks, monorepo structure, etc.) and writes a config file to `.claude/software-discipline.local.md`. This makes hooks adapt to any project — no manual configuration needed.
+
+To customize, edit the generated file. It's never overwritten after creation. Add it to `.gitignore` if you don't want it committed.
+
 ### Add the CLAUDE.md snippet (recommended)
 
 Add this to your project's `CLAUDE.md` to reinforce the behavior:
@@ -127,13 +133,18 @@ claude-control/
 │   │   └── plugin.json
 │   ├── hooks/
 │   │   ├── hooks.json                       # Hook lifecycle configuration
-│   │   ├── session-start.sh                 # SessionStart: skill injection + plan detection + skill discovery + session lock
+│   │   ├── session-start.sh                 # SessionStart: skill injection + plan detection + config auto-detect
 │   │   ├── enforce-plan.sh                  # PreToolUse: blocks edits without an active plan
-│   │   ├── check-api-contracts.sh           # PreToolUse: warns on API boundary edits
-│   │   ├── inject-subagent-context.sh       # PreToolUse: injects discipline into sub-agents + shared discovery
+│   │   ├── check-api-contracts.sh           # PreToolUse: config-driven API boundary warnings
+│   │   ├── inject-subagent-context.sh       # PreToolUse: injects discipline + stack info into sub-agents
 │   │   ├── auto-complete-plan.sh            # PostToolUse: detects plan completion
-│   │   └── verify-plan-on-stop.sh           # Stop: blocks stopping with unfinished plans
+│   │   ├── verify-plan-on-stop.sh           # Stop: blocks stopping with unfinished plans
+│   │   └── lib/
+│   │       ├── read-config.py               # Shared config reader (YAML frontmatter → JSON)
+│   │       └── detect-stack.py              # Auto-detects project stack from package.json, etc.
 │   └── skills/
+│       ├── brainstorming/
+│       │   └── SKILL.md                     # Collaborative design exploration before implementation
 │       ├── software-discipline/
 │       │   ├── SKILL.md                     # Layer 1: The conductor (always in context)
 │       │   ├── evals/
@@ -200,4 +211,8 @@ claude-control/
 
 ## Origin Story
 
-These plugins were built iteratively through real-world testing on production codebases. Each rule exists because Opus actually made that specific mistake. The sub-plan triggers, checkpoint frequency, auto-compaction survival logic, and discipline checklists were all calibrated based on actual failures during real tasks.
+These plugins were built iteratively through real-world testing on production codebases. Each rule exists because Claude actually made that specific mistake. The sub-plan triggers, checkpoint frequency, auto-compaction survival logic, and discipline checklists were all calibrated based on actual failures during real tasks.
+
+## Acknowledgments
+
+- The **brainstorming** skill is adapted from [superpowers](https://github.com/obra/superpowers) by Jesse Vincent, licensed under MIT. superpowers is an excellent agentic skills framework — if you want a broader set of development skills beyond engineering discipline, check it out.
