@@ -35,6 +35,22 @@ find_project_root() {
 PROJECT_ROOT="$(find_project_root)"
 PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
 
+# --- Section 1.5: Project config detection ---
+LIB_DIR="${SCRIPT_DIR}/lib"
+CONFIG_FILE="$PROJECT_ROOT/.claude/software-discipline.local.md"
+
+if [ ! -f "$CONFIG_FILE" ] && [ -d "$PROJECT_ROOT" ]; then
+  # Auto-detect stack on first session
+  config_content=$(python3 "$LIB_DIR/detect-stack.py" "$PROJECT_ROOT" 2>/dev/null) || true
+  if [ -n "$config_content" ]; then
+    mkdir -p "$PROJECT_ROOT/.claude"
+    printf '%s' "$config_content" > "$CONFIG_FILE"
+  fi
+fi
+
+# Read config as JSON (empty object if missing/broken)
+PROJECT_CONFIG_JSON=$(python3 "$LIB_DIR/read-config.py" "$PROJECT_ROOT" 2>/dev/null) || PROJECT_CONFIG_JSON="{}"
+
 # --- Section 2: Active plan detection ---
 active_plan_summary=""
 ACTIVE_DIR="$PLAN_DIR/active"
@@ -186,6 +202,7 @@ export ENGINEERING_SKILL_FILE_PATH="$ENGINEERING_SKILL_FILE"
 export PLANS_SKILL_FILE_PATH="$PLANS_SKILL_FILE"
 export ACTIVE_PLAN_SUMMARY="$active_plan_summary"
 export SKILL_INVENTORY="$skill_inventory"
+export PROJECT_CONFIG_JSON
 
 python3 << 'PYEOF'
 import json
@@ -197,6 +214,7 @@ engineering_file = os.environ.get("ENGINEERING_SKILL_FILE_PATH", "")
 plans_file = os.environ.get("PLANS_SKILL_FILE_PATH", "")
 active_summary = os.environ.get("ACTIVE_PLAN_SUMMARY", "")
 skill_inventory = os.environ.get("SKILL_INVENTORY", "")
+config_json_str = os.environ.get("PROJECT_CONFIG_JSON", "{}")
 
 def read_file(path):
     try:
@@ -208,6 +226,38 @@ def read_file(path):
 skill_content = read_file(skill_file)
 engineering_content = read_file(engineering_file)
 plans_content = read_file(plans_file)
+
+# Build project profile from config
+project_profile = ""
+try:
+    config = json.loads(config_json_str)
+    stack = config.get("stack", {})
+    structure = config.get("structure", {})
+    disciplines = config.get("disciplines", {})
+
+    if stack:
+        profile_parts = []
+        if stack.get("language"):
+            profile_parts.append(f"Language: {stack['language']}")
+        if stack.get("package_manager"):
+            profile_parts.append(f"Package manager: {stack['package_manager']}")
+        if stack.get("monorepo"):
+            profile_parts.append("Monorepo: yes")
+        frameworks = []
+        for key in ("frontend", "backend", "validation", "styling", "testing", "orm"):
+            if stack.get(key):
+                frameworks.append(f"{key}={stack[key]}")
+        if frameworks:
+            profile_parts.append(f"Stack: {', '.join(frameworks)}")
+        if structure.get("shared_api_package"):
+            profile_parts.append(f"Shared API package: {structure['shared_api_package']}")
+        active_disciplines = [k for k, v in disciplines.items() if v]
+        if active_disciplines:
+            profile_parts.append(f"Active disciplines: {', '.join(active_disciplines)}")
+        if profile_parts:
+            project_profile = "**Project Profile** (auto-detected, edit .claude/software-discipline.local.md to customize):\n" + "\n".join(f"- {p}" for p in profile_parts)
+except (json.JSONDecodeError, TypeError):
+    pass
 
 # Build context message
 parts = [
@@ -227,6 +277,9 @@ parts = [
     "",
     plans_content,
 ]
+
+if project_profile:
+    parts.extend(["", "---", "", project_profile])
 
 if active_summary:
     parts.extend(["", "---", "", active_summary])

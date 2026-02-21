@@ -43,9 +43,14 @@ if [ -d "$ACTIVE_DIR" ]; then
 fi
 
 # Pass data via environment variables for safe JSON handling
+# Read project config
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/lib" && pwd)"
+HOOK_CONFIG_JSON=$(python3 "$LIB_DIR/read-config.py" "$PROJECT_ROOT" 2>/dev/null) || HOOK_CONFIG_JSON="{}"
+
 export HOOK_INPUT="$INPUT"
 export HOOK_ACTIVE_PLAN="$active_plan_path"
 export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
+export HOOK_CONFIG_JSON
 
 python3 << 'PYEOF'
 import json, sys, os, pathlib, shutil
@@ -55,6 +60,13 @@ tool_input = input_data.get("tool_input", {})
 original_prompt = tool_input.get("prompt", "")
 subagent_type = tool_input.get("subagent_type", "")
 active_plan = os.environ.get("HOOK_ACTIVE_PLAN", "")
+config_json_str = os.environ.get("HOOK_CONFIG_JSON", "{}")
+
+# Parse project config
+try:
+    project_config = json.loads(config_json_str)
+except (json.JSONDecodeError, TypeError):
+    project_config = {}
 
 # --- Agent type registry ---
 # Maps subagent_type values to rule categories.
@@ -119,6 +131,23 @@ review_rules = [
     "- No type safety shortcuts: flag `any`, `as any`, missing types",
     "- Be thorough: check every file in scope, don't skip edge cases",
 ]
+
+# Build compact project stack line from config
+stack_info = project_config.get("stack", {})
+if stack_info:
+    parts = []
+    if stack_info.get("language"):
+        parts.append(stack_info["language"])
+    for key in ("frontend", "backend", "validation", "testing", "orm"):
+        if stack_info.get(key):
+            parts.append(f"{key}={stack_info[key]}")
+    if stack_info.get("monorepo"):
+        parts.append("monorepo")
+    shared_pkg = project_config.get("structure", {}).get("shared_api_package")
+    if shared_pkg:
+        parts.append(f"shared={shared_pkg}")
+    if parts:
+        base_rules.append(f"- Project stack: {', '.join(parts)}")
 
 preamble_lines = list(base_rules)
 if category == "research":
