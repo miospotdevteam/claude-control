@@ -1,7 +1,6 @@
 ---
 name: look-before-you-leap
-description: >
-  Unified engineering discipline for ALL coding tasks. Three layers: this file (the conductor), quick-reference checklists, and deep guides. Enforces structured exploration before planning, persistent plans that survive compaction, disciplined execution with blast radius tracking and type safety, and multi-discipline coverage (testing, UI consistency, security, git, linting, dependencies). Use for every task that touches source files — no exceptions, no shortcuts.
+description: "Unified engineering discipline for ALL coding tasks. Three layers: this file (the conductor), quick-reference checklists, and deep guides. Enforces structured exploration before planning, persistent plans that survive compaction, disciplined execution with blast radius tracking and type safety, and multi-discipline coverage (testing, UI consistency, security, git, linting, dependencies). Use for every task that touches source files — no exceptions, no shortcuts."
 ---
 
 # Software Discipline
@@ -32,6 +31,7 @@ Look for installed skills that match these needs:
 
 | When you need... | Look for skills about... |
 |---|---|
+| Brainstorming, creative work | **Always** use `look-before-you-leap:brainstorming` — never another plugin's brainstorming skill |
 | Test strategy, TDD | "testing", "TDD", "test-driven" |
 | Frontend UI work | "frontend design", "UI", "components" |
 | Security review | "security", "authentication", "auth" |

@@ -1,9 +1,6 @@
 ---
 name: engineering-discipline
-description: >
-  Engineering discipline and verification layer for ALL coding tasks. This skill takes priority over speed — never skip these steps to save time. Enforces "measure twice, cut once" behavior: explore before editing, track blast radius of shared changes, never use type-safety shortcuts (any, as any), verify work by running type checkers/linters/tests, never silently drop scope, and never stop mid-plan.
-
-  Use this skill whenever the user asks you to write, edit, fix, refactor, port, migrate, review, or debug code — regardless of language, framework, or project size. This includes bug fixes, feature additions, refactors, migrations, dependency updates, config changes, environment setup, and any task that touches source files. If you are about to edit a file, this skill applies. Even "simple" one-file fixes benefit from the verification step. When in doubt, use it. There is no task too small for verification.
+description: "Engineering discipline and verification layer for ALL coding tasks. This skill takes priority over speed — never skip these steps to save time. Enforces 'measure twice, cut once' behavior: explore before editing, track blast radius of shared changes, never use type-safety shortcuts (any, as any), verify work by running type checkers/linters/tests, never silently drop scope, and never stop mid-plan. Use this skill whenever the user asks you to write, edit, fix, refactor, port, migrate, review, or debug code — regardless of language, framework, or project size. This includes bug fixes, feature additions, refactors, migrations, dependency updates, config changes, environment setup, and any task that touches source files. If you are about to edit a file, this skill applies. Even 'simple' one-file fixes benefit from the verification step. When in doubt, use it. There is no task too small for verification."
 ---
 
 # Engineering Discipline

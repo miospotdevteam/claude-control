@@ -1,7 +1,6 @@
 ---
 name: persistent-plans
-description: >
-  Persistent planning system that writes every task plan to disk so it survives context compaction. Use this skill for ALL tasks — it is the default operating mode, not an optional add-on. Every coding task, feature, refactor, bug fix, migration, or multi-step operation starts with a plan written to `.temp/plan-mode/active/`. Even small tasks get a lightweight plan. The plan on disk is the source of truth, not context memory. Trigger this skill whenever you are about to do work. If you are starting a task, resuming after compaction, or the user says "continue" — read the plan first. If no plan exists, create one. The only exception is truly trivial one-liner changes where the user explicitly says "just do it" or "no plan."
+description: "Persistent planning system that writes every task plan to disk so it survives context compaction. Use this skill for ALL tasks — it is the default operating mode, not an optional add-on. Every coding task, feature, refactor, bug fix, migration, or multi-step operation starts with a plan written to `.temp/plan-mode/active/`. Even small tasks get a lightweight plan. The plan on disk is the source of truth, not context memory. Trigger this skill whenever you are about to do work. If you are starting a task, resuming after compaction, or the user says 'continue' — read the plan first. If no plan exists, create one. The only exception is truly trivial one-liner changes where the user explicitly says 'just do it' or 'no plan.'"
 ---
 
 # Persistent Plans
