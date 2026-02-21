@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# PostToolUse hook: Detect when all plan steps are complete.
+# PostToolUse hook: Migrate discovery + detect plan completion.
 #
-# After every Edit/Write to a masterPlan.md, checks if all steps are [x].
-# If so, emits an advisory message telling Claude to finalize the plan
-# (update Completed Summary, verify, then move to completed/).
+# After every Edit/Write to a masterPlan.md:
+# 1. Migrates any fallback discovery.md (.temp/discovery/) into the plan dir
+# 2. Checks if all steps are [x] — if so, advises Claude to finalize
 #
 # Does NOT auto-move — Claude needs to make final edits first.
 #
@@ -28,6 +28,49 @@ fi
 # Verify the file exists
 if [ ! -f "$FILE_PATH" ]; then
   exit 0
+fi
+
+# --- Migrate fallback discovery.md into the plan directory ---
+# When agents run before a plan exists, findings go to .temp/discovery/discovery.md.
+# Now that a plan exists, migrate that file into the plan directory.
+PLAN_DIR_PATH="$(dirname "$FILE_PATH")"
+
+# Find project root
+find_project_root() {
+  local dir="${1:-$PWD}"
+  while [ "$dir" != "/" ]; do
+    if [ -d "$dir/.git" ] || [ -f "$dir/CLAUDE.md" ]; then
+      echo "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  echo "${1:-$PWD}"
+}
+
+MIGRATE_CWD=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('cwd', ''))
+" <<< "$INPUT" 2>/dev/null) || true
+
+MIGRATE_ROOT="$(find_project_root "${MIGRATE_CWD:-$PWD}")"
+FALLBACK_DIR="$MIGRATE_ROOT/.temp/discovery"
+FALLBACK_FILE="$FALLBACK_DIR/discovery.md"
+PLAN_DISCOVERY="$PLAN_DIR_PATH/discovery.md"
+
+if [ -f "$FALLBACK_FILE" ]; then
+  if [ ! -f "$PLAN_DISCOVERY" ]; then
+    # Simple move — no plan-scoped discovery yet
+    mv "$FALLBACK_FILE" "$PLAN_DISCOVERY"
+  else
+    # Both exist — append fallback content into plan-scoped file
+    printf '\n\n# --- Migrated from pre-plan discovery ---\n' >> "$PLAN_DISCOVERY"
+    cat "$FALLBACK_FILE" >> "$PLAN_DISCOVERY"
+    rm "$FALLBACK_FILE"
+  fi
+  # Clean up empty fallback dir
+  rmdir "$FALLBACK_DIR" 2>/dev/null || true
 fi
 
 # Check if all steps are complete
