@@ -30,15 +30,19 @@ Three plugins are available. Choose one installation option.
 
 A single unified plugin that combines everything. Three-layer architecture:
 
-- **Layer 1: The Conductor** (SKILL.md, ~260 lines, always in context) — Controls the process: structured exploration, persistent plans, disciplined execution, verification. Routes to deeper guidance when needed.
-- **Layer 2: Discipline Checklists** (~30-50 lines each, read during planning) — Quick-reference before/during/after checklists for testing, UI consistency, security, git, linting, and dependencies.
-- **Layer 3: Deep Guides** (~80-150 lines each, read on demand) — Comprehensive strategies for testing (TDD-lite, test theater detection), UI consistency (design tokens, drift detection), and security (OWASP Top 10, slopsquatting prevention).
+- **Layer 1: The Conductor** (SKILL.md, always in context) — Controls the process: structured exploration, persistent plans, disciplined execution, verification. Routes to deeper guidance when needed.
+- **Layer 2: Discipline Checklists** (~30-50 lines each, read during planning) — Quick-reference before/during/after checklists for testing, UI consistency, security, git, linting, dependencies, and API contracts.
+- **Layer 3: Deep Guides** (~80-150 lines each, read on demand) — Comprehensive strategies for testing (TDD-lite, test theater detection), UI consistency (design tokens, drift detection), security (OWASP Top 10, slopsquatting prevention), and API contracts (shared schemas, Zod validation).
 
 Additional features over the individual plugins:
 - **Structured exploration protocol** — 8-question checklist that must be completed before planning (prevents shallow plans)
 - **Skill discovery** — SessionStart hook scans for other installed plugins and lists them for routing
 - **Enhanced plan templates** — Structured Discovery Summary with 8 sections, Required Skills, and Applicable Disciplines fields
-- **Six discipline checklists** — Testing, UI consistency, security, git, linting, dependencies
+- **Seven discipline checklists** — Testing, UI consistency, security, git, linting, dependencies, API contracts
+- **Active enforcement via hooks** — Plans are mandatory (Edit/Write blocked without one), stopping mid-plan is blocked, API boundary edits trigger reminders, plan completion is auto-detected
+- **Sub-agent discipline injection** — Every spawned sub-agent automatically receives engineering discipline rules tailored to its role (research, code-editing, review)
+- **Cross-agent shared discovery** — Parallel sub-agents write findings to a shared `discovery.md` file for cross-pollination
+- **Session lock** — Prevents multiple Claude sessions from claiming the same active plan
 
 ### Option B: Individual plugins (lightweight)
 
@@ -101,6 +105,19 @@ mode — not optional.
 - **Find what to resume**: `bash .temp/plan-mode/scripts/resume.sh`
 ```
 
+## Hooks
+
+The unified plugin enforces discipline through hooks at every stage of the session lifecycle, not just instructions:
+
+| Event | Hook | What it does |
+|---|---|---|
+| **SessionStart** | `session-start.sh` | Injects skill context, detects active plans, discovers installed plugins, acquires session lock |
+| **PreToolUse** (Edit\|Write) | `enforce-plan.sh` | Blocks code edits if no active plan exists. Bypass with `.temp/plan-mode/.no-plan` for trivial changes |
+| **PreToolUse** (Edit\|Write) | `check-api-contracts.sh` | Warns when editing API boundary files — reminds about shared schemas |
+| **PreToolUse** (Task) | `inject-subagent-context.sh` | Injects tailored discipline rules into every sub-agent based on its role (research, code-editing, review). Creates shared `discovery.md` for cross-agent findings |
+| **PostToolUse** (Edit\|Write) | `auto-complete-plan.sh` | Detects when all plan steps are marked complete and prompts finalization |
+| **Stop** | `verify-plan-on-stop.sh` | Blocks stopping if the active plan has pending or in-progress steps |
+
 ## Repo Structure
 
 ```
@@ -109,35 +126,46 @@ claude-control/
 │   ├── .claude-plugin/
 │   │   └── plugin.json
 │   ├── hooks/
-│   │   ├── hooks.json
-│   │   └── session-start.sh                # Injects skill + plan detection + skill discovery
+│   │   ├── hooks.json                       # Hook lifecycle configuration
+│   │   ├── session-start.sh                 # SessionStart: skill injection + plan detection + skill discovery + session lock
+│   │   ├── enforce-plan.sh                  # PreToolUse: blocks edits without an active plan
+│   │   ├── check-api-contracts.sh           # PreToolUse: warns on API boundary edits
+│   │   ├── inject-subagent-context.sh       # PreToolUse: injects discipline into sub-agents + shared discovery
+│   │   ├── auto-complete-plan.sh            # PostToolUse: detects plan completion
+│   │   └── verify-plan-on-stop.sh           # Stop: blocks stopping with unfinished plans
 │   └── skills/
-│       └── software-discipline/
-│           ├── SKILL.md                     # Layer 1: The conductor (~260 lines)
-│           ├── evals/
-│           │   └── evals.json              # 7 eval scenarios
-│           ├── references/
-│           │   ├── exploration-protocol.md  # Layer 2: 8-question exploration checklist
-│           │   ├── exploration-guide.md     # Layer 3: Deep exploration techniques
-│           │   ├── master-plan-format.md    # Enhanced plan template
-│           │   ├── sub-plan-format.md       # Sub-plan and sweep templates
-│           │   ├── claude-md-snippet.md     # Recommended CLAUDE.md addition
-│           │   ├── testing-checklist.md     # Layer 2: Testing discipline
-│           │   ├── testing-strategy.md      # Layer 3: TDD-lite, test pyramid, test theater
-│           │   ├── ui-consistency-checklist.md  # Layer 2: Design tokens, components
-│           │   ├── ui-consistency-guide.md  # Layer 3: Drift detection, visual regression
-│           │   ├── security-checklist.md    # Layer 2: Auth, input, secrets
-│           │   ├── security-guide.md        # Layer 3: OWASP, S.E.C.U.R.E., slopsquatting
-│           │   ├── git-checklist.md         # Layer 2: Commits, branches
-│           │   ├── linting-checklist.md     # Layer 2: Linter discipline
-│           │   ├── dependency-checklist.md  # Layer 2: Package management
-│           │   └── verification-commands.md # tsc/lint/test commands by ecosystem
-│           └── scripts/
-│               ├── init-plan-dir.sh         # Sets up .temp/plan-mode/
-│               ├── plan-status.sh           # Shows all plan statuses
-│               └── resume.sh               # Finds what to resume
+│       ├── software-discipline/
+│       │   ├── SKILL.md                     # Layer 1: The conductor (always in context)
+│       │   ├── evals/
+│       │   │   └── evals.json               # Eval scenarios
+│       │   ├── references/
+│       │   │   ├── exploration-protocol.md   # Layer 2: 8-question exploration checklist
+│       │   │   ├── exploration-guide.md      # Layer 3: Deep exploration techniques
+│       │   │   ├── master-plan-format.md     # Enhanced plan template
+│       │   │   ├── sub-plan-format.md        # Sub-plan and sweep templates
+│       │   │   ├── claude-md-snippet.md      # Recommended CLAUDE.md addition
+│       │   │   ├── testing-checklist.md      # Layer 2: Testing discipline
+│       │   │   ├── testing-strategy.md       # Layer 3: TDD-lite, test pyramid, test theater
+│       │   │   ├── ui-consistency-checklist.md   # Layer 2: Design tokens, components
+│       │   │   ├── ui-consistency-guide.md   # Layer 3: Drift detection, visual regression
+│       │   │   ├── security-checklist.md     # Layer 2: Auth, input, secrets
+│       │   │   ├── security-guide.md         # Layer 3: OWASP, S.E.C.U.R.E., slopsquatting
+│       │   │   ├── git-checklist.md          # Layer 2: Commits, branches
+│       │   │   ├── linting-checklist.md      # Layer 2: Linter discipline
+│       │   │   ├── dependency-checklist.md   # Layer 2: Package management
+│       │   │   ├── api-contracts-checklist.md    # Layer 2: Shared schemas, API boundaries
+│       │   │   ├── api-contracts-guide.md    # Layer 3: Hono + Zod patterns, migration strategies
+│       │   │   └── verification-commands.md  # tsc/lint/test commands by ecosystem
+│       │   └── scripts/
+│       │       ├── init-plan-dir.sh          # Sets up .temp/plan-mode/
+│       │       ├── plan-status.sh            # Shows all plan statuses
+│       │       └── resume.sh                 # Finds what to resume
+│       ├── engineering-discipline/
+│       │   └── SKILL.md                      # Sub-skill: behavioral rules
+│       └── persistent-plans/
+│           └── SKILL.md                      # Sub-skill: plan management rules
 │
-├── engineering-discipline/                  # Standalone behavioral plugin
+├── engineering-discipline/                   # Standalone behavioral plugin
 │   ├── .claude-plugin/
 │   │   └── plugin.json
 │   ├── hooks/
@@ -151,7 +179,7 @@ claude-control/
 │           └── references/
 │               └── verification-commands.md
 │
-└── persistent-plans/                        # Standalone workflow plugin
+└── persistent-plans/                         # Standalone workflow plugin
     ├── .claude-plugin/
     │   └── plugin.json
     ├── hooks/

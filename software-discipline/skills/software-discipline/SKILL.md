@@ -7,11 +7,15 @@ description: >
 # Software Discipline
 
 This skill is the conductor. It controls the process and routes to deeper
-guidance. Deep content lives in `references/` — this file stays focused on
-what to do and when.
+guidance. The actual rules live in two companion skills that are always
+injected alongside this one:
 
-**Core principle**: Every shortcut you take now becomes a bug someone else
-finds later. Explore, plan, execute carefully, verify.
+- **engineering-discipline** — The behavioral layer: explore before editing,
+  track blast radius, no type shortcuts, verify work, no silent scope cuts.
+- **persistent-plans** — The structural layer: plan files on disk, the
+  execution loop, checkpoints, sub-plans, compaction survival.
+
+**You must follow both companion skills for every coding task.**
 
 ---
 
@@ -21,21 +25,6 @@ At the start of every session, note which skills are available (the
 SessionStart hook provides a skill inventory). When a step calls for
 specialized knowledge (testing, frontend design, security review), check
 if an installed skill covers it before relying on general knowledge.
-
-### Built-in sub-skills (always available with this plugin)
-
-This plugin includes two sub-skills that are always installed:
-
-- **engineering-discipline** — The behavioral layer: explore before editing,
-  track blast radius, no type shortcuts, verify work, no silent scope cuts.
-  Use this as the reference for HOW to do engineering work correctly.
-- **persistent-plans** — The structural layer: plan files on disk, the
-  execution loop, checkpoints, sub-plans, compaction survival. Use this as
-  the reference for HOW to manage plans and survive compaction.
-
-**When spawning sub-agents**: These sub-skills are automatically injected
-into sub-agent prompts by the PreToolUse(Task) hook. Sub-agents receive
-a discipline preamble ensuring they follow the same rules.
 
 ### External skill routing
 
@@ -59,15 +48,11 @@ If no specialized skill exists, use the checklists and guides in `references/`.
 Shallow exploration is the #1 cause of failed plans — every minute exploring
 saves five minutes fixing.
 
-**Read `references/exploration-protocol.md` and answer all 8 questions.**
+Follow **engineering-discipline Phase 1** (Orient Before You Touch Anything).
 
-The protocol covers: Scope, Entry Points, Consumers, Existing Patterns,
-Test Infrastructure, Conventions, Blast Radius, and Confidence Rating.
-
-Exit criterion: confidence is Medium or higher. If Low, keep exploring.
-
-For complex or unfamiliar codebases, also read `references/exploration-guide.md`
-for advanced techniques.
+Additionally, read `references/exploration-protocol.md` and answer all 8
+questions. Exit criterion: confidence is Medium or higher. If Low, keep
+exploring.
 
 ### Minimum exploration actions
 
@@ -77,12 +62,16 @@ for advanced techniques.
 4. Check CLAUDE.md/README for project conventions
 5. Search for existing solutions before implementing from scratch
 
+For complex or unfamiliar codebases, also read
+`references/exploration-guide.md`.
+
 ---
 
 ## Step 2: Plan (write to disk before editing code)
 
-**Every task gets a plan file.** Use the template in
-`references/master-plan-format.md`. Plans live in
+Follow **persistent-plans Phase 1** (Create the Plan).
+
+Use the template in `references/master-plan-format.md`. Plans live in
 `.temp/plan-mode/active/<plan-name>/masterPlan.md`.
 
 Initialize the plan directory if needed:
@@ -90,16 +79,7 @@ Initialize the plan directory if needed:
 bash ${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/scripts/init-plan-dir.sh
 ```
 
-### Plan requirements
-
-1. Fill the structured Discovery Summary (all 8 sections from exploration)
-2. List Required Skills (which installed skills to invoke at which steps)
-3. List Applicable Disciplines (which checklists apply — see discipline list below)
-4. Size steps for one context window each
-5. Steps touching >10 files or sweep keywords MUST get a sub-plan
-   (see `references/sub-plan-format.md`)
-
-### Applicable discipline checklists
+### Discipline checklists
 
 Read the relevant checklist BEFORE starting the associated step:
 
@@ -123,43 +103,11 @@ obvious single-line change.
 
 ## Step 3: Execute (the loop)
 
-Follow this loop mechanically:
+Follow **persistent-plans Phase 2** (Execute the Plan) for the execution
+loop, checkpointing, and result tracking.
 
-1. Read masterPlan.md from disk
-2. Find the next `[ ] pending` or `[~] in-progress` step
-3. Mark it `[~] in-progress` — **write to disk NOW**
-4. If the step has a sub-plan, read it and follow its groups/sub-steps
-5. Execute the step, applying the core rules below
-6. **After each sub-task: mark its Progress item `[x]` on disk immediately.**
-   Do NOT wait until the step is done to update all progress items at once.
-   Each `- [ ]` item becomes `- [x]` the moment that sub-task is complete.
-7. When ALL progress items are `[x]`: mark step `[x] complete`, write Result,
-   update Completed Summary
-8. If all steps complete: move plan folder to `completed/`, report to user
-9. Else: loop back to step 1
-
-### Progress updates are NOT optional
-
-**The Progress checklist is a live checkpoint, not a decoration.** If
-auto-compaction fires mid-step, the checked items tell your next context
-window exactly where to resume.
-
-Rules:
-- Mark each `- [ ]` item `- [x]` as soon as you finish it — before starting
-  the next sub-task
-- If a sub-task is partially done, mark it `- [~]` with a note about what
-  remains
-- **Never mark a step `[x] complete` if its Progress items are still `[ ]`**.
-  That means you skipped tracking — go back and check them off first.
-- After every 2-3 file edits, ask: "If compaction fired RIGHT NOW, would my
-  plan file let me resume exactly where I left off?" If no, update it now.
-
-### Result fields matter
-
-Bad result: "Done."
-Good result: "Created apiClient.ts in src/lib/ with typed wrappers for 5
-endpoints. Used existing AuthContext for token injection. Updated imports
-in Dashboard.tsx, Settings.tsx, Profile.tsx."
+Follow **engineering-discipline Phase 2** (Make Changes Carefully) for the
+rules applied during execution.
 
 ### Dispatching sub-agents
 
@@ -213,10 +161,7 @@ synthesize results.
 
 ## Step 4: Verify (every time, no exceptions)
 
-1. **Type checker** — `tsc --noEmit`, `mypy`, `cargo check`, etc.
-2. **Linter** — `eslint`, `ruff`, `clippy`, etc.
-3. **Tests** — at minimum, tests related to files you changed
-4. **Build** — if you changed config or dependencies
+Follow **engineering-discipline Phase 3** (Verify Before Declaring Done).
 
 See `references/verification-commands.md` for framework-specific commands.
 Always check the project's own scripts first (package.json, Makefile).
@@ -229,70 +174,13 @@ unaddressed, finish it or explicitly flag it.
 
 ## Compaction Survival Protocol
 
-Plans on disk survive compaction. Your memory does not.
-
-### After ANY compaction (including auto-compaction)
-
-1. Check `.temp/plan-mode/active/` for active plans
-2. Read the masterPlan.md completely — especially Discovery Summary and
-   Completed Summary
-3. Find the next `[ ] pending` or `[~] in-progress` step
-4. If `[~] in-progress`: check the Progress checklist to see what's done
-5. State to the user: "Resuming plan '<title>'. Steps 1-N complete. Picking
-   up at Step N+1, starting from <specific progress point>."
-6. Continue the execution loop
-
-**Do NOT wait for the user to say "continue".** If there's an active plan,
-read it immediately and resume.
+Follow **persistent-plans Phase 3** (Resumption After Compaction).
 
 Helper scripts:
 ```bash
 bash .temp/plan-mode/scripts/plan-status.sh    # see all plan states
 bash .temp/plan-mode/scripts/resume.sh         # find what to pick up
 ```
-
----
-
-## Core Rules
-
-### No silent scope cuts — the cardinal rule
-
-If the user asked for 5 things, all 5 must be addressed. If one is blocked,
-say so explicitly. NEVER silently drop scope.
-
-What you must never do:
-- Implement 3 of 5 features and summarize as "done"
-- Skip a step because it's hard and hope nobody notices
-- Declare victory when your plan has unchecked items
-
-### No type safety shortcuts
-
-Never use: `any`, `as any`, `v.any()`, unnecessary nullables, `@ts-ignore`
-without explanation. If typing is hard, that's a signal the design needs
-thought. Exception: framework-inferred types (Convex, tRPC, Drizzle) don't
-need redundant annotations.
-
-### Track blast radius on shared code
-
-When modifying shared utilities, types, API signatures, schemas, dependencies,
-or config: grep for ALL consumers, read them, verify they still work.
-
-### Install before import
-
-Before using a package: check it exists in package.json (or equivalent).
-Before using an env var: verify it's defined and loaded. Don't assume.
-
-### Honest communication
-
-When summarizing: include what you completed, what you skipped and why,
-what you're unsure about, and known risks. A summary that only lists
-successes is a press release, not a report.
-
-### Respond to feedback with self-audit
-
-When the user points out a mistake: fix it, then search for the same class
-of mistake elsewhere in your changes. Report what you found. Don't just say
-"You're right!" — investigate and fix the pattern.
 
 ---
 
@@ -308,24 +196,6 @@ This plugin enforces discipline through hooks, not just instructions:
   no type shortcuts, blast radius, verification) plus active plan path.
 - **Stop**: Blocks Claude from stopping if the active plan has unchecked
   items. Forces explicit completion, status update, or user communication.
-
----
-
-## Quick Reference: Red Flags
-
-| Doing this... | Do this instead |
-|---|---|
-| Editing without reading imports/consumers | Read the neighborhood first |
-| Adding `as any` to fix a type error | Figure out the correct type |
-| Skipping a step because it's hard | Flag it explicitly to the user |
-| Declaring "done" without running checks | Run type checker/linter/tests |
-| Using a package without checking it's installed | Check package.json first |
-| Changing shared code without checking consumers | Grep for all usages |
-| Summarizing without mentioning gaps | List what you skipped and why |
-| Fixing one bug without checking for more | Self-audit for the pattern |
-| Starting multi-step work without a plan | Write the plan first |
-| Stopping at step 3 of 7 | Continue to step 4 immediately |
-| Thinking "I'll skip this for now" | Do it or flag it — no silent cuts |
 
 ---
 
@@ -347,6 +217,7 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/software-discipline/`:
 - `references/git-checklist.md` — commits, branches, messages
 - `references/linting-checklist.md` — linter and formatter discipline
 - `references/dependency-checklist.md` — package management and verification
+- `references/api-contracts-checklist.md` — API boundary discipline
 
 ### Deep Guides (Layer 3)
 - `references/testing-strategy.md` — TDD-lite, test pyramid, edge cases, test theater

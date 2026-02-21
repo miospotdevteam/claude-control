@@ -2,11 +2,11 @@
 # SessionStart hook for software-discipline plugin.
 #
 # On every session start (including after compaction/resume), this hook:
-# 1. Reads the software-discipline SKILL.md content
+# 1. Reads all three SKILL.md files (conductor + engineering-discipline + persistent-plans)
 # 2. Checks for active plans in .temp/plan-mode/
 # 3. Discovers other installed Claude Code skills
 #
-# All three pieces are combined into a single additionalContext string.
+# All pieces are combined into a single additionalContext string.
 # JSON output is handled by python3 for bulletproof encoding.
 
 set -euo pipefail
@@ -16,6 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 SKILL_FILE="${PLUGIN_ROOT}/skills/software-discipline/SKILL.md"
+ENGINEERING_SKILL_FILE="${PLUGIN_ROOT}/skills/engineering-discipline/SKILL.md"
+PLANS_SKILL_FILE="${PLUGIN_ROOT}/skills/persistent-plans/SKILL.md"
 
 # --- Function: Find project root ---
 find_project_root() {
@@ -180,6 +182,8 @@ fi
 
 # --- Combine and output via python3 ---
 export SKILL_FILE_PATH="$SKILL_FILE"
+export ENGINEERING_SKILL_FILE_PATH="$ENGINEERING_SKILL_FILE"
+export PLANS_SKILL_FILE_PATH="$PLANS_SKILL_FILE"
 export ACTIVE_PLAN_SUMMARY="$active_plan_summary"
 export SKILL_INVENTORY="$skill_inventory"
 
@@ -189,21 +193,39 @@ import sys
 import os
 
 skill_file = os.environ.get("SKILL_FILE_PATH", "")
+engineering_file = os.environ.get("ENGINEERING_SKILL_FILE_PATH", "")
+plans_file = os.environ.get("PLANS_SKILL_FILE_PATH", "")
 active_summary = os.environ.get("ACTIVE_PLAN_SUMMARY", "")
 skill_inventory = os.environ.get("SKILL_INVENTORY", "")
 
-# Read skill content
-try:
-    with open(skill_file, "r") as f:
-        skill_content = f.read()
-except Exception as e:
-    skill_content = f"Error reading skill: {e}"
+def read_file(path):
+    try:
+        with open(path, "r") as f:
+            return f.read()
+    except Exception as e:
+        return f"Error reading {path}: {e}"
+
+skill_content = read_file(skill_file)
+engineering_content = read_file(engineering_file)
+plans_content = read_file(plans_file)
 
 # Build context message
 parts = [
     "**Below is the software-discipline skill — follow it for all coding tasks:**",
     "",
-    skill_content
+    skill_content,
+    "",
+    "---",
+    "",
+    "**Engineering Discipline (companion skill — follow for all code changes):**",
+    "",
+    engineering_content,
+    "",
+    "---",
+    "",
+    "**Persistent Plans (companion skill — follow for all task planning):**",
+    "",
+    plans_content,
 ]
 
 if active_summary:

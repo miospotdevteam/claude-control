@@ -47,54 +47,149 @@ export HOOK_INPUT="$INPUT"
 export HOOK_ACTIVE_PLAN="$active_plan_path"
 
 python3 << 'PYEOF'
-import json, sys, os
+import json, sys, os, pathlib
 
 input_data = json.loads(os.environ["HOOK_INPUT"])
 tool_input = input_data.get("tool_input", {})
 original_prompt = tool_input.get("prompt", "")
+subagent_type = tool_input.get("subagent_type", "")
 active_plan = os.environ.get("HOOK_ACTIVE_PLAN", "")
 
-# Build discipline preamble
-preamble_lines = [
+# --- Agent type registry ---
+# Maps subagent_type values to rule categories.
+# Types not listed here fall through to "code-editing" (safest default).
+
+RESEARCH_TYPES = {
+    "Explore", "Plan",
+    "feature-dev:code-explorer", "feature-dev:code-architect",
+}
+REVIEW_TYPES = {
+    "feature-dev:code-reviewer",
+    "superpowers:code-reviewer",
+    "pr-review-toolkit:code-reviewer",
+    "pr-review-toolkit:silent-failure-hunter",
+    "pr-review-toolkit:comment-analyzer",
+    "pr-review-toolkit:pr-test-analyzer",
+    "pr-review-toolkit:type-design-analyzer",
+    "pr-review-toolkit:code-simplifier",
+    "code-simplifier:code-simplifier",
+}
+
+def classify_agent(agent_type):
+    if agent_type in RESEARCH_TYPES:
+        return "research"
+    if agent_type in REVIEW_TYPES:
+        return "review"
+    # Catch pr-review-toolkit:* variants not explicitly listed
+    if agent_type.startswith("pr-review-toolkit:"):
+        return "review"
+    return "code-editing"
+
+category = classify_agent(subagent_type)
+
+# --- Build tailored preamble ---
+
+# Base rules — always injected
+base_rules = [
     "## Engineering Discipline (injected by software-discipline plugin)",
+    f"Agent type: {subagent_type or 'unknown'} | Category: {category}",
+    "",
     "Follow these rules for ALL work in this task:",
-    "- Explore before editing: read files and their consumers before changing anything",
     "- No silent scope cuts: address ALL requirements or explicitly flag what you skipped",
-    "- No type safety shortcuts: never use `any`, `as any`, `@ts-ignore` without explanation",
-    "- Track blast radius: grep for all consumers of shared code before modifying it",
-    "- Verify: run type checker, linter, and tests after changes",
     "- Be honest: report what you completed, what you skipped, and what risks exist",
 ]
 
+# Category-specific rules
+research_rules = [
+    "- Be thorough: read files fully, trace imports and consumers",
+    "- Write findings with file:line evidence",
+]
+
+code_editing_rules = [
+    "- Explore before editing: read files and their consumers before changing anything",
+    "- No type safety shortcuts: never use `any`, `as any`, `@ts-ignore` without explanation",
+    "- Track blast radius: grep for all consumers of shared code before modifying it",
+    "- Install before import: verify packages exist in package.json before using them",
+    "- Verify: run type checker, linter, and tests after changes",
+]
+
+review_rules = [
+    "- Track blast radius: check all consumers of modified shared code",
+    "- No type safety shortcuts: flag `any`, `as any`, missing types",
+    "- Be thorough: check every file in scope, don't skip edge cases",
+]
+
+preamble_lines = list(base_rules)
+if category == "research":
+    preamble_lines.extend(research_rules)
+elif category == "review":
+    preamble_lines.extend(review_rules)
+else:
+    preamble_lines.extend(code_editing_rules)
+
+# --- Active plan and discovery.md ---
+
+discovery_file = None
+
 if active_plan:
-    import pathlib
     plan_dir = pathlib.Path(active_plan).parent
     preamble_lines.extend([
+        "",
         f"- Active plan exists at: {active_plan} — read it before starting work",
         "- PROGRESS TRACKING: If your work corresponds to Progress items in the plan,",
         f"  mark each `- [ ]` item `- [x]` in {active_plan} as you complete it.",
         "  Use Edit tool on the masterPlan.md file. Do NOT wait until you're done —",
         "  update after each sub-task so compaction can't lose your progress.",
     ])
+
     # Auto-create shared discovery file if it doesn't exist
     discovery_file = plan_dir / "discovery.md"
     if not discovery_file.exists():
-        discovery_file.write_text("# Discovery Log\n\nShared findings from parallel agents. Each agent appends under its own section.\n")
+        discovery_file.write_text(
+            "# Discovery Log\n\n"
+            "Shared findings from parallel agents. "
+            "Each agent appends under its own section.\n"
+        )
+
+    # Register this agent's dispatch in discovery.md for sibling awareness
+    focus = original_prompt.split("\n")[0][:150].strip()
+    if focus:
+        with open(discovery_file, "a") as f:
+            f.write(
+                f"\n## Agent dispatched: {subagent_type or 'unknown'}"
+                f" — {focus}\n"
+            )
+
+    # Discovery instructions — tailored by category
     preamble_lines.extend([
         "",
-        "## REQUIRED: Write Findings to Discovery Log",
-        f"Before you return your final answer, you MUST append your findings to: {discovery_file}",
-        "",
-        "Use Bash to append (>> file) — never Edit, because multiple agents write concurrently:",
-        f"  printf '\\n## [Your Focus Area]\\n- **finding** `file:line` — description\\n' >> {discovery_file}",
-        "",
-        "Write ALL key findings — file paths, types found, patterns, counts, anomalies.",
-        "Include file:line references and evidence. Be thorough — this file is how parallel",
-        "agents share knowledge and how the parent agent gets structured data.",
-        "",
-        "You may also read this file to see other agents' findings, but treat them as",
-        "informational only — do not change your investigation based on them.",
+        "## Cross-Agent Awareness",
+        "Other agents may be running in parallel on related tasks.",
+        f"Read {discovery_file} to see what they're investigating.",
+        "Treat their entries as informational — do not change your approach based on them.",
     ])
+
+    if category == "research":
+        preamble_lines.extend([
+            "",
+            "## REQUIRED: Write Findings to Discovery Log",
+            f"Before you return your final answer, you MUST append your findings to: {discovery_file}",
+            "",
+            "Use Bash to append (>> file) — never Edit, because multiple agents write concurrently:",
+            f"  printf '\\n## [Your Focus Area]\\n- **finding** `file:line` — description\\n' >> {discovery_file}",
+            "",
+            "Write ALL key findings — file paths, types found, patterns, counts, anomalies.",
+            "Include file:line references and evidence. Be thorough — this file is how parallel",
+            "agents share knowledge and how the parent agent gets structured data.",
+        ])
+    elif category == "code-editing":
+        preamble_lines.extend([
+            "",
+            "## Discovery Log",
+            f"If you make significant findings during your work, append them to: {discovery_file}",
+            "Use Bash to append (>> file) — never Edit, because multiple agents write concurrently.",
+        ])
+    # Review agents: no discovery write requirement (they report via their return value)
 
 preamble = "\n".join(preamble_lines)
 
