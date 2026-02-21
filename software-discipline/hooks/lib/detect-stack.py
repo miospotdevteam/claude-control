@@ -32,6 +32,16 @@ def detect_language(root):
     """Detect primary language."""
     if file_exists(f"{root}/tsconfig.json") or file_exists(f"{root}/tsconfig.base.json"):
         return "typescript"
+    # Check workspace subdirectories for tsconfig (monorepos often skip root tsconfig)
+    for parent in ("apps", "packages", "services", "libs"):
+        parent_dir = f"{root}/{parent}"
+        if dir_exists(parent_dir):
+            try:
+                for entry in os.listdir(parent_dir):
+                    if file_exists(f"{parent_dir}/{entry}/tsconfig.json"):
+                        return "typescript"
+            except OSError:
+                pass
     if file_exists(f"{root}/package.json"):
         return "javascript"
     if file_exists(f"{root}/Cargo.toml"):
