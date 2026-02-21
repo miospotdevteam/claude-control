@@ -147,6 +147,54 @@ Good result: "Created apiClient.ts in src/lib/ with typed wrappers for 5
 endpoints. Used existing AuthContext for token injection. Updated imports
 in Dashboard.tsx, Settings.tsx, Profile.tsx."
 
+### Dispatching sub-agents
+
+When a step benefits from parallel work (audits, multi-area exploration,
+independent file groups), choose the right dispatch mode:
+
+**Foreground parallel** (default):
+Use when results inform your next steps or have cross-cutting concerns.
+All agents run in parallel, you see all results before proceeding. Use
+for: audits, exploration, reviews, any task where one finding might
+affect another agent's scope.
+
+**Background** (fire-and-forget only):
+Use only when you have genuinely independent work to continue in the
+main thread. You must poll with `TaskOutput` later — no automatic
+cross-pollination. Use for: running builds/tests while continuing edits.
+
+**Rule of thumb**: if you'd want to read Agent A's results before acting
+on Agent B's results, use foreground. Background agents are isolated by
+default.
+
+### Shared discovery (cross-agent communication)
+
+For parallel tasks where agents benefit from seeing each other's findings
+(audits, multi-area exploration, large codebase research), agents share a
+single discovery file:
+
+**Location**: `.temp/plan-mode/active/<plan-name>/discovery.md`
+
+The file is **auto-created** by the `inject-subagent-context` hook when
+a sub-agent is dispatched and an active plan exists. No manual setup needed.
+
+**Writing** — use Bash append (`>>`), never `Edit`. Multiple agents write
+concurrently, and append is atomic at the OS level:
+```bash
+printf '\n## [your-focus-area]\n- **[severity]** `file:line` — finding (evidence: ...)\n' >> discovery.md
+```
+
+**Reading** — read the file periodically to see other agents' findings,
+but treat them as **informational context only**:
+- Other findings may be wrong, incomplete, or irrelevant to your scope
+- Do NOT change your investigation direction based on them
+- Only note a cross-reference if you independently confirm a connection
+- Be thorough and precise in your own findings — include file:line and
+  evidence
+
+After all agents complete, read the consolidated `discovery.md` to
+synthesize results.
+
 ---
 
 ## Step 4: Verify (every time, no exceptions)

@@ -67,7 +67,24 @@ preamble_lines = [
 ]
 
 if active_plan:
+    import pathlib
+    plan_dir = pathlib.Path(active_plan).parent
     preamble_lines.append(f"- Active plan exists at: {active_plan} — read it before starting work")
+    # Auto-create shared discovery file if it doesn't exist
+    discovery_file = plan_dir / "discovery.md"
+    if not discovery_file.exists():
+        discovery_file.write_text("# Discovery Log\n\nShared findings from parallel agents. Each agent appends under its own section.\n")
+    preamble_lines.extend([
+        f"- Shared discovery file: {discovery_file}",
+        "  WRITING: Use Bash to append (>> file), never Edit — multiple agents write concurrently.",
+        "    Example: printf '\\n## [your-focus]\\n- finding...\\n' >> discovery.md",
+        "  READING: Read this file periodically to see other agents' findings.",
+        "    IMPORTANT: Other agents' findings are informational context only.",
+        "    They may be wrong, incomplete, or irrelevant to your scope.",
+        "    Do NOT change your investigation direction based on them.",
+        "    Only note a cross-reference if you independently confirm a connection.",
+        "  Be thorough and precise in your own findings — include file:line and evidence.",
+    ])
 
 preamble = "\n".join(preamble_lines)
 
