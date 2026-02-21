@@ -22,7 +22,24 @@ SessionStart hook provides a skill inventory). When a step calls for
 specialized knowledge (testing, frontend design, security review), check
 if an installed skill covers it before relying on general knowledge.
 
-**Routing rules** — look for installed skills that match these needs:
+### Built-in sub-skills (always available with this plugin)
+
+This plugin includes two sub-skills that are always installed:
+
+- **engineering-discipline** — The behavioral layer: explore before editing,
+  track blast radius, no type shortcuts, verify work, no silent scope cuts.
+  Use this as the reference for HOW to do engineering work correctly.
+- **persistent-plans** — The structural layer: plan files on disk, the
+  execution loop, checkpoints, sub-plans, compaction survival. Use this as
+  the reference for HOW to manage plans and survive compaction.
+
+**When spawning sub-agents**: These sub-skills are automatically injected
+into sub-agent prompts by the PreToolUse(Task) hook. Sub-agents receive
+a discipline preamble ensuring they follow the same rules.
+
+### External skill routing
+
+Look for installed skills that match these needs:
 
 | When you need... | Look for skills about... |
 |---|---|
@@ -214,6 +231,21 @@ successes is a press release, not a report.
 When the user points out a mistake: fix it, then search for the same class
 of mistake elsewhere in your changes. Report what you found. Don't just say
 "You're right!" — investigate and fix the pattern.
+
+---
+
+## Enforcement Hooks
+
+This plugin enforces discipline through hooks, not just instructions:
+
+- **PreToolUse(Edit|Write)**: Blocks code edits if no active plan exists
+  in `.temp/plan-mode/active/`. Allows edits to `.temp/` (plan files).
+  Bypass for trivial changes: create `.temp/plan-mode/.no-plan`.
+- **PreToolUse(Task)**: Automatically injects engineering discipline into
+  every sub-agent prompt. Sub-agents receive the core rules (no scope cuts,
+  no type shortcuts, blast radius, verification) plus active plan path.
+- **Stop**: Blocks Claude from stopping if the active plan has unchecked
+  items. Forces explicit completion, status update, or user communication.
 
 ---
 

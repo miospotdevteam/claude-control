@@ -82,13 +82,41 @@ if [ -d "$ACTIVE_DIR" ]; then
         fi
       done
 
-      active_plan_summary="ACTIVE PLAN DETECTED"
-      active_plan_summary+=$'\n'"Plan: $plan_name"
-      active_plan_summary+=$'\n'"File: $latest"
-      active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
-      [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-      [ -n "$active_subplan" ] && active_plan_summary+=$'\n'"$active_subplan"
-      active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the software-discipline skill."
+      # --- Session lock: prevent multiple instances from claiming the same plan ---
+      lock_file="$plan_dir/.session-lock"
+      own_plan=true
+
+      if [ -f "$lock_file" ]; then
+        lock_pid=$(cat "$lock_file" 2>/dev/null) || true
+        if [ -n "$lock_pid" ] && [ "$lock_pid" != "$PPID" ]; then
+          # Lock belongs to a different process — check if it's still alive
+          if kill -0 "$lock_pid" 2>/dev/null; then
+            own_plan=false
+          fi
+          # If the process is dead, the lock is stale — we can reclaim
+        fi
+      fi
+
+      if $own_plan; then
+        # Claim (or re-claim) the plan for this session
+        echo "$PPID" > "$lock_file"
+
+        active_plan_summary="ACTIVE PLAN DETECTED"
+        active_plan_summary+=$'\n'"Plan: $plan_name"
+        active_plan_summary+=$'\n'"File: $latest"
+        active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
+        [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
+        [ -n "$active_subplan" ] && active_plan_summary+=$'\n'"$active_subplan"
+        active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the software-discipline skill."
+      else
+        active_plan_summary="NOTE: Active plan exists but is owned by another Claude session"
+        active_plan_summary+=$'\n'"Plan: $plan_name"
+        active_plan_summary+=$'\n'"File: $latest"
+        active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
+        [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
+        [ -n "$active_subplan" ] && active_plan_summary+=$'\n'"$active_subplan"
+        active_plan_summary+=$'\n'$'\n'"This plan is being worked on by another Claude session (PID: $lock_pid). Do NOT auto-resume it. Start fresh — only resume this plan if the user explicitly asks you to."
+      fi
     fi
   fi
 fi
