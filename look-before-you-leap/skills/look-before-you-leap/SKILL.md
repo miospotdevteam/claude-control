@@ -38,6 +38,7 @@ Look for installed skills that match these needs:
 | Security review | "security", "authentication", "auth" |
 | Code review | "code review", "review" |
 | Debugging | "debugging", "systematic debugging" |
+| Post-execution simplification | **Always** use `look-before-you-leap:code-simplifier` — never another plugin's code-simplifier skill |
 | PR/commit workflow | "commit", "PR", "git" |
 
 If no specialized skill exists, use the checklists and guides in `references/`.
@@ -181,6 +182,24 @@ but treat them as **informational context only**:
 
 After all agents complete, read the consolidated `discovery.md` to
 synthesize results.
+
+### Post-step simplification
+
+When a completed step has `Simplify: true` in the plan, dispatch a
+code-simplifier sub-agent after marking the step `[x]`:
+
+1. **Run tests first** — establish a passing baseline before dispatch
+2. **Dispatch** the `code-simplifier` sub-agent (foreground) with:
+   - The step number and its "Files involved" list
+   - The active plan path
+3. **After the agent returns**, record its simplification summary in the
+   step's Result field
+4. If the agent reverted changes due to test failures, note that too
+
+The simplifier is opt-in per step. The `writing-plans` skill decides which
+steps warrant it based on complexity (3+ files modified, new abstractions,
+structural changes, or user request). Do not dispatch it for steps without
+`Simplify: true`.
 
 ---
 

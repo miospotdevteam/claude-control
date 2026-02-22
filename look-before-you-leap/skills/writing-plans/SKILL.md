@@ -77,6 +77,7 @@ in the **Progress** checklist within each step:
 ```markdown
 ### Step N: <Component Name>
 - **Status**: [ ] pending
+- **Simplify**: true/false
 - **Files involved**: `src/auth/validator.ts`, `tests/auth/validator.test.ts`
 - **Description**: Add email validation to the auth module.
 - **Acceptance criteria**: `npm test -- validator` passes, tsc clean.
@@ -90,6 +91,19 @@ in the **Progress** checklist within each step:
 ```
 
 Each Progress item is one action (2-5 minutes).
+
+#### When to set `Simplify: true`
+
+Set `Simplify: true` on a step when any of these apply:
+
+- Step modifies **3 or more files**
+- Step creates **new abstractions** (utilities, components, modules)
+- Step involves **structural changes** (refactored APIs, new patterns)
+- User **explicitly requests** simplification for the step
+
+Default to `false` for simple steps (1-2 files, straightforward changes).
+When in doubt, leave it `false` — the user can always request a
+simplification pass manually.
 
 #### Key rules
 
@@ -109,6 +123,7 @@ Each Progress item is one action (2-5 minutes).
 ### Step 1: Email validation utility
 
 - **Status**: [ ] pending
+- **Simplify**: false
 - **Files involved**:
   - Create: `src/lib/validate-email.ts`
   - Create: `tests/lib/validate-email.test.ts`

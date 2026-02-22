@@ -81,6 +81,7 @@ You are NOT ready to plan until confidence is Medium or higher.>
 
 ### Step 1: <Title>
 - **Status**: [ ] pending
+- **Simplify**: true/false
 - **Sub-plan**: none
 - **Files involved**: `src/foo.ts`, `src/bar.ts`
 - **Description**: What needs to happen in this step. Be specific enough that
@@ -95,6 +96,7 @@ You are NOT ready to plan until confidence is Medium or higher.>
 
 ### Step 2: <Title>
 - **Status**: [ ] pending
+- **Simplify**: true/false
 - **Sub-plan**: `sub-plan-01-schema-migration.md`
 - **Files involved**: `drizzle/schema.ts`, `src/db/migrations/`, `src/models/`
 - **Description**: ...
@@ -247,6 +249,7 @@ High — issue is clear, fix is straightforward.
 
 ### Step 1: Fix button alignment
 - **Status**: [ ] pending
+- **Simplify**: false
 - **Sub-plan**: none
 - **Files involved**: `src/app/(auth)/login/page.tsx`
 - **Description**: Add `w-full` to the button wrapper div for mobile viewports

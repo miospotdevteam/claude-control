@@ -73,7 +73,6 @@ REVIEW_TYPES = {
     "pr-review-toolkit:pr-test-analyzer",
     "pr-review-toolkit:type-design-analyzer",
     "pr-review-toolkit:code-simplifier",
-    "code-simplifier:code-simplifier",
 }
 
 def classify_agent(agent_type):
