@@ -138,6 +138,28 @@ for the template.
 
 ## Phase 2: Execute the Plan
 
+### THE #1 RULE OF EXECUTION: Update the plan as you go
+
+**After every 2-3 code file edits, you MUST update your masterPlan.md on
+disk.** This is not a suggestion. This is not something you do "when you
+remember." This is a hard requirement enforced by a hook that will remind
+you if you forget.
+
+What "update the plan" means:
+1. Open masterPlan.md with the Edit tool
+2. Check off completed Progress items: `- [ ]` → `- [x]`
+3. Add notes to the current step's Result field
+4. If you finished a step, mark it `[x]` and update Completed Summary
+
+**Why this matters**: Auto-compaction can fire at any moment. If your plan
+is stale, your next context window starts from scratch — rediscovering
+everything you already knew. Every plan update is insurance against lost
+work. A plan that doesn't reflect reality is worse than no plan at all.
+
+**The test**: After every code edit, ask yourself: *"If compaction fired
+RIGHT NOW, could someone resume from the plan file alone?"* If the answer
+is no, update the plan BEFORE your next code edit.
+
 This is a loop. Follow it mechanically.
 
 ```

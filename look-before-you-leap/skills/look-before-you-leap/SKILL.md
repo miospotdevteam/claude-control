@@ -137,6 +137,11 @@ obvious single-line change.
 
 ## Step 3: Execute (the loop)
 
+**CRITICAL: Update your masterPlan.md after every 2-3 code file edits.**
+Check off Progress items, add Result notes. A hook will remind you if you
+forget, but don't rely on it — make it automatic. If compaction fires and
+your plan is stale, all your work context is lost.
+
 Follow **persistent-plans Phase 2** (Execute the Plan) for the execution
 loop, checkpointing, and result tracking.
 
@@ -224,11 +229,23 @@ This plugin enforces discipline through hooks, not just instructions:
 - **PreToolUse(Edit|Write)**: Blocks code edits if no active plan exists
   in `.temp/plan-mode/active/`. Allows edits to `.temp/` (plan files).
   Bypass for trivial changes: `echo $PPID > .temp/plan-mode/.no-plan` (session-scoped, auto-expires when session ends).
+- **PreToolUse(Bash)**: Blocks Bash commands that write files (redirects,
+  sed -i, tee, etc.) when no active plan exists. Prevents using Bash to
+  bypass the Edit/Write enforcement. Allows git, package managers, build
+  tools, and writes to `.temp/`.
+- **PostToolUse(Edit|Write)**: Counts code file edits. After 3 edits
+  without updating masterPlan.md, injects a checkpoint reminder. Resets
+  when any plan file is edited.
 - **PreToolUse(Task)**: Automatically injects engineering discipline into
   every sub-agent prompt. Sub-agents receive the core rules (no scope cuts,
   no type shortcuts, blast radius, verification) plus active plan path.
 - **Stop**: Blocks Claude from stopping if the active plan has unchecked
   items. Forces explicit completion, status update, or user communication.
+
+**NEVER bypass hooks.** If a hook blocks an action, follow the process it
+describes. Do not use alternative tools to work around it. Do not call it
+a "false positive." The hooks exist to enforce the discipline that makes
+your work survive compaction and remain correct.
 
 ---
 

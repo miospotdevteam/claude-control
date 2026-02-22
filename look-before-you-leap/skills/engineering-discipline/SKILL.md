@@ -273,3 +273,7 @@ If you catch yourself doing any of these, stop and reconsider:
 | Using env vars without verifying they load | Check .env and loading mechanism |
 | Saying "You're absolutely right!" | Fix the bug, audit for similar ones, report |
 | Thinking "I'll skip this for now" | Do it or flag it — no silent cuts |
+| Editing 3+ code files without updating the plan | Stop coding, update masterPlan.md Progress NOW |
+| Thinking "I'll update the plan later" | Later never comes — compaction will erase your memory |
+| Using Bash to write files because Edit/Write was denied | The hook denied it for a reason — create the plan first |
+| Calling a hook block a "false positive" | Hooks enforce discipline. Follow the process, don't bypass it |
