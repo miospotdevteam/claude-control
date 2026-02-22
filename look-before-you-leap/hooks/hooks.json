@@ -65,6 +65,16 @@
         ]
       },
       {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/redirect-brainstorming.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "Task",
         "hooks": [
           {
