@@ -78,6 +78,11 @@ WRITE_PATTERNS = [
     r"\bawk\b.*-i",      # awk in-place (gawk)
     r"\btee\b",           # tee writes to files
     r"\bdd\b.*\bof=",    # dd output file
+    # Scripting language file writes (prevent creative bypasses)
+    r"\bpython[23]?\b.*\b(open|write|Path)\b",  # python3 -c "open('f','w')..."
+    r"\bnode\b.*\b(writeFile|appendFile)",         # node -e "fs.writeFileSync..."
+    r"\bruby\b.*\bFile\.(write|open)\b",         # ruby -e "File.write..."
+    r"\bperl\b.*\bopen\b",                       # perl -e "open(F,'>file')..."
 ]
 
 for pattern in WRITE_PATTERNS:
@@ -96,17 +101,7 @@ fi
 
 # --- It writes files. Check plan state (mirrors enforce-plan.sh) ---
 
-find_project_root() {
-  local dir="${1:-$PWD}"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.git" ] || [ -f "$dir/CLAUDE.md" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  echo "${1:-$PWD}"
-}
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
 HOOK_CWD=$(python3 -c "
 import json, sys

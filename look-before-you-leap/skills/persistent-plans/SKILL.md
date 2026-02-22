@@ -200,6 +200,20 @@ This is a loop. Follow it mechanically.
 └─────────────────────────────────────────────────────────┘
 ```
 
+### Never mark [x] without verified work
+
+A step is NOT complete just because you wrote some code. Before marking
+any step `[x]`:
+
+1. The code you wrote actually works (you verified it, not just assumed)
+2. The step's acceptance criteria are met
+3. You've written meaningful notes in the Result field
+
+**A plan with all steps `[x]` but unverified work is a lie on disk.** A
+hook guards the `mv` command — you cannot move an incomplete plan to
+`completed/`. But more importantly, don't mark steps done until they ARE
+done. If you're unsure, leave it `[~]` with notes about what remains.
+
 ### The checkpoint rule
 
 **Save progress continuously, not just at step boundaries.**

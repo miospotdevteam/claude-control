@@ -10,18 +10,7 @@ set -euo pipefail
 
 INPUT=$(cat)
 
-# Find project root and check for active plan
-find_project_root() {
-  local dir="${1:-$PWD}"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.git" ] || [ -f "$dir/CLAUDE.md" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  echo "${1:-$PWD}"
-}
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
 CWD=$(python3 -c "
 import json, sys

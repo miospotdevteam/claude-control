@@ -11,18 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LIB_DIR="${SCRIPT_DIR}/lib"
 
-# --- Find project root ---
-find_project_root() {
-  local dir="$PWD"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.git" ] || [ -f "$dir/CLAUDE.md" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  echo "$PWD"
-}
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
 PROJECT_ROOT="$(find_project_root)"
 MARKER="$PROJECT_ROOT/.claude/.onboarding-pending"

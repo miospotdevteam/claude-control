@@ -277,3 +277,6 @@ If you catch yourself doing any of these, stop and reconsider:
 | Thinking "I'll update the plan later" | Later never comes — compaction will erase your memory |
 | Using Bash to write files because Edit/Write was denied | The hook denied it for a reason — create the plan first |
 | Calling a hook block a "false positive" | Hooks enforce discipline. Follow the process, don't bypass it |
+| Inventing creative workarounds for hook blocks (python3 -c, node -e) | The hook blocked you for a reason. Follow the process, not your creativity |
+| Marking a plan step [x] without verifying the work | Verify first, then mark complete — [x] means DONE, not "I wrote some code" |
+| Moving a plan to completed/ before all steps are [x] | Finish the work or flag what's remaining to the user |

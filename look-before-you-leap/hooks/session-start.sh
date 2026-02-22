@@ -19,18 +19,7 @@ SKILL_FILE="${PLUGIN_ROOT}/skills/look-before-you-leap/SKILL.md"
 ENGINEERING_SKILL_FILE="${PLUGIN_ROOT}/skills/engineering-discipline/SKILL.md"
 PLANS_SKILL_FILE="${PLUGIN_ROOT}/skills/persistent-plans/SKILL.md"
 
-# --- Function: Find project root ---
-find_project_root() {
-  local dir="$PWD"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.git" ] || [ -f "$dir/CLAUDE.md" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  echo "$PWD"
-}
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
 PROJECT_ROOT="$(find_project_root)"
 PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"

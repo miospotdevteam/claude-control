@@ -32,18 +32,7 @@ if [ -z "$FILE_PATH" ]; then
   exit 0
 fi
 
-# Find project root
-find_project_root() {
-  local dir="${1:-$PWD}"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.git" ] || [ -f "$dir/CLAUDE.md" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  echo "${1:-$PWD}"
-}
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 

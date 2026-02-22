@@ -35,18 +35,7 @@ fi
 # Now that a plan exists, migrate that file into the plan directory.
 PLAN_DIR_PATH="$(dirname "$FILE_PATH")"
 
-# Find project root
-find_project_root() {
-  local dir="${1:-$PWD}"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.git" ] || [ -f "$dir/CLAUDE.md" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  echo "${1:-$PWD}"
-}
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
 MIGRATE_CWD=$(python3 -c "
 import json, sys
@@ -86,7 +75,7 @@ if [ "$remaining" -gt 0 ] || [ "$done_count" -eq 0 ]; then
   exit 0
 fi
 
-# All steps complete — tell Claude to finalize
+# All steps marked [x] — tell Claude to VERIFY before finalizing
 plan_dir="$(dirname "$FILE_PATH")"
 plan_name="$(basename "$plan_dir")"
 active_parent="$(dirname "$plan_dir")"
@@ -109,15 +98,21 @@ output = {
     "hookSpecificOutput": {
         "hookEventName": "PostToolUse",
         "additionalContext": (
-            f"ALL STEPS COMPLETE in plan '{plan_name}' ({done_count} steps done).\n\n"
-            "Before closing this plan:\n"
-            "1. Update the Completed Summary section with final results\n"
-            "2. Verify all work (run type checker, linter, tests if applicable)\n"
-            "3. Report completion to the user\n"
-            f"4. Move the plan folder to completed/:\n"
-            f"   mv '{plan_dir}' '{completed_dir}/{plan_name}'\n"
-            "5. Remove .no-plan bypass if it exists:\n"
-            f"   rm -f '{os.path.dirname(completed_dir)}/.no-plan'"
+            f"All {done_count} steps marked [x] in plan '{plan_name}'.\n\n"
+            "STOP. Before closing this plan, complete ALL of the following:\n\n"
+            "1. VERIFY: Run the project's verification commands (type checker, "
+            "linter, tests). If any fail, the plan is NOT done — fix them first.\n"
+            "2. RE-READ the user's original request word by word. Is every "
+            "requirement actually implemented and working? If not, the plan is "
+            "NOT done.\n"
+            "3. UPDATE the Completed Summary section with final results.\n"
+            "4. REPORT to the user what was completed, what was verified, and "
+            "any caveats.\n\n"
+            "Only AFTER steps 1-4 are done, move the plan:\n"
+            f"  mv '{plan_dir}' '{completed_dir}/{plan_name}'\n\n"
+            "WARNING: Do NOT move the plan just because steps are marked [x]. "
+            "Marking a step [x] without verifying the actual work is the #1 "
+            "cause of premature plan completion. If you have ANY doubt, re-check."
         )
     }
 }

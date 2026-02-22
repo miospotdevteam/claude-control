@@ -27,18 +27,8 @@ if [[ "$FILE_PATH" == *"/.temp/"* ]] || [[ "$FILE_PATH" == *"/.temp" ]]; then
   exit 0
 fi
 
-# Find project root
-find_project_root() {
-  local dir="${1:-$PWD}"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.git" ] || [ -f "$dir/CLAUDE.md" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  echo "${1:-$PWD}"
-}
+# Find project root (prefers root with .temp/plan-mode/ for monorepo support)
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
 CWD=$(python3 -c "
 import json, sys

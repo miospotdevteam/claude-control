@@ -232,7 +232,8 @@ This plugin enforces discipline through hooks, not just instructions:
 - **PreToolUse(Bash)**: Blocks Bash commands that write files (redirects,
   sed -i, tee, etc.) when no active plan exists. Prevents using Bash to
   bypass the Edit/Write enforcement. Allows git, package managers, build
-  tools, and writes to `.temp/`.
+  tools, and writes to `.temp/`. Also blocks `mv` of plan directories
+  from `active/` to `completed/` if the plan has unchecked items.
 - **PostToolUse(Edit|Write)**: Counts code file edits. After 3 edits
   without updating masterPlan.md, injects a checkpoint reminder. Resets
   when any plan file is edited.
