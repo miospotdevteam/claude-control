@@ -38,7 +38,7 @@ now — they inform how you structure the steps.
 | If the task involves... | Read before planning... |
 |---|---|
 | Writing or modifying tests | `references/testing-checklist.md` |
-| Building or modifying UI | `references/ui-consistency-checklist.md` |
+| Building or modifying UI | `references/frontend-design-checklist.md` + `references/ui-consistency-checklist.md` |
 | Auth, input validation, secrets | `references/security-checklist.md` |
 | Adding/removing packages | `references/dependency-checklist.md` |
 | API route handlers or endpoints | `references/api-contracts-checklist.md` |

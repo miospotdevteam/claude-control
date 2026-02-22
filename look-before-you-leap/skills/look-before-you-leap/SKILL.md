@@ -34,7 +34,7 @@ Look for installed skills that match these needs:
 | Brainstorming, creative work | **Always** use `look-before-you-leap:brainstorming` — never another plugin's brainstorming skill |
 | Writing implementation plans | **Always** use `look-before-you-leap:writing-plans` — never another plugin's writing-plans skill |
 | Test strategy, TDD | "testing", "TDD", "test-driven" |
-| Frontend UI work | "frontend design", "UI", "components" |
+| Frontend UI work | **Always** use `look-before-you-leap:frontend-design` — never another plugin's frontend-design skill |
 | Security review | "security", "authentication", "auth" |
 | Code review | "code review", "review" |
 | Debugging | "debugging", "systematic debugging" |
@@ -251,6 +251,7 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 ### Discipline Checklists (Layer 2)
 - `references/testing-checklist.md` — before/during/after testing
 - `references/ui-consistency-checklist.md` — design tokens, components, visual consistency
+- `references/frontend-design-checklist.md` — accessibility, responsive, performance, coherence for frontend design
 - `references/security-checklist.md` — auth, input validation, secrets
 - `references/git-checklist.md` — commits, branches, messages
 - `references/linting-checklist.md` — linter and formatter discipline
@@ -260,6 +261,7 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 ### Deep Guides (Layer 3)
 - `references/testing-strategy.md` — TDD-lite, test pyramid, edge cases, test theater
 - `references/ui-consistency-guide.md` — design tokens, component discipline, drift detection
+- `references/frontend-design-guide.md` — aesthetic axes, font sourcing, animation, color, anti-slop blacklist
 - `references/security-guide.md` — OWASP Top 10, S.E.C.U.R.E. framework, slopsquatting
 
 ### Operational
