@@ -61,7 +61,7 @@ already exists), no onboarding is injected — proceed normally.
 
 ---
 
-## Step 1: Explore (mandatory before any edit)
+## Step 1: Explore (mandatory before any task)
 
 Shallow exploration is the #1 cause of failed plans — every minute exploring
 saves five minutes fixing.
@@ -77,12 +77,14 @@ exploring.
 <!-- deps-exploration-start -->
 1. **Run deps-query first** (if dep maps are configured — check the project
    profile for the full command with resolved paths): run `deps-query.py`
-   on every file you expect to modify BEFORE doing anything else. The
-   output reveals consumers, cross-module dependencies, and blast radius
-   upfront — it shapes the entire exploration. Skip this step only if dep
-   maps are not configured.
-2. Read the files you plan to modify AND their imports
-3. Find consumers of any file you'll change:
+   on every file in scope (files you'll modify, audit, or review) BEFORE
+   doing anything else. The output reveals consumers, cross-module
+   dependencies, and blast radius upfront — it shapes the entire
+   exploration. For audits/reviews, run it on key entry points to understand
+   the dependency architecture before dispatching sub-agents. Skip this
+   step only if dep maps are not configured.
+2. Read the files in scope AND their imports
+3. Find consumers of files in scope:
    - **If dep maps are configured**: you already have the consumer data
      from step 1. Do NOT re-grep for import patterns — use the deps-query
      output.

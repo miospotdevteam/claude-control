@@ -257,13 +257,16 @@ try:
             "<!-- deps-exploration-end -->",
             (
                 f"1. **Run deps-query first** — dep maps ARE configured ({module_count} modules).\n"
-                f"   Run this for every file you plan to modify BEFORE anything else:\n"
+                f"   Run this on every file in scope (modify, audit, or review) BEFORE\n"
+                f"   anything else:\n"
                 f"   ```\n"
                 f"   {deps_cmd}\n"
                 f"   ```\n"
                 f"   The output reveals consumers, cross-module dependencies, and blast radius.\n"
+                f"   For audits/reviews: run on key entry points per module to understand the\n"
+                f"   dependency architecture BEFORE dispatching sub-agents.\n"
                 f"   Refresh stale maps: `{gen_cmd}`\n"
-                f"2. Read the files you plan to modify AND their imports\n"
+                f"2. Read the files in scope AND their imports\n"
                 f"3. You already have consumer data from step 1. Do NOT grep for\n"
                 f"   import patterns — use the deps-query output."
             )
@@ -300,8 +303,8 @@ try:
             "<!-- deps-exploration-end -->",
             (
                 "1. Dep maps are not configured — skip deps-query.\n"
-                "2. Read the files you plan to modify AND their imports\n"
-                "3. Find consumers of any file you'll change using `Grep` for import statements."
+                "2. Read the files in scope AND their imports\n"
+                "3. Find consumers using `Grep` for import statements."
             )
         )
 

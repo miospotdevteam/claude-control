@@ -11,14 +11,16 @@ concrete answers and your confidence is Medium or higher.
 **Before answering any question below**, check the "Minimum exploration
 actions" section in the conductor skill (injected at session start). If dep
 maps are configured, the conductor has the full resolved command. Run it on
-every file you expect to modify. Do this before reading files, before
-grepping, before anything else.
+every file in scope — whether you're modifying, auditing, or reviewing. For
+audits, run on key entry points per module. Do this before reading files,
+before grepping, before anything else.
 
 **Why first**: The deps-query output tells you which files matter — it
 reveals consumers, cross-module dependencies, and blast radius upfront.
-This shapes every subsequent exploration step. Without it, you'll waste
-time reading files that turn out to be irrelevant and miss files that are
-critical.
+This shapes every subsequent exploration step. For audits, it shows which
+modules are highly depended on (high-impact bug areas) and where cross-module
+boundaries create integration risks. Without it, you'll waste time reading
+files that turn out to be irrelevant and miss files that are critical.
 
 Record all deps-query output — you'll need it for Q3, Q7, and the
 discovery.md. If the conductor says dep maps are NOT configured, skip this
