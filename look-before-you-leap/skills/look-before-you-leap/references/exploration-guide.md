@@ -52,14 +52,11 @@ too.
 
 ### Using dependency maps (MANDATORY when configured)
 
-If the project profile shows "Dep maps: configured", you MUST use
-`deps-query.py` instead of manual grep for consumer analysis. This is not
-a suggestion — dep maps are the primary and required method for finding
-consumers in configured projects:
-
-```bash
-python3 <plugin>/scripts/deps-query.py <project_root> <file_path>
-```
+If dep maps are configured (the conductor skill's "Minimum exploration
+actions" section has the resolved command), you MUST use `deps-query.py`
+instead of manual grep for consumer analysis. This is not a suggestion —
+dep maps are the primary and required method for finding consumers in
+configured projects. Use the exact command shown in the conductor skill.
 
 This returns both DEPENDENCIES (what the file imports) and DEPENDENTS
 (what imports it) across all configured modules — including cross-module

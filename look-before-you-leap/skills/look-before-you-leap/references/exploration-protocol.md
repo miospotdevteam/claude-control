@@ -8,10 +8,11 @@ concrete answers and your confidence is Medium or higher.
 
 ## Step 0: Run deps-query FIRST (when configured)
 
-**Before answering any question below**, check the project profile for dep
-maps. If dep maps are configured, your very first exploration action is to
-run `deps-query.py` on every file you expect to modify. Do this before
-reading files, before grepping, before anything else.
+**Before answering any question below**, check the "Minimum exploration
+actions" section in the conductor skill (injected at session start). If dep
+maps are configured, the conductor has the full resolved command. Run it on
+every file you expect to modify. Do this before reading files, before
+grepping, before anything else.
 
 **Why first**: The deps-query output tells you which files matter — it
 reveals consumers, cross-module dependencies, and blast radius upfront.
@@ -19,16 +20,9 @@ This shapes every subsequent exploration step. Without it, you'll waste
 time reading files that turn out to be irrelevant and miss files that are
 critical.
 
-```bash
-# Run this for each file you plan to modify:
-python3 <scripts_dir>/deps-query.py <project_root> <file_path>
-```
-
-(The project profile has the full command with resolved paths.)
-
 Record all deps-query output — you'll need it for Q3, Q7, and the
-discovery.md. If dep maps are NOT configured, skip this step and proceed
-to Q1.
+discovery.md. If the conductor says dep maps are NOT configured, skip this
+step and proceed to Q1.
 
 ---
 
@@ -54,15 +48,16 @@ functions, exports, and line count.
 
 Who imports or uses the files you're changing?
 
-**HARD GATE**: If dep maps are configured in the project profile, you MUST
-run `deps-query.py` for every file you plan to modify. Do NOT use `Grep` as
-a substitute — `Grep` for import patterns is the fallback ONLY when dep maps
-are not configured. Dep maps give you complete, cross-module consumer data
-instantly; ad-hoc grep is slower, less reliable, and misses transitive
-consumers.
+**HARD GATE**: If dep maps are configured (the conductor skill has the
+resolved command), you MUST run `deps-query.py` for every file you plan to
+modify. Do NOT use `Grep` as a substitute — `Grep` for import patterns is
+the fallback ONLY when dep maps are not configured. Dep maps give you
+complete, cross-module consumer data instantly; ad-hoc grep is slower, less
+reliable, and misses transitive consumers.
 
-**How to answer (dep maps configured)**: Run `deps-query.py` for each entry
-point file. Record the DEPENDENTS output. See `references/dependency-mapping.md`.
+**How to answer (dep maps configured)**: Run `deps-query.py` (use the exact
+command from the conductor skill) for each entry point file. Record the
+DEPENDENTS output.
 
 **How to answer (no dep maps)**: `Grep` for import/require statements
 referencing each entry point file. Example: `Grep pattern="from ['\"].*auth" type="ts"`

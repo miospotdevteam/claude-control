@@ -74,6 +74,7 @@ exploring.
 
 ### Minimum exploration actions
 
+<!-- deps-exploration-start -->
 1. **Run deps-query first** (if dep maps are configured — check the project
    profile for the full command with resolved paths): run `deps-query.py`
    on every file you expect to modify BEFORE doing anything else. The
@@ -86,6 +87,7 @@ exploring.
      from step 1. Do NOT re-grep for import patterns — use the deps-query
      output.
    - **If dep maps are NOT configured**: `Grep` for import statements.
+<!-- deps-exploration-end -->
 4. Read 2-3 sibling files to learn patterns
 5. Check CLAUDE.md/README for project conventions
 6. Search for existing solutions before implementing from scratch

@@ -32,11 +32,13 @@ When you open a file to change it, also read:
 
 - **Its imports** — what does it depend on? Are there shared utilities,
   types, or constants you should know about?
+<!-- deps-consumer-read-start -->
 - **Its consumers** — who imports THIS file? If dep maps are configured
   (check the project profile for the command), you MUST use `deps-query.py`
   — do NOT grep for consumers when dep maps exist. Grep is only the fallback
   for projects without dep maps. If you change an export, every consumer is
   affected.
+<!-- deps-consumer-read-end -->
 - **Sibling files** — how do adjacent files in the same directory solve
   similar problems? If there's already a pattern (naming, error handling,
   return types), follow it.
@@ -121,10 +123,12 @@ When you modify any of these, you MUST check all consumers:
 
 The check process:
 
+<!-- deps-consumer-blast-start -->
 1. Find all consumers: if dep maps are configured, you MUST use
    `deps-query.py` to get the DEPENDENTS list — do NOT grep for consumers
    when dep maps exist. Grep is only the fallback for projects without dep
    maps.
+<!-- deps-consumer-blast-end -->
 2. Open every file that references it
 3. Verify each reference still works with your change
 4. If you changed a function signature, update every call site

@@ -220,14 +220,113 @@ skill_content = read_file(skill_file)
 engineering_content = read_file(engineering_file)
 plans_content = read_file(plans_file)
 
-# Build project profile from config
+# --- Resolve deps-query commands inline in skill text ---
+# Instead of burying the command in the project profile where Claude won't
+# find it, we replace marker sections in the skills with the actual resolved
+# command (when dep_maps configured) or simplified instructions (when not).
+
+def replace_between_markers(content, start_marker, end_marker, replacement):
+    """Replace everything between start_marker and end_marker (inclusive) with replacement."""
+    start_idx = content.find(start_marker)
+    end_idx = content.find(end_marker)
+    if start_idx != -1 and end_idx != -1:
+        return content[:start_idx] + replacement + content[end_idx + len(end_marker):]
+    return content
+
 project_profile = ""
 try:
     config = json.loads(config_json_str)
     stack = config.get("stack", {})
     structure = config.get("structure", {})
     disciplines = config.get("disciplines", {})
+    dep_maps = config.get("dep_maps", {})
 
+    plugin_root = os.environ.get("HOOK_PLUGIN_ROOT", "")
+    project_root = os.environ.get("HOOK_PROJECT_ROOT", "")
+    scripts_dir = os.path.join(plugin_root, "skills", "look-before-you-leap", "scripts")
+
+    if dep_maps.get("modules"):
+        module_count = len(dep_maps["modules"])
+        deps_cmd = f"python3 {scripts_dir}/deps-query.py {project_root} <file_path>"
+        gen_cmd = f"python3 {scripts_dir}/deps-generate.py {project_root} --stale-only"
+
+        # Conductor skill: replace exploration section with resolved command
+        skill_content = replace_between_markers(
+            skill_content,
+            "<!-- deps-exploration-start -->",
+            "<!-- deps-exploration-end -->",
+            (
+                f"1. **Run deps-query first** — dep maps ARE configured ({module_count} modules).\n"
+                f"   Run this for every file you plan to modify BEFORE anything else:\n"
+                f"   ```\n"
+                f"   {deps_cmd}\n"
+                f"   ```\n"
+                f"   The output reveals consumers, cross-module dependencies, and blast radius.\n"
+                f"   Refresh stale maps: `{gen_cmd}`\n"
+                f"2. Read the files you plan to modify AND their imports\n"
+                f"3. You already have consumer data from step 1. Do NOT grep for\n"
+                f"   import patterns — use the deps-query output."
+            )
+        )
+
+        # Engineering discipline: consumer read section
+        engineering_content = replace_between_markers(
+            engineering_content,
+            "<!-- deps-consumer-read-start -->",
+            "<!-- deps-consumer-read-end -->",
+            (
+                f"- **Its consumers** — who imports THIS file? Dep maps ARE configured —\n"
+                f"  you MUST run `{deps_cmd}` to find all consumers.\n"
+                f"  Do NOT grep for consumers. If you change an export, every consumer is affected."
+            )
+        )
+
+        # Engineering discipline: blast radius section
+        engineering_content = replace_between_markers(
+            engineering_content,
+            "<!-- deps-consumer-blast-start -->",
+            "<!-- deps-consumer-blast-end -->",
+            (
+                f"1. Find all consumers: dep maps ARE configured — run\n"
+                f"   `{deps_cmd}` to get the DEPENDENTS list.\n"
+                f"   Do NOT grep for consumers."
+            )
+        )
+    else:
+        # No dep maps — simplify instructions
+        skill_content = replace_between_markers(
+            skill_content,
+            "<!-- deps-exploration-start -->",
+            "<!-- deps-exploration-end -->",
+            (
+                "1. Dep maps are not configured — skip deps-query.\n"
+                "2. Read the files you plan to modify AND their imports\n"
+                "3. Find consumers of any file you'll change using `Grep` for import statements."
+            )
+        )
+
+        engineering_content = replace_between_markers(
+            engineering_content,
+            "<!-- deps-consumer-read-start -->",
+            "<!-- deps-consumer-read-end -->",
+            (
+                "- **Its consumers** — who imports THIS file? Use `Grep` to search for\n"
+                "  import/require statements referencing this file. If you change an export,\n"
+                "  every consumer is affected."
+            )
+        )
+
+        engineering_content = replace_between_markers(
+            engineering_content,
+            "<!-- deps-consumer-blast-start -->",
+            "<!-- deps-consumer-blast-end -->",
+            (
+                "1. Find all consumers: use `Grep` to search for import statements\n"
+                "   referencing the changed file."
+            )
+        )
+
+    # Build project profile from config
     if stack:
         profile_parts = []
         if stack.get("language"):
@@ -247,18 +346,6 @@ try:
         active_disciplines = [k for k, v in disciplines.items() if v]
         if active_disciplines:
             profile_parts.append(f"Active disciplines: {', '.join(active_disciplines)}")
-        dep_maps = config.get("dep_maps", {})
-        if dep_maps.get("modules"):
-            module_count = len(dep_maps["modules"])
-            plugin_root = os.environ.get("HOOK_PLUGIN_ROOT", "")
-            project_root = os.environ.get("HOOK_PROJECT_ROOT", "")
-            scripts_dir = os.path.join(plugin_root, "skills", "look-before-you-leap", "scripts")
-            profile_parts.append(
-                f"Dep maps: configured ({module_count} modules) — "
-                f"query during exploration with:\n"
-                f"  `python3 {scripts_dir}/deps-query.py {project_root} <file_path>`\n"
-                f"  Generate/refresh: `python3 {scripts_dir}/deps-generate.py {project_root} --stale-only`"
-            )
         if profile_parts:
             project_profile = "**Project Profile** (auto-detected, edit .claude/look-before-you-leap.local.md to customize):\n" + "\n".join(f"- {p}" for p in profile_parts)
 except (json.JSONDecodeError, TypeError):
