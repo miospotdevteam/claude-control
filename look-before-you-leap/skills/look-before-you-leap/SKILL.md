@@ -33,11 +33,11 @@ Look for installed skills that match these needs:
 |---|---|
 | Brainstorming, creative work | **Always** use `look-before-you-leap:brainstorming` — never another plugin's brainstorming skill |
 | Writing implementation plans | **Always** use `look-before-you-leap:writing-plans` — never another plugin's writing-plans skill |
-| Test strategy, TDD | "testing", "TDD", "test-driven" |
+| Test strategy, TDD | **Always** use `look-before-you-leap:test-driven-development` — never another plugin's TDD skill |
 | Frontend UI work | **Always** use `look-before-you-leap:frontend-design` — never another plugin's frontend-design skill |
 | Security review | "security", "authentication", "auth" |
 | Code review | "code review", "review" |
-| Debugging | "debugging", "systematic debugging" |
+| Debugging | **Always** use `look-before-you-leap:systematic-debugging` — never another plugin's debugging skill |
 | Post-execution simplification | **Always** use `look-before-you-leap:code-simplifier` — never another plugin's code-simplifier skill |
 | PR/commit workflow | "commit", "PR", "git" |
 
@@ -282,6 +282,9 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 - `references/ui-consistency-guide.md` — design tokens, component discipline, drift detection
 - `references/frontend-design-guide.md` — aesthetic axes, font sourcing, animation, color, anti-slop blacklist
 - `references/security-guide.md` — OWASP Top 10, S.E.C.U.R.E. framework, slopsquatting
+- `references/debugging-root-cause-tracing.md` — trace bugs backward through call stack to source
+- `references/debugging-defense-in-depth.md` — multi-layer validation after fixing root cause
+- `references/debugging-condition-based-waiting.md` — replace arbitrary timeouts with condition polling
 
 ### Operational
 - `references/verification-commands.md` — type checker/linter/test commands by ecosystem
