@@ -74,17 +74,21 @@ exploring.
 
 ### Minimum exploration actions
 
-1. Read the files you plan to modify AND their imports
-2. Find consumers of any file you'll change:
-   - **If dep maps are configured** (check project profile for the full
-     command with resolved paths): you MUST run `deps-query.py` for every
-     file you plan to modify. This is NOT optional — do NOT fall back to
-     `Grep` for import patterns when dep maps exist. Run deps-query BEFORE
-     any other consumer analysis.
+1. **Run deps-query first** (if dep maps are configured — check the project
+   profile for the full command with resolved paths): run `deps-query.py`
+   on every file you expect to modify BEFORE doing anything else. The
+   output reveals consumers, cross-module dependencies, and blast radius
+   upfront — it shapes the entire exploration. Skip this step only if dep
+   maps are not configured.
+2. Read the files you plan to modify AND their imports
+3. Find consumers of any file you'll change:
+   - **If dep maps are configured**: you already have the consumer data
+     from step 1. Do NOT re-grep for import patterns — use the deps-query
+     output.
    - **If dep maps are NOT configured**: `Grep` for import statements.
-3. Read 2-3 sibling files to learn patterns
-4. Check CLAUDE.md/README for project conventions
-5. Search for existing solutions before implementing from scratch
+4. Read 2-3 sibling files to learn patterns
+5. Check CLAUDE.md/README for project conventions
+6. Search for existing solutions before implementing from scratch
 
 For complex or unfamiliar codebases, also read
 `references/exploration-guide.md`.

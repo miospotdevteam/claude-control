@@ -6,6 +6,32 @@ concrete answers and your confidence is Medium or higher.
 
 ---
 
+## Step 0: Run deps-query FIRST (when configured)
+
+**Before answering any question below**, check the project profile for dep
+maps. If dep maps are configured, your very first exploration action is to
+run `deps-query.py` on every file you expect to modify. Do this before
+reading files, before grepping, before anything else.
+
+**Why first**: The deps-query output tells you which files matter — it
+reveals consumers, cross-module dependencies, and blast radius upfront.
+This shapes every subsequent exploration step. Without it, you'll waste
+time reading files that turn out to be irrelevant and miss files that are
+critical.
+
+```bash
+# Run this for each file you plan to modify:
+python3 <scripts_dir>/deps-query.py <project_root> <file_path>
+```
+
+(The project profile has the full command with resolved paths.)
+
+Record all deps-query output — you'll need it for Q3, Q7, and the
+discovery.md. If dep maps are NOT configured, skip this step and proceed
+to Q1.
+
+---
+
 ## 1. What is the scope?
 
 Which files and directories will this change touch?
