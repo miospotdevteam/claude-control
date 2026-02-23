@@ -245,6 +245,13 @@ try:
         active_disciplines = [k for k, v in disciplines.items() if v]
         if active_disciplines:
             profile_parts.append(f"Active disciplines: {', '.join(active_disciplines)}")
+        dep_maps = config.get("dep_maps", {})
+        if dep_maps.get("modules"):
+            module_count = len(dep_maps["modules"])
+            profile_parts.append(
+                f"Dep maps: configured ({module_count} modules) — "
+                f"query with deps-query.py during exploration"
+            )
         if profile_parts:
             project_profile = "**Project Profile** (auto-detected, edit .claude/look-before-you-leap.local.md to customize):\n" + "\n".join(f"- {p}" for p in profile_parts)
 except (json.JSONDecodeError, TypeError):

@@ -75,7 +75,9 @@ exploring.
 ### Minimum exploration actions
 
 1. Read the files you plan to modify AND their imports
-2. `Grep` for consumers of any file you'll change
+2. Find consumers of any file you'll change — if dep maps are configured
+   (check project profile), run `deps-query.py` for instant results;
+   otherwise `Grep` for import statements
 3. Read 2-3 sibling files to learn patterns
 4. Check CLAUDE.md/README for project conventions
 5. Search for existing solutions before implementing from scratch

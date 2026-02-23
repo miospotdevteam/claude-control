@@ -44,6 +44,25 @@ Use `Grep` to trace both directions. Don't stop at the first level — if
 you're changing a utility that's imported by a component that's imported
 by a page, you need to know about the page too.
 
+### Using dependency maps
+
+If the project profile shows "Dep maps: configured", use `deps-query.py`
+instead of manual grep for consumer analysis:
+
+```bash
+python3 <plugin>/scripts/deps-query.py <project_root> <file_path>
+```
+
+This returns both DEPENDENCIES (what the file imports) and DEPENDENTS
+(what imports it) across all configured modules — including cross-module
+consumers (e.g., `packages/shared` imported by `apps/api`).
+
+The maps auto-regenerate when stale (files edited since last generation).
+See `references/dependency-mapping.md` for full details.
+
+**When to still use grep**: For non-TypeScript files, for string references
+(config keys, env vars), or when dep maps aren't configured.
+
 ### Check for feature flags and configuration
 
 Before building a feature, check if the project uses:

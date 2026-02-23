@@ -95,6 +95,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/mark-deps-stale.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "Stop": [

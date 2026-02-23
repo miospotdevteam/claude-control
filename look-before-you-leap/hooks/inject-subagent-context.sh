@@ -136,6 +136,13 @@ if stack_info:
     if parts:
         base_rules.append(f"- Project stack: {', '.join(parts)}")
 
+dep_maps = project_config.get("dep_maps", {})
+if dep_maps and dep_maps.get("modules"):
+    base_rules.append(
+        "- Dep maps configured: use deps-query.py for consumer/blast-radius "
+        "analysis instead of manual grep"
+    )
+
 preamble_lines = list(base_rules)
 if category == "research":
     preamble_lines.extend(research_rules)

@@ -28,8 +28,11 @@ functions, exports, and line count.
 
 Who imports or uses the files you're changing?
 
-**How to answer**: `Grep` for import/require statements referencing each entry
-point file. Example: `Grep pattern="from ['\"].*auth" type="ts"`
+**How to answer (dep maps configured)**: Run `deps-query.py` — returns
+all consumers across all modules instantly. See `references/dependency-mapping.md`.
+
+**How to answer (no dep maps)**: `Grep` for import/require statements
+referencing each entry point file. Example: `Grep pattern="from ['\"].*auth" type="ts"`
 
 **Output**: List of consumer files with count. If >10, list count + examples.
 
@@ -65,8 +68,12 @@ prettier config. Note import ordering, naming style, file organization.
 
 What could break if you get this wrong?
 
-**How to answer**: For each entry point, count its consumers (from Q3). For
-shared types/utilities, grep for all usages. Identify any public API surfaces.
+**How to answer (dep maps configured)**: `deps-query.py` outputs a
+DEPENDENTS section with count — this IS the direct blast radius.
+
+**How to answer (no dep maps)**: For each entry point, count its consumers
+(from Q3). For shared types/utilities, grep for all usages. Identify any
+public API surfaces.
 
 **Output**: List of risk areas with consumer counts.
 
