@@ -277,9 +277,10 @@ This plugin enforces discipline through hooks, not just instructions:
 - **PostToolUse(Edit|Write)**: When a fresh masterPlan.md is written (all
   steps `[ ]`, none `[x]`/`[~]`), creates `.handoff-pending` marker and
   injects directive to do the plan mode handoff (EnterPlanMode → summarize
-  → ExitPlanMode). Code edits are blocked by the PreToolUse(Edit|Write)
-  hook until the handoff is done or bypassed. The marker is cleared by
-  SessionStart (new session = fresh context = goal achieved).
+  → ExitPlanMode). The PreToolUse(Edit|Write) hook shows a soft warning
+  (not a hard block) while the marker exists. The marker auto-clears when
+  any step is marked `[x]` or `[~]` (execution started), or when the plan
+  file is missing/stale. Also cleared by SessionStart.
 - **PreToolUse(Grep)**: When grepping for import/consumer patterns and dep
   maps are configured, injects a reminder to use `deps-query.py` instead.
   Does not block — serves as a guardrail against falling back to grep when

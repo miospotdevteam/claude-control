@@ -55,6 +55,24 @@ fi
 # Check for handoff-pending marker (fresh plan needs plan mode handoff first)
 HANDOFF_MARKER="$PROJECT_ROOT/.temp/plan-mode/.handoff-pending"
 if [ -f "$HANDOFF_MARKER" ]; then
+  # Read the plan path stored in the marker
+  PLAN_PATH=$(cat "$HANDOFF_MARKER" 2>/dev/null) || true
+
+  # Auto-clear if the plan has progressed (any [x] or [~] means execution started)
+  if [ -n "$PLAN_PATH" ] && [ -f "$PLAN_PATH" ]; then
+    done_count=$(grep -cE '^\s*-\s*\[x\]' "$PLAN_PATH" 2>/dev/null) || true
+    active_count=$(grep -cE '^\s*-\s*\[~\]' "$PLAN_PATH" 2>/dev/null) || true
+    if [ "$done_count" -gt 0 ] || [ "$active_count" -gt 0 ]; then
+      rm -f "$HANDOFF_MARKER"
+      exit 0
+    fi
+  else
+    # Plan file missing or marker empty — stale marker, clear it
+    rm -f "$HANDOFF_MARKER"
+    exit 0
+  fi
+
+  # Plan is still fresh — soft warning (not a hard deny, to prevent stuck loops)
   export HOOK_MARKER_PATH="$HANDOFF_MARKER"
   python3 << 'PYEOF'
 import json, sys, os
@@ -64,17 +82,16 @@ marker = os.environ["HOOK_MARKER_PATH"]
 output = {
     "hookSpecificOutput": {
         "hookEventName": "PreToolUse",
-        "permissionDecision": "deny",
-        "permissionDecisionReason": (
-            "Plan mode handoff required. A fresh plan exists but you haven't "
+        "additionalContext": (
+            "Plan mode handoff recommended. A fresh plan exists but you haven't "
             "done the plan mode handoff yet.\n\n"
-            "Before editing code, you MUST:\n"
+            "Recommended before editing code:\n"
             "1. Enter plan mode (EnterPlanMode)\n"
             "2. Write a plan summary to the scratch pad\n"
             "3. Exit plan mode (ExitPlanMode)\n\n"
             "This gives the user the 'clear context and accept all edits' prompt, "
             "ensuring execution starts with a fresh context.\n\n"
-            f"To bypass: rm {marker}"
+            f"To dismiss: rm {marker}"
         )
     }
 }
