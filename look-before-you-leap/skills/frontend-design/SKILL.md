@@ -1,6 +1,6 @@
 ---
 name: frontend-design
-description: "Create distinctive, production-grade frontend interfaces. Detects greenfield vs integration mode, uses a 6-axis decision matrix for aesthetic direction, provides framework-specific implementation guidance, and verifies quality through accessibility, responsive, performance, and coherence checklists. Use when building or designing web components, pages, or applications."
+description: "Create distinctive, production-grade frontend interfaces. Detects greenfield vs integration mode, uses a 6-axis decision matrix for aesthetic direction, provides framework-specific implementation guidance, and verifies quality through accessibility, responsive, performance, and coherence checklists. Use when building or designing web components, pages, or applications. Do NOT use when: fixing a CSS bug with no design change, brainstorming without implementation intent (use brainstorming instead), or making backend-only changes. When brainstorming preceded this skill, skip Phases 1-2 and start at Phase 3."
 ---
 
 # Frontend Design
@@ -12,6 +12,32 @@ preventing the generic aesthetic convergence that plagues AI-generated UIs.
 
 **Announce at start:** "I'm using the frontend-design skill to guide the
 design and implementation."
+
+---
+
+## Prerequisites
+
+This skill operates within the conductor's Step 1-3:
+
+- **Phase 1** (Context Scan) runs during Step 1 (Explore) and feeds
+  `discovery.md`.
+- **Phase 2** (Design Direction) runs between Step 1 and Step 2 — its
+  outputs are consumed by `writing-plans` when creating the masterPlan.
+- **Phases 3-4** (Implementation, Verification) run during Step 3 (Execute).
+
+---
+
+## Integration with Brainstorming
+
+If `brainstorming` ran first and produced a `design.md` with visual
+direction (typography, colors, layout choices): **skip Phases 1-2 entirely**.
+Use the approved design and proceed to Phase 3.
+
+If no brainstorming preceded this skill: run Phases 1-2 (with the user
+approval checkpoint in Phase 2).
+
+If the user's request is purely "build this mockup/design" (design already
+decided): skip Phase 2, proceed to Phase 3.
 
 ---
 
@@ -55,6 +81,10 @@ In integration mode, also read:
 
 **Both modes:** Write findings to `discovery.md` as part of the conductor's
 Step 1 exploration.
+
+**Failure path:** If the project has no discernible design system and isn't
+greenfield (e.g., inconsistent styles, no tokens), treat it as greenfield
+with the constraint of matching existing code conventions.
 
 ---
 
@@ -114,7 +144,19 @@ With the axes scored and creative seed chosen, select:
 4. **Layout**: Grid system, spacing scale, composition approach
 5. **Texture**: Backgrounds, borders, shadows, depth treatment
 
-Document all choices in the masterPlan before writing code.
+**Present all choices to the user before proceeding.** Walk through the axis
+scores, creative seed, and concrete selections. Do NOT proceed to Phase 3
+until the user approves the direction. If the user disagrees, iterate on
+the specific choices they reject.
+
+Document all approved choices in the masterPlan before writing code.
+
+#### Failure paths
+
+- If the chosen font is unavailable or has insufficient weights, select
+  the next alternative from the same category in the guide.
+- If the creative seed produces poor results during implementation, revisit
+  it — pick a new seed and adjust the concrete choices before continuing.
 
 ### Integration — Design System Extension
 
@@ -148,8 +190,9 @@ unconsidered output — avoid them:
 | Animation | Fade-in-up on every element | Overused, creates motion fatigue |
 | Patterns | Glassmorphism with no purpose | Trend-following without intention |
 
-The deep guide (`references/frontend-design-guide.md`) has an extended
-anti-slop blacklist with alternatives.
+This is a summary — the full blacklist with specific alternatives is in
+`references/frontend-design-guide.md` § Anti-Slop Blacklist. Always check
+the full list.
 
 ### Vanilla HTML/CSS
 
@@ -226,6 +269,56 @@ domains:
 - Spacing follows a consistent scale
 - Typography uses defined type scale
 - Animation timing/easing consistent across elements
+
+### Verification commands
+
+Run the project's own commands first (check `package.json`, `Makefile`,
+`CLAUDE.md`). Supplement with:
+
+- **Type check**: `tsc --noEmit` (or project equivalent)
+- **Lint**: `eslint`, `biome`, or project linter
+- **Accessibility audit**: browser DevTools Accessibility panel, or
+  `axe-core` / `@axe-core/cli` if installed
+- **Contrast check**: verify specific color pairs meet WCAG AA (4.5:1 body,
+  3:1 large text) using browser DevTools or a contrast ratio tool
+- **Responsive check**: browser DevTools responsive mode at 375px, 768px,
+  1280px
+
+### Failure paths
+
+- If contrast checks fail after implementation, adjust the failing colors
+  to meet WCAG AA while staying within the chosen palette's hue — do not
+  switch to a completely different palette.
+- If the overall result feels generic despite the creative seed, revisit
+  the seed and the concrete choices before shipping. The seed should be
+  visibly present in the final result.
+- If a font fails to load or renders poorly, swap to the next alternative
+  from the same category and update the fallback stack.
+
+---
+
+## Acceptance Criteria
+
+- [ ] Design direction presented to user and approved (greenfield mode)
+- [ ] All colors from defined tokens — no raw hex in components
+- [ ] Accessibility: contrast AA, semantic HTML, keyboard navigation, reduced-motion
+- [ ] Responsive at 375px, 768px, 1280px — no horizontal scroll
+- [ ] Animations use transform/opacity only
+- [ ] No anti-slop patterns present (check full blacklist in guide)
+- [ ] Type checker and linter pass
+- [ ] Integration mode: side-by-side comparison with existing pages done
+
+---
+
+## Output Contract
+
+This skill produces:
+
+1. **Design decisions** in `discovery.md` or `design.md` (Phase 2) — axis
+   scores, creative seed, typography, color, motion, layout, texture choices
+2. **Implemented code files** (Phase 3)
+3. **Verification results** noted in the masterPlan step's Result field
+   (Phase 4) — which checklist items passed, any issues found and resolved
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: "Use after discovery to write implementation plans with TDD-granularity steps. Produces masterPlan.md that assumes the implementing engineer has zero codebase context and questionable taste. Every masterPlan step is one component/feature; TDD rhythm (test, verify fail, implement, verify pass, commit) lives in its Progress items. Consumes discovery.md from exploration phase. Invoke explicitly at Step 2 of the conductor."
+description: "Use after discovery to write implementation plans with TDD-granularity steps. Produces masterPlan.md that assumes the implementing engineer has zero codebase context and questionable taste. Every masterPlan step is one component/feature; TDD rhythm (test, verify fail, implement, verify pass, commit) lives in its Progress items. Consumes discovery.md from exploration phase. Invoke explicitly at Step 2 of the conductor. Do NOT use when: the user explicitly says 'just do it' or 'no plan', resuming an existing plan (use persistent-plans resumption protocol), executing a plan that already exists on disk, or doing pure research/exploration without code changes."
 ---
 
 # Writing Plans
@@ -27,8 +27,9 @@ Read `discovery.md` from `.temp/plan-mode/active/<plan-name>/`. Understand
 the scope, entry points, consumers, existing patterns, test infrastructure,
 and blast radius. This feeds directly into the masterPlan.
 
-If the brainstorming skill produced a `design.md`, read that too — it
-contains the approved design decisions.
+If the brainstorming skill produced a `design.md` in the same plan
+directory (`.temp/plan-mode/active/<plan-name>/design.md`), read that
+too — it contains the approved design decisions.
 
 ### 2. Identify applicable disciplines
 
@@ -66,7 +67,8 @@ fresh session knows how to execute it:
 # Plan: <Title>
 
 > **For Claude:** REQUIRED SKILL: Use look-before-you-leap:engineering-discipline
-> to execute this plan step-by-step.
+> for all steps. Also invoke each step's `Skill` field when it is not `none`.
+> See the Required Skills section for the full list.
 ```
 
 #### Granularity: how steps map to TDD
@@ -116,8 +118,9 @@ simplification pass manually.
 - **Complete code in every step** — not "add validation" but the actual
   code the engineer should write
 - **Exact file paths** — every step lists Create/Modify/Test files
-- **Exact commands with expected output** — include the command to run and
-  what the engineer should see
+- **Exact commands with expected outcome** — include the command to run and
+  the expected outcome (pass/fail, exit code, key output lines), not
+  necessarily full verbatim output
 - **Self-contained** — the masterPlan is the ONLY thing the executing
   engineer reads. If it's not in the plan, it doesn't exist for them
 - **DRY / YAGNI** — cut anything not clearly needed right now
@@ -177,17 +180,46 @@ export function validateEmail(email: string): { valid: boolean; error?: string }
 
 After saving the masterPlan to disk:
 
-1. Call `EnterPlanMode` to enter plan mode
-2. In plan mode, read the masterPlan you just wrote from disk
-3. Write a summary of the plan to the plan mode file (the key steps,
-   files involved, and acceptance criteria — enough for the user to
-   approve or reject)
-4. Call `ExitPlanMode` to present the plan to the user
+1. **If not already in plan mode**, call `EnterPlanMode` to enter it.
+   If already in plan mode (e.g., the conductor entered it earlier), skip
+   this step.
+2. Read the masterPlan you just wrote from disk.
+3. Write a summary to the **plan mode scratch pad** (the file specified in
+   the plan mode system message — NOT the masterPlan.md). Include: the key
+   steps, files involved, and acceptance criteria — enough for the user to
+   approve or reject.
+4. Call `ExitPlanMode` to present the plan to the user.
 
 This gives the user the built-in **"autoaccept edits and clear context?"**
 prompt. If they accept, context clears and the persistent-plans resumption
 protocol picks up the masterPlan automatically — execution follows the
 conductor's Step 3 with engineering-discipline.
+
+---
+
+## Boundaries
+
+This skill must NOT:
+
+- **Create plans outside `.temp/plan-mode/`** — all plans live in the
+  defined directory structure, nowhere else.
+- **Modify discovery.md during planning** — discovery is read-only input.
+  If you find gaps, go back to Step 1 (Explore) first.
+- **Overwrite an existing masterPlan.md without user consent** — if a plan
+  already exists in the target directory, ask before replacing it.
+- **Skip the plan mode handoff** — every plan must be presented to the user
+  for approval via ExitPlanMode before execution begins.
+- **Write implementation code** — this skill produces plans, not code files.
+  Code belongs in the plan's code blocks, not in the project source tree.
+
+**Autonomy limits**: reading discovery, reading checklists, writing
+masterPlan.md, and writing sub-plans are autonomous. Overwriting an existing
+plan and skipping the user-approval handoff require user confirmation.
+
+**Prerequisites**: this skill is always invoked via the `look-before-you-leap`
+conductor at Step 2. `${CLAUDE_PLUGIN_ROOT}` must resolve for reference file
+paths. Discovery must be complete (`discovery.md` must exist in the plan
+directory).
 
 ---
 

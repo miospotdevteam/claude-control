@@ -1,6 +1,6 @@
 ---
 name: skill-review-standard
-description: "Strict review rubric for any new or updated skill before you consider it done. Catches ambiguity before runtime, enforces deterministic workflows, and keeps skills lean, discoverable, and testable. Use when authoring, editing, or reviewing a SKILL.md file. Do NOT use for reviewing application code or non-skill files."
+description: "Strict review rubric for any new or updated skill before you consider it done. Catches ambiguity before runtime, enforces deterministic workflows, and keeps skills lean, discoverable, and testable. Use when authoring, editing, or reviewing a SKILL.md file. Do NOT use for reviewing application code or non-skill files. For creating skills from scratch or running evals, use skill-creator. For learning skill structure and conventions, use plugin-dev:skill-development. This skill is specifically for quality-gate review of an already-written SKILL.md."
 ---
 
 # Skill Review Standard (for Skills You Author)
@@ -11,6 +11,26 @@ Primary goals:
 - Catch ambiguity before runtime
 - Enforce deterministic workflows where needed
 - Keep skills lean, discoverable, and testable
+
+---
+
+## How to Use This Rubric
+
+Follow these three steps in order:
+
+1. **Quick gate** — Run the Fast Review Checklist (section 10). If any item
+   clearly fails, stop and flag it immediately.
+2. **Detailed check** — Walk sections 2–7 in order. Record findings using
+   the severity rubric (section 9).
+3. **Produce output** — Fill in the Reviewer Output Template (section 8)
+   with your verdict, findings, and required changes.
+
+### After a FAIL verdict
+
+The author addresses the items listed in "Required Changes Before Approval."
+The reviewer then re-checks **only the failed criteria** — a full re-review
+is not required unless structural changes were made (e.g., the workflow was
+rewritten, the skill's scope changed significantly).
 
 ---
 

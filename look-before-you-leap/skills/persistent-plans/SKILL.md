@@ -1,6 +1,6 @@
 ---
 name: persistent-plans
-description: "Persistent planning system that writes every task plan to disk so it survives context compaction. Use this skill for ALL tasks — it is the default operating mode, not an optional add-on. Every coding task, feature, refactor, bug fix, migration, or multi-step operation starts with a plan written to `.temp/plan-mode/active/`. Even small tasks get a lightweight plan. The plan on disk is the source of truth, not context memory. Trigger this skill whenever you are about to do work. If you are starting a task, resuming after compaction, or the user says 'continue' — read the plan first. If no plan exists, create one. The only exception is truly trivial one-liner changes where the user explicitly says 'just do it' or 'no plan.'"
+description: "Persistent planning system that writes every task plan to disk so it survives context compaction. Use this skill for ALL tasks — it is the default operating mode, not an optional add-on. Every coding task, feature, refactor, bug fix, migration, or multi-step operation starts with a plan written to `.temp/plan-mode/active/`. Even small tasks get a lightweight plan. The plan on disk is the source of truth, not context memory. Trigger this skill whenever you are about to do work. If you are starting a task, resuming after compaction, or the user says 'continue' — read the plan first. If no plan exists, create one. The only exception is truly trivial one-liner changes where the user explicitly says 'just do it' or 'no plan.' Do NOT use when: answering questions without code changes, pure research, documentation-only queries, or conversations that don't touch source files."
 ---
 
 # Persistent Plans
@@ -46,6 +46,32 @@ have.
 
 Exception: the user explicitly says "just do it" or "no plan" for a
 single-line trivially obvious change. Everything else gets a plan.
+
+---
+
+## Boundaries
+
+This skill must NOT:
+
+- **Delete plan files** — only move completed plans from `active/` to
+  `completed/`. Never `rm` a plan.
+- **Create plans outside `.temp/plan-mode/`** — all plans live in the
+  defined directory structure, nowhere else.
+- **Proceed past a `[!] blocked` step without user input** — blocked means
+  blocked. Ask the user or skip to an independent step.
+- **Mark a step `[x]` without running verification** — `[x]` means done
+  AND verified, not "I wrote some code."
+- **Move a plan to `completed/` with unchecked items** — a hook enforces
+  this, but the rule is the skill's, not just the hook's.
+
+**Autonomy limits**: creating plans, writing to plan files, and updating
+progress are autonomous. Deleting plans, skipping blocked steps, and
+deviating from the plan require user confirmation.
+
+**Prerequisites**: this skill is always invoked via the `look-before-you-leap`
+conductor. `${CLAUDE_PLUGIN_ROOT}` must resolve for reference file paths. All
+referenced templates live under `skills/look-before-you-leap/` relative to
+the plugin root.
 
 ---
 
@@ -138,27 +164,25 @@ for the template.
 
 ## Phase 2: Execute the Plan
 
-### THE #1 RULE OF EXECUTION: Update the plan as you go
+### The Checkpoint Rule (THE #1 RULE OF EXECUTION)
 
 **After every 2-3 code file edits, you MUST update your masterPlan.md on
-disk.** This is not a suggestion. This is not something you do "when you
-remember." This is a hard requirement enforced by a hook that will remind
-you if you forget.
+disk.** This is a hard requirement enforced by a hook that will remind you
+if you forget.
 
 What "update the plan" means:
 1. Open masterPlan.md with the Edit tool
 2. Check off completed Progress items: `- [ ]` → `- [x]`
-3. Add notes to the current step's Result field
+3. Add partial notes to the current step's Result field
 4. If you finished a step, mark it `[x]` and update Completed Summary
 
 **Why this matters**: Auto-compaction can fire at any moment. If your plan
-is stale, your next context window starts from scratch — rediscovering
-everything you already knew. Every plan update is insurance against lost
-work. A plan that doesn't reflect reality is worse than no plan at all.
+is stale, your next context window starts from scratch. Every plan update
+is insurance against lost work.
 
-**The test**: After every code edit, ask yourself: *"If compaction fired
-RIGHT NOW, could someone resume from the plan file alone?"* If the answer
-is no, update the plan BEFORE your next code edit.
+**The Compaction Test**: *"If compaction fired RIGHT NOW, could someone
+resume from the plan file alone?"* Ask this after every code edit. If the
+answer is no, update the plan BEFORE your next edit.
 
 This is a loop. Follow it mechanically.
 
@@ -214,22 +238,6 @@ hook guards the `mv` command — you cannot move an incomplete plan to
 `completed/`. But more importantly, don't mark steps done until they ARE
 done. If you're unsure, leave it `[~]` with notes about what remains.
 
-### The checkpoint rule
-
-**Save progress continuously, not just at step boundaries.**
-
-After every 2-3 file edits or every significant action within a step,
-update the masterPlan.md:
-- Check off completed items in the **Progress** checklist
-- Add partial notes to the **Result** field if useful for recovery
-
-Think of it like autosave in a video game — save constantly so that when
-the crash (auto-compaction) happens, you lose minimal progress.
-
-**The question to always ask yourself**: "If auto-compaction fired RIGHT
-NOW, would my plan file let me resume exactly where I left off?" If no,
-update the plan file before doing anything else.
-
 ### Progress updates are NOT optional
 
 **The Progress checklist is a live checkpoint, not a decoration.** If
@@ -243,8 +251,7 @@ Rules:
   remains
 - **Never mark a step `[x] complete` if its Progress items are still `[ ]`**.
   That means you skipped tracking — go back and check them off first.
-- After every 2-3 file edits, ask: "If compaction fired RIGHT NOW, would my
-  plan file let me resume exactly where I left off?" If no, update it now.
+- Apply the Compaction Test after every 2-3 file edits.
 
 ### Result fields matter
 
@@ -303,8 +310,7 @@ off.
 
 ## Plan Hygiene
 
-- **Checkpoint constantly** — after every 2-3 file edits, update Progress
-  on disk
+- **Checkpoint constantly** — follow the Checkpoint Rule (Phase 2)
 - **Update immediately** — after every step completion, write to disk
 - **Never delete a plan** — when all steps are complete, move the plan
   folder from `active/` to `completed/`
@@ -343,7 +349,7 @@ engineering-discipline ensures the work is done correctly.
 | Situation | Action |
 |---|---|
 | New task from user | Explore -> write masterPlan.md in active/ -> execute |
-| Every 2-3 file edits | Checkpoint: update Progress checklist on disk |
+| Every 2-3 file edits | Follow the Checkpoint Rule |
 | Step completed | Update plan on disk immediately |
 | Step touches >10 files or is a sweep | Create sub-plan with Groups |
 | After any compaction | Read plan IMMEDIATELY -> state where you are -> continue |

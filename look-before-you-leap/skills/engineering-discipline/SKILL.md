@@ -1,6 +1,6 @@
 ---
 name: engineering-discipline
-description: "Engineering discipline and verification layer for ALL coding tasks. This skill takes priority over speed — never skip these steps to save time. Enforces 'measure twice, cut once' behavior: explore before editing, track blast radius of shared changes, never use type-safety shortcuts (any, as any), verify work by running type checkers/linters/tests, never silently drop scope, and never stop mid-plan. Use this skill whenever the user asks you to write, edit, fix, refactor, port, migrate, review, or debug code — regardless of language, framework, or project size. This includes bug fixes, feature additions, refactors, migrations, dependency updates, config changes, environment setup, and any task that touches source files. If you are about to edit a file, this skill applies. Even 'simple' one-file fixes benefit from the verification step. When in doubt, use it. There is no task too small for verification."
+description: "Engineering discipline and verification layer for ALL coding tasks. This skill takes priority over speed — never skip these steps to save time. Enforces 'measure twice, cut once' behavior: explore before editing, track blast radius of shared changes, never use type-safety shortcuts (any, as any), verify work by running type checkers/linters/tests, never silently drop scope, and never stop mid-plan. Use this skill whenever the user asks you to write, edit, fix, refactor, port, migrate, review, or debug code — regardless of language, framework, or project size. This includes bug fixes, feature additions, refactors, migrations, dependency updates, config changes, environment setup, and any task that touches source files. If you are about to edit a file, this skill applies. Even 'simple' one-file fixes benefit from the verification step. When in doubt, use it. There is no task too small for verification. Do NOT use when: the task is pure research, documentation-only queries, or conversation with no code changes — this skill is for tasks that touch source files."
 ---
 
 # Engineering Discipline
@@ -158,6 +158,22 @@ Do NOT assume packages are installed. Do NOT assume env vars are loaded.
 Do NOT use a tool without checking it exists. These are the most common
 sources of "it works in my head but not on the machine" failures.
 
+### Autonomy boundaries
+
+Not every blocker requires stopping. Use these rules to decide:
+
+- **Proceed and report**: A single step is blocked but remaining steps are
+  independent. Complete what you can, flag the blocked item in your summary.
+- **Stop and ask**: More than half the requested scope is blocked, a change
+  is destructive or irreversible (schema migration, dependency removal,
+  public API break), or you are unsure whether the user wants the tradeoff
+  you'd need to make.
+- **Always ask**: Deleting files, dropping database objects, force-pushing,
+  or any action that cannot be undone.
+
+When in doubt, stop and ask. A 30-second confirmation is cheaper than an
+unwanted destructive change.
+
 ---
 
 ## Phase 3: Verify Before Declaring Done
@@ -211,6 +227,17 @@ Before saying a task is done:
 
 If ANY requirement is unaddressed or ANY plan step is incomplete, you are
 NOT done. Go finish it, or explicitly flag what's remaining and why.
+
+### Acceptance criteria
+
+Before declaring a task done, every item must be checked:
+
+- [ ] User's original request re-read word by word
+- [ ] Every requirement implemented AND verified working
+- [ ] Plan steps all checked off (if a plan exists)
+- [ ] Verification commands pass (types, lint, tests)
+- [ ] No unchecked plan items remain
+- [ ] Gaps, risks, and skipped items communicated explicitly
 
 ---
 

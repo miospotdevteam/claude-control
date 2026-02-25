@@ -1,6 +1,6 @@
 ---
 name: look-before-you-leap
-description: "Unified engineering discipline for ALL coding tasks. Three layers: this file (the conductor), quick-reference checklists, and deep guides. Enforces structured exploration before planning, persistent plans that survive compaction, disciplined execution with blast radius tracking and type safety, and multi-discipline coverage (testing, UI consistency, security, git, linting, dependencies). Use for every task that touches source files — no exceptions, no shortcuts."
+description: "Unified engineering discipline for ALL coding tasks. Three layers: this file (the conductor), quick-reference checklists, and deep guides. Enforces structured exploration before planning, persistent plans that survive compaction, disciplined execution with blast radius tracking and type safety, and multi-discipline coverage (testing, UI consistency, security, git, linting, dependencies). Use for every task that touches source files — no exceptions, no shortcuts. Do NOT use when: answering questions about code without changing it, pure research or documentation queries, conversations with no file edits, or running commands that don't modify the codebase."
 ---
 
 # Software Discipline
@@ -75,24 +75,19 @@ exploring.
 ### Minimum exploration actions
 
 <!-- deps-exploration-start -->
-1. **Run deps-query first** (if dep maps are configured — check the project
-   profile for the full command with resolved paths): run `deps-query.py`
-   on every file in scope (files you'll modify, audit, or review) BEFORE
-   doing anything else. The output reveals consumers, cross-module
-   dependencies, and blast radius upfront — it shapes the entire
-   exploration. For audits/reviews, run it on key entry points to understand
-   the dependency architecture before dispatching sub-agents. Skip this
-   step only if dep maps are not configured.
-2. Read the files in scope AND their imports
-3. Find consumers of files in scope:
-   - **If dep maps are configured**: you already have the consumer data
-     from step 1. Do NOT re-grep for import patterns — use the deps-query
-     output.
-   - **If dep maps are NOT configured**: `Grep` for import statements.
+**If dep maps are configured** (check the project profile for the resolved
+command): run `deps-query.py` on every file in scope BEFORE the steps below.
+The output reveals consumers, cross-module dependencies, and blast radius
+upfront — it shapes the entire exploration. For audits/reviews, run on key
+entry points per module. If dep maps are NOT configured, skip this preamble.
 <!-- deps-exploration-end -->
-4. Read 2-3 sibling files to learn patterns
-5. Check CLAUDE.md/README for project conventions
-6. Search for existing solutions before implementing from scratch
+
+1. Read the files in scope AND their imports
+2. Find consumers of files in scope — use deps-query output if available,
+   otherwise `Grep` for import statements
+3. Read 2-3 sibling files to learn patterns
+4. Check CLAUDE.md/README for project conventions
+5. Search for existing solutions before implementing from scratch
 
 For complex or unfamiliar codebases, also read
 `references/exploration-guide.md`.
@@ -140,16 +135,12 @@ obvious single-line change.
 
 ## Step 3: Execute (the loop)
 
-**CRITICAL: Update your masterPlan.md after every 2-3 code file edits.**
-Check off Progress items, add Result notes. A hook will remind you if you
-forget, but don't rely on it — make it automatic. If compaction fires and
-your plan is stale, all your work context is lost.
-
 Follow **persistent-plans Phase 2** (Execute the Plan) for the execution
-loop, checkpointing, and result tracking.
+loop, checkpointing, and result tracking. Follow **engineering-discipline
+Phase 2** (Make Changes Carefully) for the rules applied during execution.
 
-Follow **engineering-discipline Phase 2** (Make Changes Carefully) for the
-rules applied during execution.
+The sections below cover behavior that is unique to the conductor and not
+covered in the companion skills.
 
 ### Dispatching sub-agents
 
@@ -247,9 +238,22 @@ bash .temp/plan-mode/scripts/resume.sh         # find what to pick up
 
 This plugin enforces discipline through hooks, not just instructions:
 
+- **SessionStart**: Injects the full conductor, engineering-discipline, and
+  persistent-plans skills into every session. Detects active plans and
+  shows resumption instructions. Discovers other installed plugins. On
+  first run, auto-detects the project stack and creates the local config.
+- **UserPromptSubmit**: On first run (when `.claude/.onboarding-pending`
+  marker exists), injects onboarding instructions to walk the user through
+  setup: stack summary, config enrichment, CLAUDE.md creation, plugin
+  suggestions. Fires once, then removes the marker.
 - **PreToolUse(Edit|Write)**: Blocks code edits if no active plan exists
   in `.temp/plan-mode/active/`. Allows edits to `.temp/` (plan files).
-  Bypass for trivial changes: `echo $PPID > .temp/plan-mode/.no-plan` (session-scoped, auto-expires when session ends).
+  Bypass for trivial changes: `echo $PPID > .temp/plan-mode/.no-plan`
+  (session-scoped, auto-expires when session ends).
+- **PreToolUse(Edit|Write)**: Soft warning when editing API boundary files
+  (route handlers, API routes, schema/validator files, frontend API client
+  calls). Reminds Claude to check for shared types and schemas. Does not
+  block — surfaces a reminder with the api-contracts checklist.
 - **PreToolUse(Bash)**: Blocks Bash commands that write files (redirects,
   sed -i, tee, etc.) when no active plan exists. Prevents using Bash to
   bypass the Edit/Write enforcement. Allows git, package managers, build
@@ -258,6 +262,14 @@ This plugin enforces discipline through hooks, not just instructions:
 - **PostToolUse(Edit|Write)**: Counts code file edits. After 3 edits
   without updating masterPlan.md, injects a checkpoint reminder. Resets
   when any plan file is edited.
+- **PostToolUse(Edit|Write)**: When a masterPlan.md is edited, migrates
+  any fallback discovery file (`.temp/discovery/`) into the plan directory
+  and checks if all steps are `[x]`. If all complete, injects a reminder
+  to verify, re-read the original request, update Completed Summary, and
+  report before moving the plan to `completed/`.
+- **PostToolUse(Edit|Write)**: When `.ts`/`.tsx` files are edited, marks
+  the corresponding dep map module as stale for lazy regeneration on the
+  next `deps-query.py` invocation. Silent — no output.
 - **PreToolUse(Grep)**: When grepping for import/consumer patterns and dep
   maps are configured, injects a reminder to use `deps-query.py` instead.
   Does not block — serves as a guardrail against falling back to grep when
@@ -301,12 +313,17 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 - `references/ui-consistency-guide.md` — design tokens, component discipline, drift detection
 - `references/frontend-design-guide.md` — aesthetic axes, font sourcing, animation, color, anti-slop blacklist
 - `references/security-guide.md` — OWASP Top 10, S.E.C.U.R.E. framework, slopsquatting
+- `references/api-contracts-guide.md` — API boundary discipline, shared schema enforcement
 - `references/debugging-root-cause-tracing.md` — trace bugs backward through call stack to source
 - `references/debugging-defense-in-depth.md` — multi-layer validation after fixing root cause
 - `references/debugging-condition-based-waiting.md` — replace arbitrary timeouts with condition polling
+- `references/dependency-mapping.md` — dep map configuration, module setup, query usage
 
 ### Operational
 - `references/verification-commands.md` — type checker/linter/test commands by ecosystem
+- `references/recommended-plugins.md` — suggested official plugins for onboarding
 - `scripts/init-plan-dir.sh` — initialize `.temp/plan-mode/` directory
 - `scripts/plan-status.sh` — show status of all active plans
 - `scripts/resume.sh` — find what to resume after compaction
+- `scripts/deps-query.py` — query dependency maps for consumers and dependencies
+- `scripts/deps-generate.py` — generate or regenerate dependency maps

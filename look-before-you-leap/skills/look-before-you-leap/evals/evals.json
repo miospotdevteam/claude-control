@@ -100,6 +100,22 @@
         "Follows the existing page structure and naming conventions",
         "Tests responsive behavior at project breakpoints"
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "Add a new calculateDiscount function that applies percentage and fixed discounts with minimum order thresholds",
+      "expected_output": "The model follows the TDD red-green-refactor cycle: writes failing tests first, implements minimal code to pass, then refactors while keeping tests green",
+      "assertions": [
+        "Writes test file BEFORE the implementation file",
+        "First test covers the simplest case (e.g., basic percentage discount)",
+        "Runs tests after writing them — confirms they FAIL (red phase)",
+        "Writes minimal implementation to make failing tests pass (green phase)",
+        "Runs tests again — confirms they PASS after implementation",
+        "Adds tests incrementally (not all at once) — at least 2 separate red-green cycles",
+        "Covers edge cases: zero discount, discount exceeding price, below minimum threshold",
+        "Does NOT write implementation code before its corresponding test exists",
+        "Refactors after green phase while keeping tests passing"
+      ]
     }
   ]
 }

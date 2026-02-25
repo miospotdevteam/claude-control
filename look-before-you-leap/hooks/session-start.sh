@@ -250,25 +250,21 @@ try:
         deps_cmd = f"python3 {scripts_dir}/deps-query.py {project_root} <file_path>"
         gen_cmd = f"python3 {scripts_dir}/deps-generate.py {project_root} --stale-only"
 
-        # Conductor skill: replace exploration section with resolved command
+        # Conductor skill: replace exploration preamble with resolved command
         skill_content = replace_between_markers(
             skill_content,
             "<!-- deps-exploration-start -->",
             "<!-- deps-exploration-end -->",
             (
-                f"1. **Run deps-query first** — dep maps ARE configured ({module_count} modules).\n"
-                f"   Run this on every file in scope (modify, audit, or review) BEFORE\n"
-                f"   anything else:\n"
-                f"   ```\n"
-                f"   {deps_cmd}\n"
-                f"   ```\n"
-                f"   The output reveals consumers, cross-module dependencies, and blast radius.\n"
-                f"   For audits/reviews: run on key entry points per module to understand the\n"
-                f"   dependency architecture BEFORE dispatching sub-agents.\n"
-                f"   Refresh stale maps: `{gen_cmd}`\n"
-                f"2. Read the files in scope AND their imports\n"
-                f"3. You already have consumer data from step 1. Do NOT grep for\n"
-                f"   import patterns — use the deps-query output."
+                f"**Dep maps ARE configured** ({module_count} modules). Run this on every file\n"
+                f"in scope (modify, audit, or review) BEFORE the steps below:\n"
+                f"```\n"
+                f"{deps_cmd}\n"
+                f"```\n"
+                f"The output reveals consumers, cross-module dependencies, and blast radius.\n"
+                f"For audits/reviews: run on key entry points per module to understand the\n"
+                f"dependency architecture BEFORE dispatching sub-agents.\n"
+                f"Refresh stale maps: `{gen_cmd}`"
             )
         )
 
@@ -296,16 +292,12 @@ try:
             )
         )
     else:
-        # No dep maps — simplify instructions
+        # No dep maps — remove preamble entirely
         skill_content = replace_between_markers(
             skill_content,
             "<!-- deps-exploration-start -->",
             "<!-- deps-exploration-end -->",
-            (
-                "1. Dep maps are not configured — skip deps-query.\n"
-                "2. Read the files in scope AND their imports\n"
-                "3. Find consumers using `Grep` for import statements."
-            )
+            ""
         )
 
         engineering_content = replace_between_markers(

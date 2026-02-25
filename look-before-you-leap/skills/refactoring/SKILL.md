@@ -1,6 +1,6 @@
 ---
 name: refactoring
-description: "Use when refactoring, restructuring, extracting, reorganizing, renaming across files, or moving files. Two modes: Full Mode (4-phase refactoring with pre/post contract that catches missed consumers, stale imports, and dead code) and Quick Mode (post-execution simplification pass dispatched after plan steps with `Simplify: true`). Full Mode for intentional refactoring tasks; Quick Mode replaces standalone code-simplifier. Addresses Claude's #1 refactoring failure: incomplete refactoring where consumers, imports, or dead code are left behind."
+description: "Use when refactoring, restructuring, extracting, reorganizing, renaming across files, or moving files. Two modes: Full Mode (4-phase refactoring with pre/post contract that catches missed consumers, stale imports, and dead code) and Quick Mode (post-execution simplification pass dispatched after plan steps with `Simplify: true`). Full Mode for intentional refactoring tasks; Quick Mode replaces standalone code-simplifier. Addresses Claude's #1 refactoring failure: incomplete refactoring where consumers, imports, or dead code are left behind. Do NOT use for: single-variable renames within one function, formatting-only changes, changes that don't cross file boundaries (use engineering-discipline directly), or adding new features disguised as refactoring."
 ---
 
 # Refactoring
@@ -18,6 +18,18 @@ This skill has two modes:
 - **Quick Mode** — For post-step simplification. Dispatched by the conductor
   after plan steps with `Simplify: true`. Progressive, least-invasive-first
   cleanup.
+
+---
+
+## Prerequisites
+
+- An active plan must exist in `.temp/plan-mode/active/`. If none exists,
+  create one before proceeding (enforcement hooks will block edits without
+  one).
+- For Full Mode: the exploration phase (conductor Step 1) should already be
+  complete — the contract builds on discovery findings.
+- For Quick Mode: a passing test baseline is required before any changes.
+  If tests fail pre-existing, stop and report.
 
 ---
 
@@ -67,8 +79,10 @@ Create `refactoring-contract.md` in the active plan directory:
 3. **Find every consumer** — if dep maps are configured, you MUST use
    `deps-query.py` for instant DEPENDENTS (do NOT grep for consumers when
    dep maps exist); otherwise grep for import statements, direct references,
-   re-exports. Be thorough: search for the function name, the file path in
-   imports, type references, and string references
+   re-exports. If `deps-query.py` fails or returns no results, fall back to
+   grep-based consumer search and note the tool failure in the contract. Be
+   thorough: search for the function name, the file path in imports, type
+   references, and string references
 4. **Find all tests** — tests that directly test the targets AND tests that
    exercise code paths through the targets
 5. **Define the expected after-state** — what should be true when you're done?
@@ -104,6 +118,10 @@ Categorize the refactoring to set expectations and scope boundaries.
 Do not attempt a 15-file refactoring as one step.
 
 ### Phase 3: Execute with Contract Awareness
+
+**User confirmation gate:** If the contract's blast radius exceeds 5 files,
+present the contract summary to the user and wait for confirmation before
+proceeding. For 5 files or fewer, proceed autonomously.
 
 Apply changes methodically. For each target in the contract:
 
@@ -212,6 +230,13 @@ file?), read each direct neighbor.
 (e.g., renaming an export requires updating consumers), follow that file's
 imports and consumers.
 
+**Hard scope limits:**
+- Quick Mode MUST NOT modify more than 10 files total. If simplification
+  opportunities require touching more files, report them as recommendations
+  and stop.
+- Do NOT expand beyond Ring 1 unless a Ring 0/1 change mechanically requires
+  it (e.g., renaming an export forces updating its consumers).
+
 **Stop condition:** Stop expanding when no new simplification opportunities
 are discovered at the current ring. Track which files you've read to avoid
 cycles.
@@ -235,7 +260,7 @@ level, consider whether the next level is warranted.
 - Remove unnecessary abstractions (wrappers that just pass through)
 - Simplify control flow (reduce cyclomatic complexity)
 
-**Level 3: Internal APIs**
+**Level 3: Internal APIs** *(requires user confirmation before applying)*
 - Adjust function signatures between internal modules for consistency
 - Reorganize exports within a file for logical grouping
 - Merge or split files when it improves cohesion (rare — only when clear)
@@ -296,6 +321,27 @@ Tests: all passing (N tests, same as baseline)
 If you're unsure whether a change is safe, skip it. The goal is confident
 refactoring with a verified contract, not maximum diff size. A small, safe
 refactoring is better than an ambitious one that leaves orphaned references.
+
+---
+
+## Acceptance Criteria
+
+### Full Mode
+- [ ] `refactoring-contract.md` exists with all targets, consumers, and tests
+- [ ] Every contract checkbox is checked off
+- [ ] Zero stale references (grep for old names/paths confirms)
+- [ ] Zero dead code left behind (grep for orphaned exports confirms)
+- [ ] All tests passing (same count as baseline)
+- [ ] Type checker clean
+- [ ] Linter clean
+- [ ] Contract updated with final Verification section
+
+### Quick Mode
+- [ ] Test baseline established before any changes
+- [ ] No more than 10 files modified
+- [ ] All tests passing after changes (same count as baseline)
+- [ ] Any test-breaking changes reverted and noted
+- [ ] Report written with changes by level, reverts, and skips
 
 ---
 
