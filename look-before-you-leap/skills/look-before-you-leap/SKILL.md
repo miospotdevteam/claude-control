@@ -82,6 +82,10 @@ upfront — it shapes the entire exploration. For audits/reviews, run on key
 entry points per module. If dep maps are NOT configured, skip this preamble.
 <!-- deps-exploration-end -->
 
+If dep maps are NOT configured and this is a TypeScript project (check the
+project profile), suggest `/generate-deps` to the user before continuing.
+Dep maps make consumer finding and blast-radius analysis instant and complete.
+
 1. Read the files in scope AND their imports
 2. Find consumers of files in scope — use deps-query output if available,
    otherwise `Grep` for import statements
@@ -270,6 +274,12 @@ This plugin enforces discipline through hooks, not just instructions:
 - **PostToolUse(Edit|Write)**: When `.ts`/`.tsx` files are edited, marks
   the corresponding dep map module as stale for lazy regeneration on the
   next `deps-query.py` invocation. Silent — no output.
+- **PostToolUse(Edit|Write)**: When a fresh masterPlan.md is written (all
+  steps `[ ]`, none `[x]`/`[~]`), creates `.handoff-pending` marker and
+  injects directive to do the plan mode handoff (EnterPlanMode → summarize
+  → ExitPlanMode). Code edits are blocked by the PreToolUse(Edit|Write)
+  hook until the handoff is done or bypassed. The marker is cleared by
+  SessionStart (new session = fresh context = goal achieved).
 - **PreToolUse(Grep)**: When grepping for import/consumer patterns and dep
   maps are configured, injects a reminder to use `deps-query.py` instead.
   Does not block — serves as a guardrail against falling back to grep when

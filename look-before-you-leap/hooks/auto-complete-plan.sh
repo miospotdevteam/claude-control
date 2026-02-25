@@ -62,11 +62,11 @@ if [ -f "$FALLBACK_FILE" ]; then
   rmdir "$FALLBACK_DIR" 2>/dev/null || true
 fi
 
-# Check if all steps are complete
-pending=$(grep -cE '\[ \]' "$FILE_PATH" 2>/dev/null) || true
-active=$(grep -cE '\[~\]' "$FILE_PATH" 2>/dev/null) || true
-blocked=$(grep -cE '\[!\]' "$FILE_PATH" 2>/dev/null) || true
-done_count=$(grep -cE '\[x\]' "$FILE_PATH" 2>/dev/null) || true
+# Check if all steps are complete (only match checklist lines, not prose)
+pending=$(grep -cE '^\s*-\s*\[ \]' "$FILE_PATH" 2>/dev/null) || true
+active=$(grep -cE '^\s*-\s*\[~\]' "$FILE_PATH" 2>/dev/null) || true
+blocked=$(grep -cE '^\s*-\s*\[!\]' "$FILE_PATH" 2>/dev/null) || true
+done_count=$(grep -cE '^\s*-\s*\[x\]' "$FILE_PATH" 2>/dev/null) || true
 
 remaining=$((pending + active + blocked))
 

@@ -51,11 +51,10 @@ if [ -z "$latest" ] || [ ! -f "$latest" ]; then
   exit 0
 fi
 
-# Count step statuses
-# Match both "[ ] pending" (template format) and bare "[ ]" (common usage)
-pending_count=$(grep -cE '\[ \]' "$latest" 2>/dev/null) || true
-active_count=$(grep -cE '\[~\]' "$latest" 2>/dev/null) || true
-blocked_count=$(grep -cE '\[!\]' "$latest" 2>/dev/null) || true
+# Count step statuses (only match checklist lines, not prose)
+pending_count=$(grep -cE '^\s*-\s*\[ \]' "$latest" 2>/dev/null) || true
+active_count=$(grep -cE '^\s*-\s*\[~\]' "$latest" 2>/dev/null) || true
+blocked_count=$(grep -cE '^\s*-\s*\[!\]' "$latest" 2>/dev/null) || true
 
 remaining=$((pending_count + active_count))
 

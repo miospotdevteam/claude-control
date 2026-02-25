@@ -146,6 +146,13 @@ however small. Don't assume "that can't matter."
 What other components does this need? What settings, config, environment?
 What assumptions does it make?
 
+If dep maps are configured (check the project profile), run `deps-query.py`
+on the buggy file to see its full dependency chain and all consumers. This
+reveals: which modules feed data into the buggy code (potential upstream
+causes), and which consumers are affected (blast radius of the bug and fix).
+If dep maps are not configured and this is a TypeScript project, suggest
+`/generate-deps` to the user — it makes dependency tracing instant.
+
 ---
 
 ## Phase 3: Hypothesis and Testing

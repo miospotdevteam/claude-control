@@ -80,10 +80,12 @@ if [ ! -f "$PLAN_PATH" ]; then
   exit 0
 fi
 
-pending=$(grep -cE '\[ \]' "$PLAN_PATH" 2>/dev/null) || true
-active=$(grep -cE '\[~\]' "$PLAN_PATH" 2>/dev/null) || true
-blocked=$(grep -cE '\[!\]' "$PLAN_PATH" 2>/dev/null) || true
-done_count=$(grep -cE '\[x\]' "$PLAN_PATH" 2>/dev/null) || true
+# Only match checklist lines: "  - [ ] ...", "- [x] ...", "  - [~] ...", etc.
+# This avoids false positives from prose text that mentions [ ] or [~] literally.
+pending=$(grep -cE '^\s*-\s*\[ \]' "$PLAN_PATH" 2>/dev/null) || true
+active=$(grep -cE '^\s*-\s*\[~\]' "$PLAN_PATH" 2>/dev/null) || true
+blocked=$(grep -cE '^\s*-\s*\[!\]' "$PLAN_PATH" 2>/dev/null) || true
+done_count=$(grep -cE '^\s*-\s*\[x\]' "$PLAN_PATH" 2>/dev/null) || true
 
 remaining=$((pending + active + blocked))
 

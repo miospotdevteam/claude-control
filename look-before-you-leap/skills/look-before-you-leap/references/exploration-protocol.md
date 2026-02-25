@@ -23,8 +23,9 @@ boundaries create integration risks. Without it, you'll waste time reading
 files that turn out to be irrelevant and miss files that are critical.
 
 Record all deps-query output — you'll need it for Q3, Q7, and the
-discovery.md. If the conductor says dep maps are NOT configured, skip this
-step and proceed to Q1.
+discovery.md. If the conductor says dep maps are NOT configured and this is
+a TypeScript project, suggest `/generate-deps` to the user — dep maps make
+consumer finding and blast-radius analysis instant. Then proceed to Q1.
 
 ---
 

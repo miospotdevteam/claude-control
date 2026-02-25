@@ -42,6 +42,11 @@ fi
 # Read config as JSON (empty object if missing/broken)
 PROJECT_CONFIG_JSON=$(python3 "$LIB_DIR/read-config.py" "$PROJECT_ROOT" 2>/dev/null) || PROJECT_CONFIG_JSON="{}"
 
+# --- Section 1.7: Clear handoff-pending marker ---
+# A new session means context was cleared (via plan mode handoff, /clear, or
+# compaction). The handoff goal (fresh context for execution) is achieved.
+rm -f "$PROJECT_ROOT/.temp/plan-mode/.handoff-pending"
+
 # --- Section 2: Active plan detection ---
 active_plan_summary=""
 ACTIVE_DIR="$PLAN_DIR/active"
@@ -62,13 +67,14 @@ if [ -d "$ACTIVE_DIR" ]; then
 
     # Check if the plan has any non-complete steps
     # Match both "[ ] pending" (template format) and bare "[ ]" (common usage)
-    has_pending=$(grep -cE '\[ \]|\[~\]|\[!\]' "$latest" 2>/dev/null) || true
+    # Only match checklist lines (not prose that mentions these markers)
+    has_pending=$(grep -cE '^\s*-\s*(\[ \]|\[~\]|\[!\])' "$latest" 2>/dev/null) || true
 
     if [ "$has_pending" -gt 0 ]; then
-      done_count=$(grep -cE '\[x\]' "$latest" 2>/dev/null) || true
-      active_count=$(grep -cE '\[~\]' "$latest" 2>/dev/null) || true
-      pending_count=$(grep -cE '\[ \]' "$latest" 2>/dev/null) || true
-      blocked_count=$(grep -cE '\[!\]' "$latest" 2>/dev/null) || true
+      done_count=$(grep -cE '^\s*-\s*\[x\]' "$latest" 2>/dev/null) || true
+      active_count=$(grep -cE '^\s*-\s*\[~\]' "$latest" 2>/dev/null) || true
+      pending_count=$(grep -cE '^\s*-\s*\[ \]' "$latest" 2>/dev/null) || true
+      blocked_count=$(grep -cE '^\s*-\s*\[!\]' "$latest" 2>/dev/null) || true
 
       # Find the next step to work on
       next_step=""
@@ -307,7 +313,9 @@ try:
             (
                 "- **Its consumers** — who imports THIS file? Use `Grep` to search for\n"
                 "  import/require statements referencing this file. If you change an export,\n"
-                "  every consumer is affected."
+                "  every consumer is affected.\n"
+                "  *Tip: If this is a TypeScript project, suggest `/generate-deps` to the\n"
+                "  user — dep maps provide faster, more complete consumer analysis than grep.*"
             )
         )
 
@@ -317,7 +325,9 @@ try:
             "<!-- deps-consumer-blast-end -->",
             (
                 "1. Find all consumers: use `Grep` to search for import statements\n"
-                "   referencing the changed file."
+                "   referencing the changed file.\n"
+                "   *Tip: If this is a TypeScript project, suggest `/generate-deps` — dep\n"
+                "   maps make blast-radius analysis instant and catch cross-module consumers.*"
             )
         )
 
@@ -341,6 +351,13 @@ try:
         active_disciplines = [k for k, v in disciplines.items() if v]
         if active_disciplines:
             profile_parts.append(f"Active disciplines: {', '.join(active_disciplines)}")
+
+        # Dep maps status
+        if dep_maps.get("modules"):
+            profile_parts.append(f"Dep maps: configured ({len(dep_maps['modules'])} modules)")
+        elif stack.get("language") == "typescript":
+            profile_parts.append("Dep maps: **not configured** — run `/generate-deps` for faster consumer & blast-radius analysis")
+
         if profile_parts:
             project_profile = "**Project Profile** (auto-detected, edit .claude/look-before-you-leap.local.md to customize):\n" + "\n".join(f"- {p}" for p in profile_parts)
 except (json.JSONDecodeError, TypeError):

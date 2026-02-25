@@ -102,6 +102,30 @@ lines.append("   Use brainstorming style — one question at a time, multiple ch
 lines.append("")
 
 step = 3
+
+# Suggest dep maps for TypeScript projects
+is_typescript = False
+try:
+    is_typescript = config.get("stack", {}).get("language") == "typescript"
+except Exception:
+    pass
+
+has_dep_maps = False
+try:
+    has_dep_maps = bool(config.get("dep_maps", {}).get("modules"))
+except Exception:
+    pass
+
+if is_typescript and not has_dep_maps:
+    lines.append(f"{step}. Offer to set up dependency maps.")
+    lines.append("   This is a TypeScript project — dependency maps let the plugin instantly")
+    lines.append("   answer 'who depends on this file?' without grepping. They power blast-radius")
+    lines.append("   analysis, consumer tracking, and cross-module dependency tracing.")
+    lines.append("   If they agree, run the /generate-deps command to auto-detect modules and")
+    lines.append("   generate the maps. If they decline, skip — dep maps can be set up later.")
+    lines.append("")
+    step += 1
+
 if not has_claude_md:
     lines.append(f"{step}. Offer to create a CLAUDE.md — this project has none.")
     lines.append("   If they agree, create .claude/CLAUDE.md using this template:")

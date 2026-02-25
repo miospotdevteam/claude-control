@@ -27,6 +27,12 @@ Read `discovery.md` from `.temp/plan-mode/active/<plan-name>/`. Understand
 the scope, entry points, consumers, existing patterns, test infrastructure,
 and blast radius. This feeds directly into the masterPlan.
 
+If dep maps are configured, the discovery MUST include `deps-query.py` output
+for every file in scope. This output powers accurate blast-radius analysis in
+the plan — without it, consumer counts and cross-module impacts are guesses.
+If the discovery lacks deps-query output for a TypeScript project, go back to
+Step 1 (Explore) and run it before planning.
+
 If the brainstorming skill produced a `design.md` in the same plan
 directory (`.temp/plan-mode/active/<plan-name>/design.md`), read that
 too — it contains the approved design decisions.

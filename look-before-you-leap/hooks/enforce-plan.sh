@@ -52,6 +52,37 @@ if [ -f "$NO_PLAN_FILE" ]; then
   fi
 fi
 
+# Check for handoff-pending marker (fresh plan needs plan mode handoff first)
+HANDOFF_MARKER="$PROJECT_ROOT/.temp/plan-mode/.handoff-pending"
+if [ -f "$HANDOFF_MARKER" ]; then
+  export HOOK_MARKER_PATH="$HANDOFF_MARKER"
+  python3 << 'PYEOF'
+import json, sys, os
+
+marker = os.environ["HOOK_MARKER_PATH"]
+
+output = {
+    "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": (
+            "Plan mode handoff required. A fresh plan exists but you haven't "
+            "done the plan mode handoff yet.\n\n"
+            "Before editing code, you MUST:\n"
+            "1. Enter plan mode (EnterPlanMode)\n"
+            "2. Write a plan summary to the scratch pad\n"
+            "3. Exit plan mode (ExitPlanMode)\n\n"
+            "This gives the user the 'clear context and accept all edits' prompt, "
+            "ensuring execution starts with a fresh context.\n\n"
+            f"To bypass: rm {marker}"
+        )
+    }
+}
+json.dump(output, sys.stdout)
+PYEOF
+  exit 0
+fi
+
 # Check for active plan
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 plan_found=false
