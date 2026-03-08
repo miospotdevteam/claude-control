@@ -78,8 +78,8 @@ fi
 current=$((current + 1))
 echo "$current" > "$COUNTER_FILE"
 
-# Threshold: remind after 3 edits without a plan update
-if [ "$current" -lt 3 ]; then
+# Threshold: remind after 5 edits without a plan update
+if [ "$current" -lt 5 ]; then
   exit 0
 fi
 

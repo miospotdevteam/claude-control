@@ -100,6 +100,45 @@ PYEOF
   exit 0
 fi
 
+# Check for step verification pending (verification agent must run before next-step edits)
+VERIFY_MARKERS=("$PROJECT_ROOT/.temp/plan-mode"/.verify-pending-*)
+if [ -e "${VERIFY_MARKERS[0]}" ]; then
+  # Read which steps are pending verification
+  pending_steps=""
+  for marker in "${VERIFY_MARKERS[@]}"; do
+    step_num=$(head -1 "$marker" 2>/dev/null) || true
+    if [ -n "$step_num" ]; then
+      pending_steps="${pending_steps:+$pending_steps, }Step $step_num"
+    fi
+  done
+
+  export HOOK_PENDING_STEPS="${pending_steps:-unknown}"
+  export HOOK_PLAN_MODE_DIR="$PROJECT_ROOT/.temp/plan-mode"
+  python3 << 'PYEOF'
+import json, os, sys
+
+pending = os.environ["HOOK_PENDING_STEPS"]
+plan_mode_dir = os.environ["HOOK_PLAN_MODE_DIR"]
+
+output = {
+    "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": (
+            f"Step verification pending for {pending}. Code edits are blocked "
+            "until a verification sub-agent confirms the completed step was "
+            "implemented correctly and fully.\n\n"
+            "Dispatch a verification agent now (see the directive injected when "
+            "the step was marked [x]).\n\n"
+            f"To bypass: rm {plan_mode_dir}/.verify-pending-*"
+        )
+    }
+}
+json.dump(output, sys.stdout)
+PYEOF
+  exit 0
+fi
+
 # Check for active plan
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 plan_found=false

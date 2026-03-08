@@ -132,6 +132,20 @@ Initialize the plan directory if needed:
 bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 ```
 
+### Plan review via Orbit
+
+After writing the masterPlan, present it to the user for review using the
+Orbit MCP. The `writing-plans` skill handles the details, but the flow is:
+
+1. Call `orbit_generate_resolved` on the masterPlan.md — opens in VS Code
+2. User reviews with inline comments, then approves or requests changes
+3. If changes requested — read threads, update plan, re-generate, loop
+4. Once approved — proceed with plan mode handoff (EnterPlanMode →
+   summarize → ExitPlanMode) for context clearing
+
+The plan mode handoff happens **after** Orbit approval, not before. This
+ensures the user has reviewed and approved the plan before context clears.
+
 Exception: the user explicitly says "just do it" or "no plan" for a trivially
 obvious single-line change.
 
@@ -276,11 +290,13 @@ This plugin enforces discipline through hooks, not just instructions:
   next `deps-query.py` invocation. Silent — no output.
 - **PostToolUse(Edit|Write)**: When a fresh masterPlan.md is written (all
   steps `[ ]`, none `[x]`/`[~]`), creates `.handoff-pending` marker and
-  injects directive to do the plan mode handoff (EnterPlanMode → summarize
-  → ExitPlanMode). The PreToolUse(Edit|Write) hook shows a soft warning
-  (not a hard block) while the marker exists. The marker auto-clears when
-  any step is marked `[x]` or `[~]` (execution started), or when the plan
-  file is missing/stale. Also cleared by SessionStart.
+  injects directive to present the plan via Orbit MCP for user review
+  (orbit_generate_resolved → user reviews in VS Code → approve/request
+  changes loop), then do the plan mode handoff (EnterPlanMode → summarize
+  → ExitPlanMode) post-approval. The PreToolUse(Edit|Write) hook shows a
+  soft warning (not a hard block) while the marker exists. The marker
+  auto-clears when any step is marked `[x]` or `[~]` (execution started),
+  or when the plan file is missing/stale. Also cleared by SessionStart.
 - **PreToolUse(Grep)**: When grepping for import/consumer patterns and dep
   maps are configured, injects a reminder to use `deps-query.py` instead.
   Does not block — serves as a guardrail against falling back to grep when

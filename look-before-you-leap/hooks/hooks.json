@@ -125,6 +125,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/verify-step-completion.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "Stop": [

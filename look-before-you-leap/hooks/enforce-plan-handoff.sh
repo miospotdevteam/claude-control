@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# PostToolUse hook: Enforce plan mode handoff for fresh plans.
+# PostToolUse hook: Enforce plan review handoff for fresh plans.
 #
 # After every Edit/Write to a masterPlan.md, checks if the plan is fresh
 # (all steps are [ ], none are [x] or [~]). If so:
 # 1. Creates .temp/plan-mode/.handoff-pending marker
-# 2. Injects a strong directive to enter plan mode, summarize, and exit
+# 2. Injects directive to present the plan via Orbit MCP for user review
 #
-# This ensures Claude always does the plan mode handoff (enter plan mode →
-# summarize → exit plan mode → user gets "clear context and accept all edits"
-# prompt) before starting execution. Fresh context = more reliable execution.
+# The Orbit flow: generate resolved artifact (opens in VS Code) → user
+# reviews with inline comments → user approves or requests changes →
+# Claude reads feedback, iterates if needed, then proceeds to execution
+# via plan mode handoff (EnterPlanMode → summarize → ExitPlanMode).
 #
 # The marker is cleared by session-start.sh (new session = context cleared).
 # Bypass: rm .temp/plan-mode/.handoff-pending
@@ -67,7 +68,12 @@ PROJECT_ROOT="$(find_project_root "${HOOK_CWD:-$PWD}")"
 PLAN_MODE_DIR="$PROJECT_ROOT/.temp/plan-mode"
 MARKER_FILE="$PLAN_MODE_DIR/.handoff-pending"
 
-# Create the marker (idempotent — re-creating on repeated edits is fine)
+# Don't re-fire if handoff is already pending (prevents re-injection after Orbit approval)
+if [ -f "$MARKER_FILE" ]; then
+  exit 0
+fi
+
+# Create the marker
 echo "$FILE_PATH" > "$MARKER_FILE"
 
 # Inject directive
@@ -91,21 +97,43 @@ output = {
     "hookSpecificOutput": {
         "hookEventName": "PostToolUse",
         "additionalContext": (
-            f"PLAN MODE HANDOFF REQUIRED — Fresh plan '{plan_name}' detected "
+            f"PLAN REVIEW REQUIRED — Fresh plan '{plan_name}' detected "
             f"({pending} steps, all pending).\n\n"
-            "STOP. Do NOT start editing code files. You MUST do the plan mode "
-            "handoff first:\n\n"
-            "1. Call `EnterPlanMode` to enter plan mode\n"
-            "2. Read the masterPlan you just wrote from disk\n"
-            "3. Write a summary to the plan mode scratch pad — include: key steps, "
-            "files involved, acceptance criteria (enough for the user to approve "
-            "or reject)\n"
-            "4. Call `ExitPlanMode` to present the plan to the user\n\n"
-            "This gives the user the built-in 'autoaccept edits and clear context?' "
-            "prompt. If they accept, context clears and execution starts fresh — "
-            "far more reliable than executing in a bloated context full of "
-            "exploration data.\n\n"
-            "Code edits are BLOCKED until this handoff is complete (or bypassed).\n"
+            "STOP. Do NOT start editing code files. Present the plan to the "
+            "user for review via Orbit MCP, then do the plan mode handoff.\n\n"
+            "## Step A: Present via Orbit\n\n"
+            f"1. Call `orbit_generate_resolved` with sourcePath: `{plan_path}`\n"
+            "   This opens the plan in VS Code as a reviewable artifact.\n"
+            "2. Tell the user: \"The plan is open in VS Code for review. "
+            "You can add inline comments on any section, then approve or "
+            "request changes.\"\n"
+            "3. Wait for the user to respond (they will say they approved, "
+            "request changes, or ask you to check).\n\n"
+            "## Step B: Check review state\n\n"
+            f"4. Call `orbit_get_review_state` with sourcePath: `{plan_path}`\n"
+            f"5. Call `orbit_list_threads` with sourcePath: `{plan_path}` "
+            "and status: `open`\n\n"
+            "## Step C: Handle feedback\n\n"
+            "- **If approved with no open threads**: Proceed to Step D.\n"
+            "- **If approved with open threads**: Read each thread, reply as "
+            "agent acknowledging the feedback, resolve threads, then proceed "
+            "to Step D.\n"
+            "- **If changes_requested**: Read all open threads. Update the "
+            "masterPlan.md to address the feedback. Reply to each thread "
+            "explaining what you changed. Resolve threads. Call "
+            f"`orbit_generate_resolved` again on `{plan_path}` to refresh "
+            "the artifact. Tell the user to re-review. Loop back to Step B.\n\n"
+            "## Step D: Plan mode handoff (post-approval)\n\n"
+            "6. Call `EnterPlanMode` to enter plan mode\n"
+            "7. Read the masterPlan from disk\n"
+            "8. Write a summary to the plan mode scratch pad — include: key "
+            "steps, files involved, acceptance criteria\n"
+            "9. Call `ExitPlanMode` to present to the user\n\n"
+            "This gives the user the 'autoaccept edits and clear context?' "
+            "prompt. If they accept, context clears and execution starts "
+            "fresh.\n\n"
+            "Code edits are BLOCKED until this handoff is complete (or "
+            "bypassed).\n"
             f"To bypass: rm {marker}"
         )
     }

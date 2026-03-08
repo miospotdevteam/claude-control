@@ -34,6 +34,11 @@ print(data.get('cwd', ''))
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 
+# Allow stopping during plan review (handoff pending = waiting for user in Orbit)
+if [ -f "$PROJECT_ROOT/.temp/plan-mode/.handoff-pending" ]; then
+  exit 0
+fi
+
 # No active directory — nothing to check
 if [ ! -d "$ACTIVE_DIR" ]; then
   exit 0

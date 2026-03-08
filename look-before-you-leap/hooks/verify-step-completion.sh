@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# PostToolUse hook: Verify step completion before proceeding to next step.
+#
+# After every Edit/Write to a masterPlan.md, compares step statuses with
+# a cached snapshot. When a step transitions to [x]:
+# 1. Creates .verify-pending-N marker
+# 2. Injects directive to dispatch a verification sub-agent
+#
+# The verification agent checks acceptance criteria, file changes, and
+# Progress completeness before removing the marker.
+#
+# Marker: .temp/plan-mode/.verify-pending-N (N = step number)
+# Cache: .temp/plan-mode/.step-status-cache (N:status per line)
+#
+# Input: JSON on stdin with tool_name, tool_input.file_path, cwd
+
+set -euo pipefail
+
+INPUT=$(cat)
+
+# Extract file path
+FILE_PATH=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('tool_input', {}).get('file_path', ''))
+" <<< "$INPUT" 2>/dev/null) || true
+
+# Only act on masterPlan.md in active plans
+if [[ "$FILE_PATH" != *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
+  exit 0
+fi
+
+[ ! -f "$FILE_PATH" ] && exit 0
+
+# Find project root
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+
+CWD=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('cwd', ''))
+" <<< "$INPUT" 2>/dev/null) || true
+
+PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
+PLAN_MODE_DIR="$PROJECT_ROOT/.temp/plan-mode"
+CACHE_FILE="$PLAN_MODE_DIR/.step-status-cache"
+
+export HOOK_FILE_PATH="$FILE_PATH"
+export HOOK_CACHE_FILE="$CACHE_FILE"
+export HOOK_PLAN_MODE_DIR="$PLAN_MODE_DIR"
+
+# Compare current step statuses with cached, detect [x] transitions
+RESULT=$(python3 << 'PYEOF'
+import json, os, re, sys
+
+file_path = os.environ["HOOK_FILE_PATH"]
+cache_file = os.environ["HOOK_CACHE_FILE"]
+plan_mode_dir = os.environ["HOOK_PLAN_MODE_DIR"]
+
+# Parse current step statuses from masterPlan.md
+# Match lines like: - **Status**: [ ] pending  or  - **Status**: [x] complete
+with open(file_path) as f:
+    content = f.read()
+
+step_pattern = re.compile(
+    r'^###\s+Step\s+(\d+):.*?\n'
+    r'.*?-\s+\*\*Status\*\*:\s*\[(.)\]',
+    re.MULTILINE | re.DOTALL
+)
+
+current_steps = {}
+for match in step_pattern.finditer(content):
+    step_num = match.group(1)
+    status = match.group(2)
+    current_steps[step_num] = status
+
+# Read cached statuses
+cached_steps = {}
+if os.path.exists(cache_file):
+    with open(cache_file) as f:
+        for line in f:
+            line = line.strip()
+            if ':' in line:
+                num, status = line.split(':', 1)
+                cached_steps[num.strip()] = status.strip()
+
+# Find steps that just transitioned to [x]
+newly_completed = []
+for step_num, status in current_steps.items():
+    if status == 'x' and cached_steps.get(step_num, ' ') != 'x':
+        newly_completed.append(step_num)
+
+# Update cache
+os.makedirs(plan_mode_dir, exist_ok=True)
+with open(cache_file, 'w') as f:
+    for num in sorted(current_steps.keys(), key=int):
+        f.write(f"{num}:{current_steps[num]}\n")
+
+# If no new completions, exit silently
+if not newly_completed:
+    print(json.dumps({"newly_completed": []}))
+    sys.exit(0)
+
+# Create .verify-pending-N markers for each newly completed step
+markers_created = []
+for step_num in newly_completed:
+    marker_path = os.path.join(plan_mode_dir, f".verify-pending-{step_num}")
+    with open(marker_path, 'w') as f:
+        f.write(f"{step_num}\n{file_path}\n")
+    markers_created.append(step_num)
+
+print(json.dumps({"newly_completed": markers_created, "plan_path": file_path}))
+PYEOF
+) || true
+
+# Parse result
+newly_completed=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+steps = data.get('newly_completed', [])
+print(' '.join(str(s) for s in steps))
+" <<< "$RESULT" 2>/dev/null) || true
+
+# No new completions — exit silently
+if [ -z "$newly_completed" ]; then
+  exit 0
+fi
+
+plan_path=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('plan_path', ''))
+" <<< "$RESULT" 2>/dev/null) || true
+
+plan_name="$(basename "$(dirname "$plan_path")")"
+
+export HOOK_NEWLY_COMPLETED="$newly_completed"
+export HOOK_PLAN_PATH="$plan_path"
+export HOOK_PLAN_NAME="$plan_name"
+
+python3 << 'PYEOF'
+import json, os, sys
+
+steps = os.environ["HOOK_NEWLY_COMPLETED"]
+plan_path = os.environ["HOOK_PLAN_PATH"]
+plan_name = os.environ["HOOK_PLAN_NAME"]
+plan_mode_dir = os.environ["HOOK_PLAN_MODE_DIR"]
+
+step_list = steps.split()
+step_display = ", ".join(f"Step {s}" for s in step_list)
+markers = ", ".join(f".verify-pending-{s}" for s in step_list)
+
+output = {
+    "hookSpecificOutput": {
+        "hookEventName": "PostToolUse",
+        "additionalContext": (
+            f"STEP VERIFICATION REQUIRED — {step_display} just marked [x] in "
+            f"plan '{plan_name}'.\n\n"
+            "STOP. Before proceeding to the next step, you MUST dispatch a "
+            "verification sub-agent to confirm the completed step was "
+            "implemented correctly and fully.\n\n"
+            "## Dispatch verification agent\n\n"
+            "Use the Agent tool (general-purpose, foreground) with this prompt:\n\n"
+            "```\n"
+            f"Verify that {step_display} of the plan at `{plan_path}` was "
+            "implemented correctly and FULLY. Do the following checks:\n\n"
+            "1. Read the step from the masterPlan.md — note its acceptance "
+            "criteria, 'Files involved' list, and Progress checklist.\n"
+            "2. Check `git diff --name-only` to confirm every file listed in "
+            "'Files involved' was actually modified.\n"
+            "3. Check that ALL Progress items in the step are marked [x] — "
+            "none should be [ ] or [~].\n"
+            "4. If the acceptance criteria include a test or verification "
+            "command, run it.\n"
+            "5. Read the modified files briefly to confirm the changes match "
+            "the step's description.\n\n"
+            "If ALL checks pass:\n"
+            f"- Remove the verification marker(s): "
+            + " && ".join(f"rm {plan_mode_dir}/.verify-pending-{s}" for s in step_list)
+            + "\n"
+            "- Report: 'Verification PASSED for " + step_display + "'\n\n"
+            "If ANY check fails:\n"
+            "- Report exactly what is missing or incomplete\n"
+            "- Do NOT remove the marker — code edits remain blocked until "
+            "the issues are fixed\n"
+            "```\n\n"
+            "Code file edits are BLOCKED until verification passes (the "
+            f"enforce-plan hook checks for {markers}).\n\n"
+            f"To bypass: rm {plan_mode_dir}/.verify-pending-* "
+            "(only if you're sure the step is fully implemented)"
+        )
+    }
+}
+
+json.dump(output, sys.stdout)
+PYEOF

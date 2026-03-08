@@ -182,9 +182,36 @@ export function validateEmail(email: string): { valid: boolean; error?: string }
 ```
 ````
 
-### 4. Hand off to execution
+### 4. Present for review via Orbit
 
-After saving the masterPlan to disk:
+After saving the masterPlan to disk, present it to the user for interactive
+review using the Orbit MCP:
+
+1. Call `orbit_generate_resolved` with the masterPlan.md path. This opens
+   the plan in VS Code as a reviewable artifact with inline-commentable
+   blocks.
+2. Tell the user: *"The plan is open in VS Code for review. You can add
+   inline comments on any section, then approve or request changes."*
+3. Wait for the user to respond.
+
+#### Review loop
+
+4. Call `orbit_get_review_state` to check the status.
+5. Call `orbit_list_threads` with `status: "open"` to read any comments.
+
+Handle the result:
+
+- **Approved, no open threads** → proceed to step 5 (plan mode handoff).
+- **Approved, with open threads** → read each thread, reply as `agent`
+  acknowledging the feedback, resolve threads, then proceed to step 5.
+- **Changes requested** → read all open threads. Update masterPlan.md to
+  address the feedback. Reply to each thread explaining what changed.
+  Resolve threads. Call `orbit_generate_resolved` again to refresh the
+  artifact. Tell the user to re-review. Loop back to check review state.
+
+### 5. Plan mode handoff (post-approval)
+
+After the plan is approved via Orbit:
 
 1. **If not already in plan mode**, call `EnterPlanMode` to enter it.
    If already in plan mode (e.g., the conductor entered it earlier), skip
@@ -213,8 +240,10 @@ This skill must NOT:
   If you find gaps, go back to Step 1 (Explore) first.
 - **Overwrite an existing masterPlan.md without user consent** — if a plan
   already exists in the target directory, ask before replacing it.
-- **Skip the plan mode handoff** — every plan must be presented to the user
-  for approval via ExitPlanMode before execution begins.
+- **Skip the Orbit review** — every plan must be presented to the user
+  for review via Orbit MCP (orbit_generate_resolved) before execution.
+- **Skip the plan mode handoff** — after Orbit approval, every plan must
+  go through plan mode handoff (ExitPlanMode) before execution begins.
 - **Write implementation code** — this skill produces plans, not code files.
   Code belongs in the plan's code blocks, not in the project source tree.
 

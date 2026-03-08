@@ -1,4 +1,9 @@
 {
   "name": "look-before-you-leap",
-  "description": "Unified engineering discipline, persistent plans, and multi-discipline coverage for all coding tasks"
+  "description": "Unified engineering discipline, persistent plans, and multi-discipline coverage for all coding tasks",
+  "mcpServers": {
+    "orbit": {
+      "command": "orbit-mcp"
+    }
+  }
 }
