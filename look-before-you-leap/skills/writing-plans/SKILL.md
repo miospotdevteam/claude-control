@@ -187,27 +187,26 @@ export function validateEmail(email: string): { valid: boolean; error?: string }
 After saving the masterPlan to disk, present it to the user for interactive
 review using the Orbit MCP:
 
-1. Call `orbit_generate_resolved` with the masterPlan.md path. This opens
-   the plan in VS Code as a reviewable artifact with inline-commentable
-   blocks.
-2. Tell the user: *"The plan is open in VS Code for review. You can add
-   inline comments on any section, then approve or request changes."*
-3. Wait for the user to respond.
+1. Tell the user: *"The plan is open in VS Code for review. Add inline
+   comments on any section, then click Approve or Request Changes."*
+2. Call `orbit_await_review` with the masterPlan.md path. This generates
+   the artifact, opens it in VS Code, and **blocks** until the user clicks
+   Approve or Request Changes. Do NOT call `orbit_generate_resolved`
+   separately — `orbit_await_review` does it internally.
 
-#### Review loop
+#### Handle the response
 
-4. Call `orbit_get_review_state` to check the status.
-5. Call `orbit_list_threads` with `status: "open"` to read any comments.
+`orbit_await_review` returns JSON with `status` and `threads`.
 
-Handle the result:
-
-- **Approved, no open threads** → proceed to step 5 (plan mode handoff).
-- **Approved, with open threads** → read each thread, reply as `agent`
+- **`approved`, no threads** → proceed to step 5 (plan mode handoff).
+- **`approved`, with threads** → read each thread, reply as `agent`
   acknowledging the feedback, resolve threads, then proceed to step 5.
-- **Changes requested** → read all open threads. Update masterPlan.md to
+- **`changes_requested`** → read all threads. Update masterPlan.md to
   address the feedback. Reply to each thread explaining what changed.
-  Resolve threads. Call `orbit_generate_resolved` again to refresh the
-  artifact. Tell the user to re-review. Loop back to check review state.
+  Resolve threads. Call `orbit_await_review` again for re-review. Loop
+  back to handle the new response.
+- **`timeout`** → tell the user the review timed out and ask them to
+  review when ready.
 
 ### 5. Plan mode handoff (post-approval)
 

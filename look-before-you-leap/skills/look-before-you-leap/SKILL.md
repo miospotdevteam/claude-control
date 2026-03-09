@@ -137,10 +137,10 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 After writing the masterPlan, present it to the user for review using the
 Orbit MCP. The `writing-plans` skill handles the details, but the flow is:
 
-1. Call `orbit_generate_resolved` on the masterPlan.md — opens in VS Code
-2. User reviews with inline comments, then approves or requests changes
-3. If changes requested — read threads, update plan, re-generate, loop
-4. Once approved — proceed with plan mode handoff (EnterPlanMode →
+1. Call `orbit_await_review` on the masterPlan.md — opens in VS Code and
+   blocks until the user approves or requests changes
+2. Handle the response (approved → proceed, changes_requested → iterate)
+3. Once approved — proceed with plan mode handoff (EnterPlanMode →
    summarize → ExitPlanMode) for context clearing
 
 The plan mode handoff happens **after** Orbit approval, not before. This
