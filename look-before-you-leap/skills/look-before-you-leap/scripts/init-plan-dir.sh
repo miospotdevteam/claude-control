@@ -60,4 +60,11 @@ if [ ! -f "$RESUME_SCRIPT" ] || [ "$SCRIPT_DIR/resume.sh" -nt "$RESUME_SCRIPT" ]
   echo "Installed $RESUME_SCRIPT"
 fi
 
+# Copy plan_utils.py if missing or outdated (used by plan-status.sh and resume.sh)
+UTILS_SCRIPT="$SCRIPTS_DIR/plan_utils.py"
+if [ ! -f "$UTILS_SCRIPT" ] || [ "$SCRIPT_DIR/plan_utils.py" -nt "$UTILS_SCRIPT" ]; then
+  cp "$SCRIPT_DIR/plan_utils.py" "$UTILS_SCRIPT"
+  echo "Installed $UTILS_SCRIPT"
+fi
+
 echo "Plan directory ready at $PLAN_DIR"

@@ -33,11 +33,9 @@ When you open a file to change it, also read:
 - **Its imports** — what does it depend on? Are there shared utilities,
   types, or constants you should know about?
 <!-- deps-consumer-read-start -->
-- **Its consumers** — who imports THIS file? If dep maps are configured
-  (check the project profile for the command), you MUST use `deps-query.py`
-  — do NOT grep for consumers when dep maps exist. Grep is only the fallback
-  for projects without dep maps. If you change an export, every consumer is
-  affected.
+- **Its consumers** — who imports THIS file? Use `deps-query.py` for
+  consumer analysis (a hook enforces this when dep maps are configured).
+  If you change an export, every consumer is affected.
 <!-- deps-consumer-read-end -->
 - **Sibling files** — how do adjacent files in the same directory solve
   similar problems? If there's already a pattern (naming, error handling,
@@ -78,7 +76,7 @@ What you must NEVER do:
 - Implement a simplified version without saying so
 - Build the backend but "forget" to wire up the frontend
 - Drop features during implementation that were in your plan
-- Declare victory when your plan has unchecked items
+- Declare victory when your plan has unfinished items
 
 If you catch yourself thinking "I'll skip this for now," stop. Either do it
 or explicitly flag it. Silently trimming scope is the single worst thing you
@@ -124,10 +122,8 @@ When you modify any of these, you MUST check all consumers:
 The check process:
 
 <!-- deps-consumer-blast-start -->
-1. Find all consumers: if dep maps are configured, you MUST use
-   `deps-query.py` to get the DEPENDENTS list — do NOT grep for consumers
-   when dep maps exist. Grep is only the fallback for projects without dep
-   maps.
+1. Find all consumers: use `deps-query.py` when dep maps are configured
+   (a hook enforces this), otherwise grep for import statements.
 <!-- deps-consumer-blast-end -->
 2. Open every file that references it
 3. Verify each reference still works with your change
@@ -221,9 +217,9 @@ Before saying a task is done:
 1. Re-read the user's original message word by word
 2. Re-read your plan (if you wrote one)
 3. For each requirement: confirm it's implemented AND working
-4. For each plan step: confirm it's checked off
+4. For each plan step: confirm it's marked done
 5. Verification commands pass (types, lint, tests)
-6. No unchecked items remain in the plan
+6. No pending items remain in the plan
 
 If ANY requirement is unaddressed or ANY plan step is incomplete, you are
 NOT done. Go finish it, or explicitly flag what's remaining and why.
@@ -234,9 +230,9 @@ Before declaring a task done, every item must be checked:
 
 - [ ] User's original request re-read word by word
 - [ ] Every requirement implemented AND verified working
-- [ ] Plan steps all checked off (if a plan exists)
+- [ ] Plan steps all marked done (if a plan exists)
 - [ ] Verification commands pass (types, lint, tests)
-- [ ] No unchecked plan items remain
+- [ ] No pending plan items remain
 - [ ] Gaps, risks, and skipped items communicated explicitly
 
 ---
@@ -298,8 +294,8 @@ If you catch yourself doing any of these, stop and reconsider:
 | Skipping a step because it's hard | Flag it explicitly to the user |
 | Declaring "done" without running checks | Run tsc/lint/tests first |
 | Using a package without checking package.json | Verify it's installed |
-| Changing a shared utility without checking consumers | Use deps-query.py (MUST when configured) or grep (only when dep maps don't exist) |
-| Grepping for import/from/require when dep maps are configured | Use deps-query.py — it's faster, more complete, and catches cross-module consumers |
+| Changing a shared utility without checking consumers | Use deps-query.py (enforced by hook) or grep for consumer analysis |
+| Grepping for import/from/require when dep maps are configured | A hook blocks this — use deps-query.py instead |
 | Summarizing without mentioning what you skipped | List gaps explicitly |
 | Fixing one bug instance without checking for more | Self-audit for the pattern |
 | Implementing from scratch | Search for existing utilities first |
@@ -310,10 +306,10 @@ If you catch yourself doing any of these, stop and reconsider:
 | Using env vars without verifying they load | Check .env and loading mechanism |
 | Saying "You're absolutely right!" | Fix the bug, audit for similar ones, report |
 | Thinking "I'll skip this for now" | Do it or flag it — no silent cuts |
-| Editing 3+ code files without updating the plan | Stop coding, update masterPlan.md Progress NOW |
+| Editing 3+ code files without updating the plan | Stop coding, update plan.json via plan_utils.py NOW |
 | Thinking "I'll update the plan later" | Later never comes — compaction will erase your memory |
 | Using Bash to write files because Edit/Write was denied | The hook denied it for a reason — create the plan first |
 | Calling a hook block a "false positive" | Hooks enforce discipline. Follow the process, don't bypass it |
 | Inventing creative workarounds for hook blocks (python3 -c, node -e) | The hook blocked you for a reason. Follow the process, not your creativity |
-| Marking a plan step [x] without verifying the work | Verify first, then mark complete — [x] means DONE, not "I wrote some code" |
-| Moving a plan to completed/ before all steps are [x] | Finish the work or flag what's remaining to the user |
+| Marking a plan step done without verifying the work | Verify first, then mark complete — done means verified, not "I wrote some code" |
+| Moving a plan to completed/ before all steps are done | Finish the work or flag what's remaining to the user |

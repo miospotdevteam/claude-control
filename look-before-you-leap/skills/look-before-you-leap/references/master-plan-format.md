@@ -1,13 +1,21 @@
 # masterPlan.md Template
 
-Copy this template exactly when creating a new plan. The Discovery Summary and
-Completed Summary enable seamless resumption after compaction. The Progress field
-within each step enables resumption mid-step when auto-compaction fires.
+masterPlan.md is the **user-facing proposal document** reviewed via Orbit.
+It communicates intent, critical decisions, warnings, and risk — NOT
+execution state. Execution state lives in `plan.json` (see
+`references/plan-schema.md`).
+
+No `[x]`/`[ ]` checkboxes. No progress tracking. No result fields.
+Just what, why, and what could go wrong.
 
 ---
 
 ```markdown
 # Plan: <Descriptive Title>
+
+> **For Claude:** REQUIRED SKILL: Use look-before-you-leap:engineering-discipline
+> for all steps. Also invoke each step's `Skill` field when it is not `none`.
+> See the Required Skills section for the full list.
 
 ## Context
 
@@ -18,8 +26,7 @@ original conversation.>
 ## Required Skills
 
 <List any installed skills that should be invoked at specific steps. Use exact
-skill identifiers — not vague topic hints — so this section survives compaction.
-Format:
+skill identifiers. Format:
 
 - **Step N**: `look-before-you-leap:frontend-design` (full mode)
 - **Step M**: `look-before-you-leap:writing-plans` (plan generation)
@@ -29,190 +36,88 @@ disciplines.">
 
 ## Applicable Disciplines
 
-<Which discipline checklists apply to this task. Read the relevant checklist
-before starting the associated step. Format:
+<Which discipline checklists apply to this task. Format:
 
 - **testing-checklist.md** — applies at Steps N, M (writing/modifying tests)
 - **security-checklist.md** — applies at Step K (auth/input handling)
-- **git-checklist.md** — applies at all commit points
-
-If unsure, list all that might apply — it's better to check an unnecessary
-checklist than to miss a relevant one.>
+- **git-checklist.md** — applies at all commit points>
 
 ## Discovery Summary
 
-<Structured findings from the exploration phase. This section is your gift to
-your future compacted self. Complete ALL 8 sections — if a section doesn't apply,
-write "N/A" rather than omitting it.>
+<Structured findings from exploration. Complete ALL 8 sections.>
 
 ### Scope
-<What files/directories are in scope for this change. Be explicit about
-boundaries: "Only files in src/auth/ and src/middleware/. NOT touching
-src/api/ even though it imports from auth.">
+<What files/directories are in scope. Be explicit about boundaries.>
 
 ### Entry Points
-<The primary files to modify and their current state. Include file paths
-and brief descriptions of what they contain.>
+<The primary files to modify.>
 
 ### Consumers
-<Who imports/uses the files you're changing. If dep maps are configured,
-you MUST list the deps-query.py output for each queried file (do NOT
-substitute with grep results). Include DEPENDENTS count and file paths.
-If dep maps are not configured, include file paths found via grep.
-If many consumers, list count and representative examples.>
+<Who imports/uses the files you're changing.>
 
 ### Existing Patterns
-<How similar problems are already solved in this codebase. Naming
-conventions, error handling patterns, data flow patterns, etc.>
+<How similar problems are already solved in this codebase.>
 
 ### Test Infrastructure
-<What testing framework is used, where tests live, how to run them,
-any test utilities or fixtures already available.>
+<Testing framework, test location, how to run tests.>
 
 ### Conventions
-<Project-specific conventions from CLAUDE.md, README.md, or observed
-patterns. Include coding style, file organization, naming rules.>
+<Project-specific conventions.>
 
 ### Blast Radius
-<What could break if you get this wrong. Shared utilities, types, APIs
-that downstream consumers depend on.>
+<What could break. Consumer counts, shared types, public API surfaces.>
 
 ### Confidence Rating
-<Low / Medium / High. Low = need more exploration before planning.
-Medium = have enough to proceed but some unknowns. High = fully mapped.
-You are NOT ready to plan until confidence is Medium or higher.>
+<Low / Medium / High with justification.>
 
 ## Steps
 
 ### Step 1: <Title>
-- **Status**: [ ] pending
 - **Skill**: `look-before-you-leap:refactoring` | none
 - **Simplify**: true/false
 - **Sub-plan**: none
 - **Files involved**: `src/foo.ts`, `src/bar.ts`
-- **Description**: What needs to happen in this step. Be specific enough that
-  a fresh context window can execute this without guessing.
-- **Acceptance criteria**: How to know this step is done — concrete, verifiable
-  conditions (e.g., "tsc --noEmit passes", "new route returns 200", "test X
-  passes").
-- **Progress**:
-  - [ ] <sub-task description> (files: `foo.ts`, `bar.ts`)
-  - [ ] <sub-task description> (files: `baz.ts`)
-- **Result**: <leave empty — filled in after completion>
+- **Description**: What needs to happen in this step.
+- **Acceptance criteria**: How to know this step is done.
 
 ### Step 2: <Title>
-- **Status**: [ ] pending
-- **Skill**: none
-- **Simplify**: true/false
-- **Sub-plan**: `sub-plan-01-schema-migration.md`
-- **Files involved**: `drizzle/schema.ts`, `src/db/migrations/`, `src/models/`
-- **Description**: ...
-- **Acceptance criteria**: ...
-- **Progress**:
-  - [ ] <sub-task or file group description>
-  - [ ] <sub-task or file group description>
-- **Result**: <leave empty>
-
-### Step 3: <Title>
 ...
 
 ## Blocked Items
 
-<List anything that's blocked, why, and what's needed to unblock. Format:
-
-- **Step N: <title>** — Blocked because <reason>. Needs: <what would unblock>.
-
+<List anything that's blocked, why, and what's needed to unblock.
 If nothing is blocked, write "None.">
 
 ## Completed Summary
 
-<Updated as steps complete. This is a running log so the next context window
-doesn't have to re-discover what's been done. Format:
+<Updated as steps complete. Running log for context resumption. Format:
 
-- **Step 1** (complete): Created apiClient.ts with typed wrappers. Used existing
-  AuthContext pattern. Updated 3 consumer files.
-- **Step 2** (complete): Migrated schema, ran drizzle push, verified all queries.
+- **Step 1** (complete): Created apiClient.ts with typed wrappers.
+- **Step 2** (complete): Migrated schema, verified all queries.
 
-Start with "No steps completed yet." and update as you go.>
+Start with "No steps completed yet.">
 
 ## Deviations
 
-<Any places where the implementation deviated from the original plan and why.
-This helps the next context window understand why reality differs from the plan.
-
-Start with "None yet." and update as needed.>
+<Places where implementation deviated from the plan and why.
+Start with "None yet.">
 ```
 
 ---
 
-## The Progress Field
-
-The **Progress** field is a checklist of sub-tasks within a step. It serves as
-a fine-grained save point — when auto-compaction fires mid-step, the checked
-items tell your next context window exactly where to resume.
-
-**Update the Progress checklist after every 2-3 file edits.** This is the
-autosave mechanism that prevents lost work.
-
-### Example: Progress during execution
-
-Before starting:
-```markdown
-- **Progress**:
-  - [ ] Update auth middleware (files: `middleware.ts`)
-  - [ ] Update API client (files: `api.ts`, `types.ts`)
-  - [ ] Update consumer pages (files: `login.tsx`, `signup.tsx`, `profile.tsx`)
-```
-
-After the first sub-task and partway through the second:
-```markdown
-- **Progress**:
-  - [x] Update auth middleware (files: `middleware.ts`)
-  - [~] Update API client — api.ts done, types.ts remaining
-  - [ ] Update consumer pages (files: `login.tsx`, `signup.tsx`, `profile.tsx`)
-- **Result**: (partial) middleware.ts updated to use new token format. Using
-  existing refreshToken() utility from src/lib/auth.ts.
-```
-
-### When to add Progress items
-
-- **Always** for steps with 3+ files
-- **Always** for steps with multiple distinct sub-tasks
-- For simple 1-2 file steps, Progress can be omitted or a single item
-
-### Progress markers
-
-| Marker | Meaning |
-|--------|---------|
-| `[ ]` | Not started |
-| `[~]` | Partially done (add a note about what remains) |
-| `[x]` | Complete |
-
-## Status Markers
-
-Use these exact markers — the helper scripts parse them:
-
-| Marker | Meaning |
-|--------|---------|
-| `[ ] pending` | Not yet started |
-| `[~] in-progress` | Currently being worked on |
-| `[x] complete` | Done and verified |
-| `[!] blocked` | Cannot proceed — see Blocked Items |
-
 ## Naming Convention
 
-Plan directories live under `.temp/plan-mode/active/` and use kebab-case:
+Plan directories use kebab-case under `.temp/plan-mode/active/`:
 
 - `.temp/plan-mode/active/migrate-auth-to-v2/` (good)
 - `.temp/plan-mode/active/fix-login-bug/` (good)
 - `.temp/plan-mode/active/task-1/` (bad — not descriptive)
-- `.temp/plan-mode/active/update/` (bad — too vague)
 
-When all steps are complete, the plan folder is moved from `active/` to `completed/`.
+When all steps are complete, the plan folder moves to `completed/`.
 
 ## Small Task Plans
 
-Even small tasks get plans, but they can be minimal:
+Even small tasks get plans, but masterPlan.md can be minimal:
 
 ```markdown
 # Plan: Fix Login Button Alignment
@@ -229,7 +134,7 @@ None — all work covered by core disciplines.
 ## Discovery Summary
 
 ### Scope
-Only `src/app/(auth)/login/page.tsx`. Button component itself is NOT modified.
+Only `src/app/(auth)/login/page.tsx`.
 
 ### Entry Points
 - `src/app/(auth)/login/page.tsx` — login page with misaligned button wrapper
@@ -255,14 +160,12 @@ High — issue is clear, fix is straightforward.
 ## Steps
 
 ### Step 1: Fix button alignment
-- **Status**: [ ] pending
 - **Skill**: none
 - **Simplify**: false
 - **Sub-plan**: none
 - **Files involved**: `src/app/(auth)/login/page.tsx`
 - **Description**: Add `w-full` to the button wrapper div for mobile viewports
 - **Acceptance criteria**: Button is full-width on mobile, unchanged on desktop
-- **Result**:
 
 ## Blocked Items
 None.
@@ -273,3 +176,18 @@ No steps completed yet.
 ## Deviations
 None yet.
 ```
+
+## Relationship to plan.json
+
+masterPlan.md and plan.json are written together during the planning phase
+(see `writing-plans` skill). They contain the same steps, but:
+
+| Aspect | plan.json | masterPlan.md |
+|---|---|---|
+| **Audience** | Claude + hooks | User (via Orbit) |
+| **Execution state** | Yes (status, progress, results) | No |
+| **Updated during execution** | Yes (constantly) | Only Completed Summary + Deviations |
+| **Reviewed via Orbit** | No | Yes |
+| **Parsed by hooks** | Yes | Legacy fallback only |
+
+The plan.json schema is documented in `references/plan-schema.md`.

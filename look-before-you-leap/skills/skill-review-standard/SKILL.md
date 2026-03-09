@@ -1,258 +1,173 @@
 ---
 name: skill-review-standard
-description: "Strict review rubric for any new or updated skill before you consider it done. Catches ambiguity before runtime, enforces deterministic workflows, and keeps skills lean, discoverable, and testable. Use when authoring, editing, or reviewing a SKILL.md file. Do NOT use for reviewing application code or non-skill files. For creating skills from scratch or running evals, use skill-creator. For learning skill structure and conventions, use plugin-dev:skill-development. This skill is specifically for quality-gate review of an already-written SKILL.md."
+description: "Post-creation quality gate for skills. Runs structural validation, a functional with/without test, and trigger overlap analysis to produce a SHIP/REVISE/BLOCK verdict. Use after finishing a skill with skill-creator, or when reviewing any skill before shipping. Also use when the user asks to 'review my skill', 'check skill quality', 'is this skill ready to ship', or 'validate this skill'. Do NOT use for: creating skills from scratch (use skill-creator), learning skill conventions (use plugin-dev:skill-development), or reviewing application code."
 ---
 
-# Skill Review Standard (for Skills You Author)
+# Skill Review Standard
 
-Use this file as a strict review rubric for any new or updated skill before you consider it done.
+A quality gate that answers one question: **should this skill ship?**
 
-Primary goals:
-- Catch ambiguity before runtime
-- Enforce deterministic workflows where needed
-- Keep skills lean, discoverable, and testable
+Not a prose rubric. Not a checklist. A functional test backed by structural
+validation. If the skill doesn't add value over baseline Claude, it doesn't
+ship.
 
----
-
-## How to Use This Rubric
-
-Follow these three steps in order:
-
-1. **Quick gate** — Run the Fast Review Checklist (section 10). If any item
-   clearly fails, stop and flag it immediately.
-2. **Detailed check** — Walk sections 2–7 in order. Record findings using
-   the severity rubric (section 9).
-3. **Produce output** — Fill in the Reviewer Output Template (section 8)
-   with your verdict, findings, and required changes.
-
-### After a FAIL verdict
-
-The author addresses the items listed in "Required Changes Before Approval."
-The reviewer then re-checks **only the failed criteria** — a full re-review
-is not required unless structural changes were made (e.g., the workflow was
-rewritten, the skill's scope changed significantly).
+**Announce at start:** "Running the skill review quality gate."
 
 ---
 
-## 1. Review Outcome Contract (required)
+## Phase 1: Structural Validation
 
-A review is complete only if all of the following are true:
-1. Trigger conditions are explicit and non-overlapping.
-2. Workflow is executable end-to-end with no missing steps.
-3. Safety constraints and boundaries are clear.
-4. Verification steps are concrete and runnable.
-5. Output format and success criteria are testable.
+Run the automated validation script on the target skill directory:
 
-If any item fails, the skill is not review-approved.
-
----
-
-## 2. Metadata Quality Checks (`name`, `description`)
-
-Check `SKILL.md` frontmatter first.
-
-Pass criteria:
-- `name` is short, action-oriented, and stable.
-- `description` clearly states:
-  - What the skill does
-  - When to use it
-  - When not to use it
-- Trigger language includes concrete user intents (not vague keywords only).
-- Description avoids overlaps with adjacent skills unless boundaries are explicit.
-
-Common failures:
-- Description is too generic ("helps with coding tasks")
-- No negative trigger guidance ("do not use when...")
-- Scope overlaps with another skill without tie-break rules
-
----
-
-## 3. Workflow Integrity Checks
-
-The body must define an operational sequence, not just advice.
-
-Pass criteria:
-1. Ordered steps exist (discovery -> execution -> verification).
-2. Each step has an input, an action, and an output artifact.
-3. External dependencies are declared before use.
-4. Failure paths are handled ("if X fails, do Y").
-5. Steps can be followed without hidden project knowledge.
-
-Common failures:
-- "Use best practices" without concrete procedure
-- Missing prerequisite checks (auth, env vars, tools)
-- No fallback behavior when required tools are unavailable
-
----
-
-## 4. Scope and Safety Boundaries
-
-Every skill should constrain blast radius and define autonomy limits.
-
-Pass criteria:
-- Explicit "must not" list exists.
-- Interaction levels are defined (explicitly states where user confirmation is required vs. where the agent may proceed autonomously).
-- Destructive actions require confirmation.
-- Out-of-scope areas are listed.
-- File/path boundaries are specified when relevant.
-- Security/privacy constraints are explicit for sensitive data.
-
-Common failures:
-- Silent schema/dependency changes
-- Unbounded refactors in "quick fix" workflows
-- No policy for handling secrets or credentials
-
----
-
-## 5. Verification and Acceptance Criteria
-
-Do not accept "looks good."
-
-Pass criteria:
-1. The skill defines exactly how to validate success.
-2. Verification includes concrete commands when relevant (test/lint/typecheck/build).
-3. Expected outcomes are explicit (what must pass, what artifacts must exist).
-4. If verification cannot run, the required reporting format is defined.
-
-Recommended acceptance block in each skill:
-```md
-## Acceptance Criteria
-- [ ] Required commands executed: `<cmd1>`, `<cmd2>`
-- [ ] Expected artifacts produced: `<files/reports>`
-- [ ] No unexpected files changed
-- [ ] Any unresolved risks documented
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/skill-review-standard/scripts/validate-structure.sh <skill-directory>
 ```
 
----
+The script checks:
+- SKILL.md exists with valid frontmatter (name + description)
+- Description includes negative trigger guidance ("do not use when")
+- SKILL.md is under 500 lines
+- All referenced files (references/, scripts/) exist on disk
+- No orphaned files in references/ or scripts/
 
-## 6. Progressive Disclosure and Context Efficiency
+**If any FAIL:** Stop here. Verdict is **BLOCK**. Report the failures and
+what needs fixing. Structural problems must be resolved before functional
+testing — there's no point testing a skill that references nonexistent files.
 
-Keep `SKILL.md` focused; move detail to references/scripts.
-
-Pass criteria:
-- Core workflow is in `SKILL.md`.
-- Large domain details live in `references/` and are linked from `SKILL.md`.
-- Repeated deterministic logic is implemented in `scripts/`.
-- No duplicate content across `SKILL.md` and references.
-
-Common failures:
-- Bloated `SKILL.md` with rarely needed detail
-- Missing links to important reference files
-- Rewriting script logic in prose repeatedly
+**If all PASS/WARN:** Continue to Phase 2.
 
 ---
 
-## 7. Output Contract Quality
+## Phase 2: Functional Test
 
-The skill must constrain response format for downstream reliability.
+This is the core of the review. A skill that doesn't add value over
+baseline Claude has no reason to exist.
 
-Pass criteria:
-- Expected response structure is specified.
-- Verbosity expectations are clear.
-- Required evidence is explicit (file refs, command results, risk notes).
-- For reviews, severity ordering is specified.
+### 2.1 Generate a test prompt
 
-Common failures:
-- No output schema
-- Mixed summary/findings order
-- Missing evidence requirements
+Create 1 realistic test prompt — the kind of thing a real user would say
+that should trigger this skill. Make it substantive enough that a skill
+would genuinely help (not a trivial one-liner Claude can handle without
+any skill).
+
+Present the prompt to the user: "I'll test the skill with this prompt.
+Does it look realistic?"
+
+### 2.2 Run with-skill vs without-skill
+
+Spawn 2 subagents in parallel:
+
+**With-skill agent:**
+```
+Read the skill at <skill-path>/SKILL.md, then follow its instructions to
+complete this task: <test prompt>
+Save your output to <workspace>/with_skill/output.md
+```
+
+**Without-skill agent:**
+```
+Complete this task using your best judgment (no special skill or rubric):
+<test prompt>
+Save your output to <workspace>/without_skill/output.md
+```
+
+### 2.3 Compare outputs
+
+Read both outputs. Answer these questions:
+
+1. **Structure:** Did the with-skill output follow a more consistent,
+   repeatable format?
+2. **Completeness:** Did the with-skill output cover things the baseline
+   missed?
+3. **Quality:** Was the with-skill output more useful to the end user?
+
+If the skill added clear value on at least one dimension without degrading
+the others, it passes. If the outputs are essentially equivalent — or the
+baseline was better — the skill fails this phase.
+
+**If no value added:** Verdict is **BLOCK**. The skill doesn't justify its
+existence. Report what both outputs looked like and why the skill didn't help.
+
+**If value added:** Continue to Phase 3.
 
 ---
 
-## 8. Reviewer Output Template (use for every review)
+## Phase 3: Trigger Overlap
 
-```md
-# Skill Review Report
+Check whether the skill's description conflicts with other installed skills.
+
+### 3.1 Collect adjacent skill descriptions
+
+Read the available skills list from your context (the skill descriptions
+injected at session start). If not available, scan installed skill
+directories for SKILL.md frontmatter.
+
+### 3.2 Compare for overlap
+
+For each installed skill, check: could a user's prompt reasonably trigger
+both this skill and the other? Look for:
+
+- Shared keywords or domains without explicit boundary ("both claim
+  refactoring")
+- Scope creep clauses ("also use for X" where X belongs to another skill)
+- Missing negative triggers that would disambiguate
+
+### 3.3 Report overlaps
+
+Flag any overlaps found. An overlap is blocking if both skills would
+produce conflicting guidance for the same prompt. An overlap is a warning
+if the skills have related but distinct scopes that could be clarified
+with better description boundaries.
+
+---
 
 ## Verdict
-- Status: PASS | PASS WITH CONDITIONS | FAIL
-- Skill: `<skill-name>`
-- Reviewer confidence: High | Medium | Low
 
-## Findings (ordered by severity)
-1. [Severity] `<file:line>` - issue
-   - Why it matters:
-   - Suggested fix:
+Produce the review report in this format:
 
-## Acceptance Criteria Check
-- [ ] Trigger quality
-- [ ] Workflow integrity
-- [ ] Scope/safety boundaries
-- [ ] Verification clarity
-- [ ] Output contract
+```
+# Review: <skill-name>
 
-## Residual Risks
-- `<risk or "none">`
+## Structural Checks
+<output from validate-structure.sh, one line per check>
 
-## Required Changes Before Approval
-1. `<change>`
-2. `<change>`
+## Functional Test
+Prompt: "<the test prompt used>"
+With skill: <1-sentence summary>
+Without skill: <1-sentence summary>
+Value added: Yes/No — <1-sentence why>
+
+## Trigger Overlap
+Checked against <N> installed skills.
+<list any overlaps, or "No overlaps found.">
+
+## Verdict: SHIP / REVISE / BLOCK
+<1-2 sentences explaining the verdict>
 ```
 
----
+### Verdict criteria
 
-## 9. Severity Rubric
-
-Use this severity model consistently:
-- Critical: likely to cause unsafe/destructive behavior or major incorrect outcomes.
-- High: likely to produce wrong results or repeated failures.
-- Medium: quality/reliability gap that causes rework.
-- Low: clarity/style issue with limited runtime impact.
-
----
-
-## 10. Fast Review Checklist (copy/paste)
-
-```md
-- [ ] Frontmatter has precise trigger boundaries
-- [ ] Step-by-step workflow is executable
-- [ ] Preconditions/fallbacks are documented
-- [ ] Safety, autonomy boundaries, and "must not" rules are explicit
-- [ ] Verification commands and expected outcomes are defined
-- [ ] Output format is deterministic
-- [ ] References/scripts are used for heavy detail
-- [ ] No contradictory or duplicated instructions
-```
+- **SHIP** — All structural checks pass, functional test shows clear value,
+  no blocking trigger overlaps.
+- **REVISE** — Structural warnings (not failures), or minor trigger overlap
+  that can be fixed by tightening the description, but the skill adds
+  genuine value.
+- **BLOCK** — Any structural failure, no value over baseline, or dangerous
+  trigger overlap that would cause the skill to hijack prompts from a more
+  appropriate skill.
 
 ---
 
-## 11. Design Rules for Future Skill Authoring
+## Boundaries
 
-When writing new skills, default to:
-1. Specific triggers over broad descriptions.
-2. Ordered procedures over general advice.
-3. Deterministic scripts for repetitive fragile tasks.
-4. Explicit acceptance criteria over implicit expectations.
-5. Minimal context footprint with linked references.
+This skill must NOT:
+- Modify the skill under review (it's a gate, not an editor)
+- Skip the functional test (Phase 2 is mandatory)
+- Produce verbose prose findings or severity-rated issues (that's the old
+  approach — keep the output compact and data-driven)
+- Replace skill-creator's iterative improvement loop (this is a one-shot
+  ship/no-ship decision)
 
-If a skill cannot be reviewed against this document in under 10 minutes, it is too ambiguous or too bloated.
-
----
-
-## 12. Standard Skill Skeleton
-
-Use this template when authoring a new `SKILL.md` to ensure it passes the rubric above.
-
-```md
-# [Action-oriented Name]
-
-**Description:** [What it does, when to use it]
-**Do NOT use when:** [Explicit negative boundaries]
-**Prerequisites:** [Required states or contexts]
-
-## Execution Workflow
-1. **Pre-flight Check:** [Verify prerequisites]
-2. **Action [Step Name]:** [What to do, input needed, tool to use]
-   - *On Failure:* [Fallback action]
-3. **Action [Step Name]:** [Next step...]
-   - *Requires User Confirmation before proceeding.*
-
-## Acceptance Criteria
-- [ ] Required commands executed: `<cmd1>`, `<cmd2>`
-- [ ] Expected artifacts produced: `<files/reports>`
-- [ ] No unexpected files changed
-
-## Reference Links & Scripts
-- Deterministic script: `scripts/task.sh`
-- Domain context: `references/domain.md`
-```
+The user may proceed autonomously through all three phases. User
+confirmation is only needed for the test prompt (2.1) and when reporting
+the final verdict.

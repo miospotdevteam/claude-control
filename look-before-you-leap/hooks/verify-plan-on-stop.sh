@@ -44,33 +44,82 @@ if [ ! -d "$ACTIVE_DIR" ]; then
   exit 0
 fi
 
-# Find most recent active plan
+# Find most recent active plan — prefer plan.json
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+latest_json=$(python3 "$PLAN_UTILS" find-active "$PROJECT_ROOT" 2>/dev/null) || true
+
+if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
+  # Use plan.json for status check
+  plan_name="$(basename "$(dirname "$latest_json")")"
+
+  export HOOK_PLAN_JSON="$latest_json"
+  export HOOK_PLAN_NAME="$plan_name"
+  export HOOK_PLAN_UTILS="$PLAN_UTILS"
+
+  python3 << 'PYEOF'
+import json, os, sys
+
+plan_json = os.environ["HOOK_PLAN_JSON"]
+plan_name = os.environ["HOOK_PLAN_NAME"]
+plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
+
+sys.path.insert(0, os.path.dirname(plan_utils_path))
+import plan_utils
+
+plan = plan_utils.read_plan(plan_json)
+counts = plan_utils.count_by_status(plan)
+pending = counts.get("pending", 0)
+active = counts.get("in_progress", 0)
+blocked = counts.get("blocked", 0)
+
+remaining = pending + active
+if remaining == 0:
+    sys.exit(0)
+
+reason_parts = [f"Active plan '{plan_name}' has unfinished work:"]
+if active > 0:
+    reason_parts.append(f"  - {active} step(s) in-progress")
+if pending > 0:
+    reason_parts.append(f"  - {pending} step(s) pending")
+if blocked > 0:
+    reason_parts.append(f"  - {blocked} step(s) blocked")
+
+reason_parts.extend([
+    "", f"Plan file: {plan_json}", "",
+    "Before stopping, either:",
+    "1. Continue with the remaining steps",
+    "2. Update the plan to reflect current status",
+    "3. Tell the user what's remaining and why you're stopping",
+])
+
+output = {"decision": "block", "reason": "\n".join(reason_parts)}
+json.dump(output, sys.stdout)
+PYEOF
+  exit 0
+fi
+
+# Legacy fallback: find masterPlan.md
 latest=""
 latest=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
 if [ -z "$latest" ]; then
   latest=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
 fi
 
-# No plan file — allow stop
 if [ -z "$latest" ] || [ ! -f "$latest" ]; then
   exit 0
 fi
 
-# Count step statuses (only match checklist lines, not prose)
 pending_count=$(grep -cE '^\s*-\s*\[ \]' "$latest" 2>/dev/null) || true
 active_count=$(grep -cE '^\s*-\s*\[~\]' "$latest" 2>/dev/null) || true
 blocked_count=$(grep -cE '^\s*-\s*\[!\]' "$latest" 2>/dev/null) || true
 
 remaining=$((pending_count + active_count))
-
-# If no remaining work, allow stop
 if [ "$remaining" -eq 0 ]; then
   exit 0
 fi
 
-# There's remaining work — block the stop
 plan_name="$(basename "$(dirname "$latest")")"
-
 export HOOK_PLAN_NAME="$plan_name"
 export HOOK_PLAN_PATH="$latest"
 export HOOK_PENDING="$pending_count"
@@ -86,10 +135,7 @@ pending = int(os.environ["HOOK_PENDING"])
 active = int(os.environ["HOOK_ACTIVE"])
 blocked = int(os.environ["HOOK_BLOCKED"])
 
-reason_parts = [
-    f"Active plan '{plan_name}' has unfinished work:",
-]
-
+reason_parts = [f"Active plan '{plan_name}' has unfinished work:"]
 if active > 0:
     reason_parts.append(f"  - {active} step(s) in-progress")
 if pending > 0:
@@ -98,19 +144,13 @@ if blocked > 0:
     reason_parts.append(f"  - {blocked} step(s) blocked")
 
 reason_parts.extend([
-    "",
-    f"Plan file: {plan_path}",
-    "",
+    "", f"Plan file: {plan_path}", "",
     "Before stopping, either:",
     "1. Continue with the remaining steps",
     "2. Update the plan to reflect current status",
     "3. Tell the user what's remaining and why you're stopping",
 ])
 
-output = {
-    "decision": "block",
-    "reason": "\n".join(reason_parts)
-}
-
+output = {"decision": "block", "reason": "\n".join(reason_parts)}
 json.dump(output, sys.stdout)
 PYEOF

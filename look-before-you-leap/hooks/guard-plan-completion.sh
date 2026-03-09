@@ -74,42 +74,53 @@ PYEOF
 # Not a plan-moving command — allow
 [ -z "$PLAN_PATH" ] && exit 0
 
-# Check if the masterPlan.md exists and has unchecked items
-if [ ! -f "$PLAN_PATH" ]; then
-  # Can't verify — allow (the mv will fail anyway if path is wrong)
-  exit 0
-fi
+# Check plan.json for unchecked items (fall back to masterPlan.md grep)
+PLAN_DIR="$(dirname "$PLAN_PATH")"
+PLAN_JSON="$PLAN_DIR/plan.json"
 
-# Only match checklist lines: "  - [ ] ...", "- [x] ...", "  - [~] ...", etc.
-# This avoids false positives from prose text that mentions [ ] or [~] literally.
-pending=$(grep -cE '^\s*-\s*\[ \]' "$PLAN_PATH" 2>/dev/null) || true
-active=$(grep -cE '^\s*-\s*\[~\]' "$PLAN_PATH" 2>/dev/null) || true
-blocked=$(grep -cE '^\s*-\s*\[!\]' "$PLAN_PATH" 2>/dev/null) || true
-done_count=$(grep -cE '^\s*-\s*\[x\]' "$PLAN_PATH" 2>/dev/null) || true
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
 
-remaining=$((pending + active + blocked))
-
-# All done — allow the move
-if [ "$remaining" -eq 0 ] && [ "$done_count" -gt 0 ]; then
-  exit 0
-fi
-
-# Incomplete plan — deny the move
 export HOOK_PLAN_PATH="$PLAN_PATH"
-export HOOK_PENDING="$pending"
-export HOOK_ACTIVE="$active"
-export HOOK_BLOCKED="$blocked"
-export HOOK_DONE="$done_count"
+export HOOK_PLAN_JSON="$PLAN_JSON"
+export HOOK_PLAN_UTILS="$PLAN_UTILS"
 
 python3 << 'PYEOF'
-import json, sys, os
+import json, os, sys
 
 plan_path = os.environ["HOOK_PLAN_PATH"]
-pending = int(os.environ["HOOK_PENDING"])
-active = int(os.environ["HOOK_ACTIVE"])
-blocked = int(os.environ["HOOK_BLOCKED"])
-done = int(os.environ["HOOK_DONE"])
+plan_json = os.environ["HOOK_PLAN_JSON"]
+plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
 
+# Try plan.json first
+if os.path.isfile(plan_json):
+    sys.path.insert(0, os.path.dirname(plan_utils_path))
+    import plan_utils
+    plan = plan_utils.read_plan(plan_json)
+    counts = plan_utils.count_by_status(plan)
+    pending = counts.get("pending", 0)
+    active = counts.get("in_progress", 0)
+    blocked = counts.get("blocked", 0)
+    done = counts.get("done", 0)
+elif os.path.isfile(plan_path):
+    # Legacy: grep masterPlan.md
+    import re
+    with open(plan_path) as f:
+        content = f.read()
+    pending = len(re.findall(r'^\s*-\s*\[ \]', content, re.MULTILINE))
+    active = len(re.findall(r'^\s*-\s*\[~\]', content, re.MULTILINE))
+    blocked = len(re.findall(r'^\s*-\s*\[!\]', content, re.MULTILINE))
+    done = len(re.findall(r'^\s*-\s*\[x\]', content, re.MULTILINE))
+else:
+    # Can't verify — allow
+    sys.exit(0)
+
+remaining = pending + active + blocked
+if remaining == 0 and done > 0:
+    # All done — allow
+    sys.exit(0)
+
+# Incomplete — deny
 status_parts = []
 if active > 0:
     status_parts.append(f"{active} in-progress")
@@ -127,8 +138,8 @@ output = {
         "permissionDecisionReason": (
             f"Cannot move plan to completed/ — it has unfinished work: {status}.\n\n"
             f"Plan: {plan_path}\n"
-            f"Progress: {done} done, {pending + active + blocked} remaining\n\n"
-            "A plan is only complete when ALL steps are marked [x]. "
+            f"Progress: {done} done, {remaining} remaining\n\n"
+            "A plan is only complete when ALL steps are done. "
             "Complete the remaining steps or explicitly flag them to the user "
             "before moving the plan."
         )

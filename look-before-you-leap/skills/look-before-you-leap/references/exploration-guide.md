@@ -40,35 +40,28 @@ File you're changing
   └── What it shares with siblings (common patterns)
 ```
 
-**If dep maps are configured**: You MUST use `deps-query.py` to trace both
-directions. It returns DEPENDENCIES and DEPENDENTS across all modules
-instantly — including transitive cross-module consumers that grep would miss.
-Do NOT fall back to grep for consumer analysis when dep maps exist.
+**If dep maps are configured**: Use `deps-query.py` to trace both
+directions — it returns DEPENDENCIES and DEPENDENTS across all modules
+instantly. A hook enforces this over grep.
 
 **If dep maps are NOT configured**: Use `Grep` to trace both directions.
 Don't stop at the first level — if you're changing a utility that's imported
 by a component that's imported by a page, you need to know about the page
 too.
 
-### Using dependency maps (MANDATORY when configured)
+### Using dependency maps (when configured)
 
-If dep maps are configured (the conductor skill's "Minimum exploration
-actions" section has the resolved command), you MUST use `deps-query.py`
-instead of manual grep for consumer analysis. This is not a suggestion —
-dep maps are the primary and required method for finding consumers in
-configured projects. Use the exact command shown in the conductor skill.
+If dep maps are configured, use `deps-query.py` for consumer analysis.
+A hook enforces this — grepping for import patterns on TypeScript files
+will be blocked when dep maps exist.
 
-This returns both DEPENDENCIES (what the file imports) and DEPENDENTS
-(what imports it) across all configured modules — including cross-module
-consumers (e.g., `packages/shared` imported by `apps/api`).
-
-The maps auto-regenerate when stale (files edited since last generation).
+`deps-query.py` returns both DEPENDENCIES (what the file imports) and
+DEPENDENTS (what imports it) across all configured modules — including
+cross-module consumers. Maps auto-regenerate when stale.
 See `references/dependency-mapping.md` for full details.
 
-**When to use grep instead**: ONLY for non-TypeScript files, for string
-references (config keys, env vars), or when dep maps are not configured.
-Never grep for import/from/require patterns on TypeScript files when dep
-maps exist — that is exactly what deps-query.py does, but better.
+**When to use grep instead**: Non-TypeScript files, string references
+(config keys, env vars), or when dep maps are not configured.
 
 ### Check for feature flags and configuration
 

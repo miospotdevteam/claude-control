@@ -27,29 +27,48 @@ data = json.loads(sys.stdin.read())
 print(data.get('tool_input', {}).get('file_path', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
-# Only act on masterPlan.md files inside .temp/plan-mode/active/
-if [[ "$FILE_PATH" != *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
+# Act on plan.json OR masterPlan.md inside .temp/plan-mode/active/
+if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
+  PLAN_DIR="$(dirname "$FILE_PATH")"
+elif [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
+  PLAN_DIR="$(dirname "$FILE_PATH")"
+else
   exit 0
 fi
 
-# Verify the file exists
-if [ ! -f "$FILE_PATH" ]; then
-  exit 0
-fi
+# Determine freshness — prefer plan.json
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_JSON="$PLAN_DIR/plan.json"
+MASTER_PLAN="$PLAN_DIR/masterPlan.md"
 
-# Check if this is a fresh plan: all steps are [ ], none are [x] or [~]
-# Only match checklist lines (not prose that mentions these markers)
-done_count=$(grep -cE '^\s*-\s*\[x\]' "$FILE_PATH" 2>/dev/null) || true
-active_count=$(grep -cE '^\s*-\s*\[~\]' "$FILE_PATH" 2>/dev/null) || true
-pending_count=$(grep -cE '^\s*-\s*\[ \]' "$FILE_PATH" 2>/dev/null) || true
-
-# Not a fresh plan if any step is done or in progress
-if [ "$done_count" -gt 0 ] || [ "$active_count" -gt 0 ]; then
-  exit 0
-fi
-
-# No pending steps = not a real plan (maybe just the header)
-if [ "$pending_count" -eq 0 ]; then
+if [ -f "$PLAN_JSON" ]; then
+  is_fresh=$(python3 "$PLAN_UTILS" is-fresh "$PLAN_JSON" 2>/dev/null) || true
+  if [ "$is_fresh" != "true" ]; then
+    exit 0
+  fi
+  pending_count=$(python3 -c "
+import json
+plan = json.load(open('$PLAN_JSON'))
+print(sum(1 for s in plan.get('steps', []) if s.get('status') == 'pending'))
+" 2>/dev/null) || true
+  # For the FILE_PATH used in the directive, prefer masterPlan.md (user-facing)
+  if [ -f "$MASTER_PLAN" ]; then
+    FILE_PATH="$MASTER_PLAN"
+  fi
+elif [ -f "$MASTER_PLAN" ]; then
+  # Legacy: grep masterPlan.md
+  done_count=$(grep -cE '^\s*-\s*\[x\]' "$MASTER_PLAN" 2>/dev/null) || true
+  active_count=$(grep -cE '^\s*-\s*\[~\]' "$MASTER_PLAN" 2>/dev/null) || true
+  pending_count=$(grep -cE '^\s*-\s*\[ \]' "$MASTER_PLAN" 2>/dev/null) || true
+  if [ "$done_count" -gt 0 ] || [ "$active_count" -gt 0 ]; then
+    exit 0
+  fi
+  if [ "$pending_count" -eq 0 ]; then
+    exit 0
+  fi
+  FILE_PATH="$MASTER_PLAN"
+else
   exit 0
 fi
 
@@ -101,7 +120,10 @@ output = {
             f"({pending} steps, all pending).\n\n"
             "STOP. Do NOT start editing code files. Present the plan to the "
             "user for review via Orbit MCP, then do the plan mode handoff.\n\n"
-            "## Step A: Submit for review (blocking)\n\n"
+            "## Step A: Discover Orbit tools\n\n"
+            "Use ToolSearch to load the orbit_await_review tool:\n"
+            "  ToolSearch query: \"+orbit await_review\"\n\n"
+            "## Step B: Submit for review (blocking)\n\n"
             "1. Tell the user: \"The plan is open in VS Code for review. "
             "Add inline comments on any section, then click Approve or "
             "Request Changes.\"\n"
@@ -109,7 +131,7 @@ output = {
             "   This generates the artifact, opens it in VS Code, and BLOCKS "
             "until the user clicks Approve or Request Changes. Do NOT call "
             "orbit_generate_resolved separately — orbit_await_review does it.\n\n"
-            "## Step B: Handle the response\n\n"
+            "## Step C: Handle the response\n\n"
             "orbit_await_review returns a JSON with `status` and `threads`.\n\n"
             "- **If status is `approved` with no threads**: Proceed to Step C.\n"
             "- **If status is `approved` with threads**: Read each thread, "
@@ -122,7 +144,7 @@ output = {
             "Loop back to handle the new response.\n"
             "- **If status is `timeout`**: Tell the user the review timed out "
             "and ask them to review when ready.\n\n"
-            "## Step C: Plan mode handoff (post-approval)\n\n"
+            "## Step D: Plan mode handoff (post-approval)\n\n"
             "3. Call `EnterPlanMode` to enter plan mode\n"
             "4. Read the masterPlan from disk\n"
             "5. Write a summary to the plan mode scratch pad — include: key "

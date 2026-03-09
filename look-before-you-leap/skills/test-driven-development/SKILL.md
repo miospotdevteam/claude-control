@@ -117,20 +117,42 @@ Follow these Progress items mechanically. Update the plan after each phase
 
 ---
 
-## Handling Multiple Test Cases
+## Handling Multiple Test Cases (THE CORE OF TDD)
 
-For features with many behaviors, don't write all tests at once. Iterate:
+This is where TDD either works or degrades into test-first waterfall.
+The difference: in TDD, you write tests for **one behavior at a time**,
+implement it, then move to the next. In test-first waterfall, you write
+all tests upfront then implement everything at once — that defeats the
+purpose because you're guessing about edge cases before the implementation
+teaches you what matters.
 
-1. **Red**: Write 1-3 tests for the simplest behavior
-2. **Green**: Implement minimally
-3. **Red**: Add tests for the next behavior or edge case
-4. **Green**: Extend the implementation
-5. Repeat until all behaviors are covered
-6. **Refactor**: Clean up the accumulated implementation
+**The incremental cycle (minimum 3 cycles per feature):**
 
-This incremental approach prevents test-writing from becoming a speculative
-exercise where you guess behaviors before understanding the implementation
-constraints.
+1. **Red**: Write 1-3 tests for the **simplest** behavior (e.g., basic
+   percentage discount on a $100 order)
+2. **Green**: Implement the minimum to pass (maybe just multiply and subtract)
+3. **Run tests** — confirm green
+4. **Red**: Add 1-3 tests for the **next** behavior (e.g., fixed dollar
+   discounts). The previous implementation might need extending.
+5. **Green**: Extend the implementation to handle both types
+6. **Run tests** — confirm all green (old AND new)
+7. **Red**: Add tests for **edge cases and interactions** (e.g., discount
+   exceeding price, minimum thresholds). Now you understand the
+   implementation well enough to know what actually breaks.
+8. **Green**: Handle the edge cases
+9. **Refactor**: Clean up the accumulated implementation
+
+**Why this matters:** Each green phase teaches you something about the
+implementation that makes the next red phase's tests better. Writing all
+29 tests upfront means you're guessing about boundary conditions before
+you've written a single line of implementation. The first few cycles are
+easy to predict, but by cycle 3-4 you'll discover edge cases you never
+would have thought of from the outside.
+
+**Plan integration:** When the writing-plans skill creates steps with TDD,
+the progress items encode these cycles explicitly (Cycle 1 RED, Cycle 1
+GREEN, Cycle 2 RED, etc.). Follow them mechanically — each RED item adds
+tests for one behavior slice, each GREEN item extends the implementation.
 
 ---
 
@@ -166,7 +188,7 @@ proptest, etc.) if available.
 | Anti-Pattern | Why It Fails | Correct Approach |
 |---|---|---|
 | Write implementation + tests together | Tests validate existing code, don't drive design | Separate Red and Green into distinct phases |
-| Write all tests upfront | Speculative — you'll guess wrong about edge cases | Iterate: small Red, small Green, repeat |
+| Write all tests upfront in one batch | Speculative — you'll guess wrong about edge cases, and you lose the feedback loop that makes TDD valuable | Iterate: 1-3 tests per cycle, implement, repeat for at least 3 cycles |
 | Test implementation details | Brittle — breaks on any refactor | Test behavior (inputs -> outputs) |
 | Skip the Red phase verification | You don't know if the test actually tests anything | Always run and confirm failure first |
 | Skip the Refactor phase | Technical debt accumulates silently | Always refactor after Green |

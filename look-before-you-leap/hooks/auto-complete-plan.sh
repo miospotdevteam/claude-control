@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # PostToolUse hook: Migrate discovery + detect plan completion.
 #
-# After every Edit/Write to a masterPlan.md:
+# After every Edit/Write to a plan.json or masterPlan.md:
 # 1. Migrates any fallback discovery.md (.temp/discovery/) into the plan dir
-# 2. Checks if all steps are [x] — if so, advises Claude to finalize
+# 2. Checks if all steps are done (via plan.json) — if so, advises Claude to finalize
 #
 # Does NOT auto-move — Claude needs to make final edits first.
 #
@@ -20,20 +20,19 @@ data = json.loads(sys.stdin.read())
 print(data.get('tool_input', {}).get('file_path', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
-# Only act on masterPlan.md files inside .temp/plan-mode/active/
-if [[ "$FILE_PATH" != *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
+# Act on plan.json OR masterPlan.md inside .temp/plan-mode/active/
+if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
+  PLAN_DIR_PATH="$(dirname "$FILE_PATH")"
+elif [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
+  PLAN_DIR_PATH="$(dirname "$FILE_PATH")"
+else
   exit 0
 fi
 
-# Verify the file exists
-if [ ! -f "$FILE_PATH" ]; then
+# Verify the directory exists
+if [ ! -d "$PLAN_DIR_PATH" ]; then
   exit 0
 fi
-
-# --- Migrate fallback discovery.md into the plan directory ---
-# When agents run before a plan exists, findings go to .temp/discovery/discovery.md.
-# Now that a plan exists, migrate that file into the plan directory.
-PLAN_DIR_PATH="$(dirname "$FILE_PATH")"
 
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
@@ -62,28 +61,44 @@ if [ -f "$FALLBACK_FILE" ]; then
   rmdir "$FALLBACK_DIR" 2>/dev/null || true
 fi
 
-# Check if all steps are complete (only match checklist lines, not prose)
-pending=$(grep -cE '^\s*-\s*\[ \]' "$FILE_PATH" 2>/dev/null) || true
-active=$(grep -cE '^\s*-\s*\[~\]' "$FILE_PATH" 2>/dev/null) || true
-blocked=$(grep -cE '^\s*-\s*\[!\]' "$FILE_PATH" 2>/dev/null) || true
-done_count=$(grep -cE '^\s*-\s*\[x\]' "$FILE_PATH" 2>/dev/null) || true
+# Check if all steps are complete — prefer plan.json, fall back to masterPlan.md
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_JSON="$PLAN_DIR_PATH/plan.json"
+MASTER_PLAN="$PLAN_DIR_PATH/masterPlan.md"
 
-remaining=$((pending + active + blocked))
+plan_name="$(basename "$PLAN_DIR_PATH")"
+active_parent="$(dirname "$PLAN_DIR_PATH")"
+completed_dir="$(dirname "$active_parent")/completed"
 
-# Not all done yet — nothing to do
-if [ "$remaining" -gt 0 ] || [ "$done_count" -eq 0 ]; then
+if [ -f "$PLAN_JSON" ]; then
+  is_complete=$(python3 "$PLAN_UTILS" is-complete "$PLAN_JSON" 2>/dev/null) || true
+  if [ "$is_complete" != "true" ]; then
+    exit 0
+  fi
+  done_count=$(python3 -c "
+import json
+plan = json.load(open('$PLAN_JSON'))
+print(sum(1 for s in plan.get('steps', []) if s.get('status') == 'done'))
+" 2>/dev/null) || true
+elif [ -f "$MASTER_PLAN" ]; then
+  # Legacy: grep masterPlan.md
+  pending=$(grep -cE '^\s*-\s*\[ \]' "$MASTER_PLAN" 2>/dev/null) || true
+  active=$(grep -cE '^\s*-\s*\[~\]' "$MASTER_PLAN" 2>/dev/null) || true
+  blocked=$(grep -cE '^\s*-\s*\[!\]' "$MASTER_PLAN" 2>/dev/null) || true
+  done_count=$(grep -cE '^\s*-\s*\[x\]' "$MASTER_PLAN" 2>/dev/null) || true
+  remaining=$((pending + active + blocked))
+  if [ "$remaining" -gt 0 ] || [ "$done_count" -eq 0 ]; then
+    exit 0
+  fi
+else
   exit 0
 fi
 
-# All steps marked [x] — tell Claude to VERIFY before finalizing
-plan_dir="$(dirname "$FILE_PATH")"
-plan_name="$(basename "$plan_dir")"
-active_parent="$(dirname "$plan_dir")"
-completed_dir="$(dirname "$active_parent")/completed"
-
+# All steps done — tell Claude to VERIFY before finalizing
 export HOOK_PLAN_NAME="$plan_name"
-export HOOK_DONE_COUNT="$done_count"
-export HOOK_PLAN_DIR="$plan_dir"
+export HOOK_DONE_COUNT="${done_count:-0}"
+export HOOK_PLAN_DIR="$PLAN_DIR_PATH"
 export HOOK_COMPLETED_DIR="$completed_dir"
 
 python3 << 'PYEOF'
@@ -98,21 +113,20 @@ output = {
     "hookSpecificOutput": {
         "hookEventName": "PostToolUse",
         "additionalContext": (
-            f"All {done_count} steps marked [x] in plan '{plan_name}'.\n\n"
+            f"All {done_count} steps done in plan '{plan_name}'.\n\n"
             "STOP. Before closing this plan, complete ALL of the following:\n\n"
             "1. VERIFY: Run the project's verification commands (type checker, "
             "linter, tests). If any fail, the plan is NOT done — fix them first.\n"
             "2. RE-READ the user's original request word by word. Is every "
             "requirement actually implemented and working? If not, the plan is "
             "NOT done.\n"
-            "3. UPDATE the Completed Summary section with final results.\n"
+            "3. UPDATE the completedSummary in plan.json with final results.\n"
             "4. REPORT to the user what was completed, what was verified, and "
             "any caveats.\n\n"
             "Only AFTER steps 1-4 are done, move the plan:\n"
             f"  mv '{plan_dir}' '{completed_dir}/{plan_name}'\n\n"
-            "WARNING: Do NOT move the plan just because steps are marked [x]. "
-            "Marking a step [x] without verifying the actual work is the #1 "
-            "cause of premature plan completion. If you have ANY doubt, re-check."
+            "WARNING: Do NOT move the plan just because steps are marked done. "
+            "If you have ANY doubt, re-check."
         )
     }
 }

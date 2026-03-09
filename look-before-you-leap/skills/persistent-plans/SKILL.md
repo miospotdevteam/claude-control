@@ -6,13 +6,30 @@ description: "Persistent planning system that writes every task plan to disk so 
 # Persistent Plans
 
 Context is finite. Plans on disk are not. Every plan lives in
-`.temp/plan-mode/` as a markdown file. When context compacts, the plan
+`.temp/plan-mode/` as structured files. When context compacts, the plan
 survives. You read it, see where you left off, and continue. No work is
 ever lost.
 
-This skill adds **structure** (plan files, sub-plans, the execution loop)
+This skill adds **structure** (plan files, the execution loop)
 on top of the **behavior** (thoroughness, blast radius checks, verification)
 that engineering-discipline provides.
+
+---
+
+## Dual-File Architecture
+
+Every plan consists of two files:
+
+- **`plan.json`** — Source of truth for execution. Steps, progress, state,
+  inline sub-plans. Parsed by hooks, updated by Claude via `plan_utils.py`.
+  Agent-facing. This is what you read to know where you are.
+- **`masterPlan.md`** — Proposal document for user review via Orbit.
+  Summarizes what, why, critical decisions, warnings, risk areas.
+  Human-facing. Does NOT contain execution state.
+
+Hooks read `plan.json`. You update `plan.json`. The user reviews
+`masterPlan.md`. Never put execution state (`[x]`/`[ ]` checkboxes) in
+masterPlan.md — that's what plan.json is for.
 
 ---
 
@@ -22,12 +39,11 @@ that engineering-discipline provides.
 
 Claude Code will auto-compact your context without warning. You cannot
 prevent this. You cannot predict exactly when it will happen. Therefore,
-your plan files on disk must ALWAYS reflect your current progress.
+your plan.json on disk must ALWAYS reflect your current progress.
 
-**Treat every write to the plan file as a save point.** If auto-compaction
-happens right now, would your plan file let you resume without
-re-discovering anything? If the answer is no, update the plan file
-immediately.
+**Treat every write to plan.json as a save point.** If auto-compaction
+happens right now, would your plan.json let you resume without
+re-discovering anything? If the answer is no, update plan.json immediately.
 
 After ANY compaction (including auto-compaction), your FIRST action is to
 read the active plan from disk. Do not wait for the user to say "continue".
@@ -38,7 +54,7 @@ immediately and state where you're resuming from.
 
 ## The Rule
 
-**Every task gets a plan file before any code is edited.**
+**Every task gets a plan.json before any code is edited.**
 
 The plan is your external memory. Write it to disk, update it as you work,
 and trust it over your recollection. After compaction, the plan is all you
@@ -57,11 +73,11 @@ This skill must NOT:
   `completed/`. Never `rm` a plan.
 - **Create plans outside `.temp/plan-mode/`** — all plans live in the
   defined directory structure, nowhere else.
-- **Proceed past a `[!] blocked` step without user input** — blocked means
+- **Proceed past a `blocked` step without user input** — blocked means
   blocked. Ask the user or skip to an independent step.
-- **Mark a step `[x]` without running verification** — `[x]` means done
+- **Mark a step `done` without running verification** — `done` means done
   AND verified, not "I wrote some code."
-- **Move a plan to `completed/` with unchecked items** — a hook enforces
+- **Move a plan to `completed/` with non-done items** — a hook enforces
   this, but the rule is the skill's, not just the hook's.
 
 **Autonomy limits**: creating plans, writing to plan files, and updating
@@ -85,10 +101,9 @@ plans go in `active/`; completed plans are automatically moved to
 .temp/plan-mode/
 ├── active/                       # Plans currently in progress
 │   └── <plan-name>/              # kebab-case (e.g., "migrate-auth-to-v2")
-│       ├── masterPlan.md         # Source of truth
-│       ├── sub-plan-01-<name>.md # Optional: for steps too large for one window
-│       ├── sub-plan-02-<name>.md
-│       └── ...
+│       ├── plan.json             # Execution source of truth
+│       ├── masterPlan.md         # User-facing proposal document
+│       └── discovery.md          # Exploration findings (optional)
 ├── completed/                    # Finished plans (moved here automatically)
 │   └── <plan-name>/
 │       └── ...
@@ -106,6 +121,36 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 
 ---
 
+## Updating plan.json
+
+Use `plan_utils.py` via the Bash tool. This is more reliable than Edit-based
+markdown checkbox toggling:
+
+```bash
+PLAN_UTILS="${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_JSON=".temp/plan-mode/active/<plan-name>/plan.json"
+
+# Mark step 3 as in_progress
+python3 "$PLAN_UTILS" update-step "$PLAN_JSON" 3 in_progress
+
+# Mark progress item 0 of step 3 as done
+python3 "$PLAN_UTILS" update-progress "$PLAN_JSON" 3 0 done
+
+# Mark step 3 as done
+python3 "$PLAN_UTILS" update-step "$PLAN_JSON" 3 done
+
+# Add to completed summary
+python3 "$PLAN_UTILS" add-summary "$PLAN_JSON" "Step 3: Migrated all hooks"
+
+# Get status overview
+python3 "$PLAN_UTILS" status "$PLAN_JSON"
+
+# Get next step
+python3 "$PLAN_UTILS" next-step "$PLAN_JSON"
+```
+
+---
+
 ## Phase 1: Create the Plan
 
 When the user gives you a task:
@@ -113,25 +158,15 @@ When the user gives you a task:
 1. **Do NOT start editing code.** Resist the urge.
 2. **Explore** using engineering-discipline Phase 1 (read imports, consumers,
    sibling files, project conventions). Gather all the context you need.
-3. **Write masterPlan.md** to disk at
-   `.temp/plan-mode/active/<plan-name>/masterPlan.md`.
+3. **Write both files** to disk at
+   `.temp/plan-mode/active/<plan-name>/`:
+   - `plan.json` — structured execution plan (see
+     `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/plan-schema.md`)
+   - `masterPlan.md` — user-facing proposal for Orbit review
 
-The masterPlan format is documented in
-`${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/master-plan-format.md`.
-Read that file for the exact template. The critical sections are:
-
-- **Context**: What the user asked for and key constraints
-- **Required Skills**: Which installed skills to invoke at which steps
-- **Applicable Disciplines**: Which checklists apply (testing, security, etc.)
-- **Discovery Summary**: Everything you learned during exploration — this is
-  your gift to your future compacted self. Complete ALL 8 sections (Scope,
-  Entry Points, Consumers, Existing Patterns, Test Infrastructure,
-  Conventions, Blast Radius, Confidence Rating). Include file paths,
-  patterns found, dependencies, conventions.
-- **Steps**: Numbered, each with status, files involved, description,
-  acceptance criteria, a **Progress** checklist for sub-tasks within the
-  step, and a Result field filled in after completion.
-- **Completed Summary**: A running log updated as steps finish.
+The plan.json schema is documented in
+`${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/plan-schema.md`.
+Read that file for the exact format.
 
 ### Sizing steps
 
@@ -141,12 +176,13 @@ heuristics:
 | Complexity | Characteristics | Sub-plan? |
 |---|---|---|
 | Small | 1-3 files, straightforward change | No |
-| Medium | 4-10 files, some complexity | No, but use Progress checklist |
-| Large | Triggers any sub-plan criteria below | Yes |
+| Medium | 4-10 files, some complexity | No, but use progress items |
+| Large | Triggers any sub-plan criteria below | Yes (inline in plan.json) |
 
 ### When to create sub-plans
 
-A step MUST get its own sub-plan when ANY of these are true:
+A step MUST get an inline sub-plan (in the `subPlan` field) when ANY of
+these are true:
 
 - It touches **more than 10 files**
 - It involves a **repetitive sweep** across many files
@@ -157,8 +193,19 @@ A step MUST get its own sub-plan when ANY of these are true:
 - The step description contains words like **"all", "every", "sweep",
   "migrate all", "across the codebase"**
 
-See `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/sub-plan-format.md`
-for the template.
+Sub-plans are **inline in plan.json** — not separate files. The `subPlan`
+field contains groups directly:
+
+```json
+{
+  "subPlan": {
+    "groups": [
+      {"name": "Dashboard pages", "files": ["a.tsx", "b.tsx"], "status": "pending", "notes": null},
+      {"name": "Modal components", "files": ["c.tsx", "d.tsx"], "status": "pending", "notes": null}
+    ]
+  }
+}
+```
 
 ---
 
@@ -166,56 +213,51 @@ for the template.
 
 ### The Checkpoint Rule (THE #1 RULE OF EXECUTION)
 
-**After every 2-3 code file edits, you MUST update your masterPlan.md on
-disk.** This is a hard requirement enforced by a hook that will remind you
-if you forget.
+**After every 2-3 code file edits, you MUST update plan.json on disk.**
+This is a hard requirement enforced by a hook that will remind you if you
+forget.
 
 What "update the plan" means:
-1. Open masterPlan.md with the Edit tool
-2. Check off completed Progress items: `- [ ]` → `- [x]`
-3. Add partial notes to the current step's Result field
-4. If you finished a step, mark it `[x]` and update Completed Summary
+1. Use `plan_utils.py update-progress` to mark completed sub-tasks
+2. Use `plan_utils.py update-step` to change step status
+3. Use `plan_utils.py add-summary` when a step finishes
 
 **Why this matters**: Auto-compaction can fire at any moment. If your plan
 is stale, your next context window starts from scratch. Every plan update
 is insurance against lost work.
 
 **The Compaction Test**: *"If compaction fired RIGHT NOW, could someone
-resume from the plan file alone?"* Ask this after every code edit. If the
-answer is no, update the plan BEFORE your next edit.
+resume from plan.json alone?"* Ask this after every code edit. If the
+answer is no, update plan.json BEFORE your next edit.
 
 This is a loop. Follow it mechanically.
 
 ```
 ┌─ EXECUTION LOOP ────────────────────────────────────────┐
 │                                                         │
-│  1. Read masterPlan.md from disk                        │
-│  2. Find the next [ ] pending or [~] in-progress step   │
-│  3. Mark it [~] in-progress — write to disk NOW         │
+│  1. Read plan.json from disk                            │
+│  2. Find the next pending or in_progress step           │
+│  3. Mark it in_progress — write to disk NOW             │
 │                                                         │
-│  4. IF step has a sub-plan:                             │
-│     a. Read the sub-plan file                           │
-│     b. Find next pending group/sub-step                 │
-│     c. Execute the group/sub-step                       │
-│     d. Update the sub-plan on disk (mark it [x])        │
-│     e. Checkpoint: update masterPlan Progress field     │
-│     f. IF all groups/sub-steps complete:                │
-│        - Mark sub-plan [x] complete                     │
-│        - Mark master step [x] complete                  │
-│        - Write Result to masterPlan                     │
-│        - Update Completed Summary                       │
-│        - Run verification (engineering-discipline P3)   │
+│  4. IF step has a subPlan:                              │
+│     a. Find next pending group                          │
+│     b. Execute the group                                │
+│     c. Mark group done in plan.json                     │
+│     d. Checkpoint: update progress items                │
+│     e. IF all groups complete:                          │
+│        - Mark step done                                 │
+│        - Add to completedSummary                        │
+│        - Run verification                               │
 │                                                         │
-│  5. IF step has no sub-plan:                            │
+│  5. IF step has no subPlan:                             │
 │     a. Execute the step                                 │
 │     b. CHECKPOINT after every 2-3 file edits:           │
-│        - Update the Progress checklist in masterPlan    │
-│        - Write partial notes to the Result field        │
-│     c. When done: mark step [x] complete                │
-│     d. Write final Result to masterPlan                 │
-│     e. Update Completed Summary                         │
+│        - Update progress items via plan_utils.py        │
+│        - Write partial notes to result field            │
+│     c. When done: mark step done                        │
+│     d. Add to completedSummary                          │
 │                                                         │
-│  6. IF all steps are now [x] complete:                  │
+│  6. IF all steps are now done:                          │
 │     a. Move plan folder from active/ to completed/      │
 │     b. Report completion to the user                    │
 │                                                         │
@@ -224,48 +266,47 @@ This is a loop. Follow it mechanically.
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Never mark [x] without verified work
+### Never mark done without verified work
 
 A step is NOT complete just because you wrote some code. Before marking
-any step `[x]`:
+any step `done`:
 
 1. The code you wrote actually works (you verified it, not just assumed)
 2. The step's acceptance criteria are met
-3. You've written meaningful notes in the Result field
+3. You've written meaningful notes in the result field
 
-**A plan with all steps `[x]` but unverified work is a lie on disk.** A
+**A plan with all steps `done` but unverified work is a lie on disk.** A
 hook guards the `mv` command — you cannot move an incomplete plan to
 `completed/`. But more importantly, don't mark steps done until they ARE
-done. If you're unsure, leave it `[~]` with notes about what remains.
+done. If you're unsure, leave it `in_progress` with notes about what
+remains.
 
 ### Progress updates are NOT optional
 
-**The Progress checklist is a live checkpoint, not a decoration.** If
-auto-compaction fires mid-step, the checked items tell your next context
+**The progress array is a live checkpoint, not a decoration.** If
+auto-compaction fires mid-step, the done items tell your next context
 window exactly where to resume.
 
 Rules:
-- Mark each `- [ ]` item `- [x]` as soon as you finish it — before starting
+- Mark each progress item `done` as soon as you finish it — before starting
   the next sub-task
-- If a sub-task is partially done, mark it `- [~]` with a note about what
-  remains
-- **Never mark a step `[x] complete` if its Progress items are still `[ ]`**.
-  That means you skipped tracking — go back and check them off first.
+- If a sub-task is partially done, mark it `in_progress` with a note
+- **Never mark a step `done` if its progress items are still `pending`**.
+  That means you skipped tracking — go back and update them first.
 - Apply the Compaction Test after every 2-3 file edits.
 
 ### Result fields matter
 
-When you complete a step, the Result field should capture what you actually
-did:
+When you complete a step, write the result via plan_utils or direct JSON
+update. The result should capture what you actually did:
 - Files created/modified
 - Decisions made and why
 - Anything unexpected that the next context window needs to know
 
 Bad: `"Done."`
 Good: `"Created apiClient.ts in src/lib/ with typed wrappers for all 5
-endpoints. Used the existing AuthContext for token injection rather than a
-separate interceptor — matches the pattern in src/lib/analytics.ts. Updated
-imports in 3 consumer files: Dashboard.tsx, Settings.tsx, Profile.tsx."`
+endpoints. Used the existing AuthContext for token injection. Updated
+imports in 3 consumer files."`
 
 ---
 
@@ -283,28 +324,51 @@ plan, read it immediately.
 ### Resumption protocol
 
 1. Look for `.temp/plan-mode/active/` directory
-2. Find the most recently modified masterPlan.md
-3. Read it completely — especially the **Discovery Summary** and
-   **Completed Summary**
-4. Find the next step with status `[ ] pending` or `[~] in-progress`
-5. If the step has a **Progress** checklist, check which items are done —
+2. Find the most recent plan.json (or use `plan_utils.py find-active`)
+3. Read it completely — especially the `discovery` and `completedSummary`
+4. Find the next step with status `pending` or `in_progress`
+5. If the step is `in_progress`, check which progress items are done —
    that tells you exactly where within the step to resume
-6. If that step has a sub-plan, read the sub-plan too
-7. State to the user: *"Resuming plan '<title>'. Steps 1-N are complete.
+6. State to the user: *"Resuming plan '<title>'. Steps 1-N are complete.
    Picking up at Step N+1: <title>, starting from <specific progress
    point>."*
-8. Continue the execution loop
+7. Continue the execution loop
 
 **You MUST do this before touching any code.** The plan on disk is the
 source of truth, not your memory of what you were doing.
 
 ### If an in-progress step exists
 
-A step marked `[~] in-progress` means compaction happened mid-step. Read
-the step's Progress checklist and any partial Result notes. The checked-off
-Progress items tell you what's been done. Assess the state (check git
-status, look at files) and continue from where the Progress checklist left
-off.
+A step with status `in_progress` means compaction happened mid-step. Read
+the step's progress array. The `done` items tell you what's been done.
+Assess the state (check git status, look at files) and continue from where
+the progress left off.
+
+### Plan vs filesystem conflicts
+
+After compaction, you may find that the plan says a progress item is `done`
+but the expected file doesn't exist on disk — or the file exists but looks
+different from what you'd expect. This happens when compaction fired between
+a file write and the next checkpoint.
+
+**Resolution rules:**
+
+1. **Plan says `done`, file exists** — trust the plan. The work was done.
+   Move on to the next pending item.
+2. **Plan says `done`, file is missing** — check git status and git log.
+   If the file was committed, it was done. If it was never written (no
+   trace in git or on disk), the progress item was marked prematurely —
+   treat it as `pending` and redo it.
+3. **Plan says `pending`, file exists** — the work was done but the plan
+   wasn't checkpointed. Verify the file is correct, then mark the item
+   `done` and continue.
+4. **Plan says `in_progress` with partial notes** — read the notes, verify
+   what's on disk matches, and continue from where the notes indicate.
+
+**The key principle**: verify against disk state, then align the plan. Do
+NOT blindly redo work the plan says is complete — check first. And do NOT
+assume unchecked work is missing — the file might already be there from
+before compaction.
 
 ---
 
@@ -314,9 +378,9 @@ off.
 - **Update immediately** — after every step completion, write to disk
 - **Never delete a plan** — when all steps are complete, move the plan
   folder from `active/` to `completed/`
-- **If requirements change** — update masterPlan FIRST, then continue
+- **If requirements change** — update plan.json FIRST, then continue
   execution
-- **The Discovery Summary is sacred** — write it thoroughly during
+- **The discovery section is sacred** — write it thoroughly during
   exploration; your compacted future self will thank you
 - **Use the scripts** — run `plan-status.sh` to see all plan states, run
   `resume.sh` to find what to pick up next
@@ -334,10 +398,10 @@ bash .temp/plan-mode/scripts/resume.sh         # find what to resume
 
 | Phase | persistent-plans adds | engineering-discipline provides |
 |---|---|---|
-| Orient | Plan file creation, discovery summary | Codebase exploration, reading neighborhoods |
-| Execute | Execution loop, disk writes, checkpoints, sub-plans | Blast radius checks, type safety, no scope cuts |
+| Orient | Plan file creation, discovery | Codebase exploration, reading neighborhoods |
+| Execute | Execution loop, JSON updates, checkpoints | Blast radius checks, type safety, no scope cuts |
 | Verify | Plan completion tracking, result logging | Type checker, linter, tests |
-| Resume | Read plan from disk, check Progress, continue | Self-audit for error patterns |
+| Resume | Read plan.json from disk, check progress, continue | Self-audit for error patterns |
 
 Both skills are always active. persistent-plans structures the work;
 engineering-discipline ensures the work is done correctly.
@@ -348,14 +412,14 @@ engineering-discipline ensures the work is done correctly.
 
 | Situation | Action |
 |---|---|
-| New task from user | Explore -> write masterPlan.md in active/ -> execute |
-| Every 2-3 file edits | Follow the Checkpoint Rule |
-| Step completed | Update plan on disk immediately |
-| Step touches >10 files or is a sweep | Create sub-plan with Groups |
-| After any compaction | Read plan IMMEDIATELY -> state where you are -> continue |
-| User says "continue" | Read plan -> find next step/progress point -> execute |
-| Requirements changed | Update masterPlan -> continue execution |
-| Stuck or blocked | Mark step [!] blocked -> write why -> move on or ask user |
+| New task from user | Explore -> write plan.json + masterPlan.md in active/ -> execute |
+| Every 2-3 file edits | Checkpoint via plan_utils.py |
+| Step completed | update-step done + add-summary immediately |
+| Step touches >10 files or is a sweep | Use inline subPlan with groups |
+| After any compaction | Read plan.json IMMEDIATELY -> state where you are -> continue |
+| User says "continue" | Read plan.json -> find next step -> execute |
+| Requirements changed | Update plan.json -> continue execution |
+| Stuck or blocked | update-step blocked -> ask user |
 | All steps complete | Final verification -> move plan to completed/ -> report to user |
 
 ---
@@ -364,6 +428,5 @@ engineering-discipline ensures the work is done correctly.
 
 Read these when you need the detailed templates:
 
-- `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/master-plan-format.md` — exact masterPlan.md template
-- `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/sub-plan-format.md` — sub-plan template with Groups
+- `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/plan-schema.md` — exact plan.json schema
 - `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/claude-md-snippet.md` — recommended CLAUDE.md additions

@@ -130,9 +130,14 @@ if [ -f "$NO_PLAN_FILE" ]; then
   fi
 fi
 
-# Check for active plan — if one exists, allow
+# Check for active plan (plan.json or legacy masterPlan.md) — if one exists, allow
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 if [ -d "$ACTIVE_DIR" ]; then
+  for plan in "$ACTIVE_DIR"/*/plan.json; do
+    if [ -f "$plan" ]; then
+      exit 0
+    fi
+  done
   for plan in "$ACTIVE_DIR"/*/masterPlan.md; do
     if [ -f "$plan" ]; then
       exit 0

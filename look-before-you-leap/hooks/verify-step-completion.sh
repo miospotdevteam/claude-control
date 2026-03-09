@@ -25,12 +25,14 @@ data = json.loads(sys.stdin.read())
 print(data.get('tool_input', {}).get('file_path', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
-# Only act on masterPlan.md in active plans
-if [[ "$FILE_PATH" != *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
+# Act on plan.json OR masterPlan.md in active plans
+if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
+  PLAN_DIR="$(dirname "$FILE_PATH")"
+elif [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
+  PLAN_DIR="$(dirname "$FILE_PATH")"
+else
   exit 0
 fi
-
-[ ! -f "$FILE_PATH" ] && exit 0
 
 # Find project root
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
@@ -45,34 +47,57 @@ PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 PLAN_MODE_DIR="$PROJECT_ROOT/.temp/plan-mode"
 CACHE_FILE="$PLAN_MODE_DIR/.step-status-cache"
 
-export HOOK_FILE_PATH="$FILE_PATH"
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_JSON="$PLAN_DIR/plan.json"
+MASTER_PLAN="$PLAN_DIR/masterPlan.md"
+
+export HOOK_PLAN_DIR="$PLAN_DIR"
+export HOOK_PLAN_JSON="$PLAN_JSON"
+export HOOK_MASTER_PLAN="$MASTER_PLAN"
+export HOOK_PLAN_UTILS="$PLAN_UTILS"
 export HOOK_CACHE_FILE="$CACHE_FILE"
 export HOOK_PLAN_MODE_DIR="$PLAN_MODE_DIR"
 
-# Compare current step statuses with cached, detect [x] transitions
+# Compare current step statuses with cached, detect done transitions
 RESULT=$(python3 << 'PYEOF'
 import json, os, re, sys
 
-file_path = os.environ["HOOK_FILE_PATH"]
+plan_json = os.environ["HOOK_PLAN_JSON"]
+master_plan = os.environ["HOOK_MASTER_PLAN"]
+plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
 cache_file = os.environ["HOOK_CACHE_FILE"]
 plan_mode_dir = os.environ["HOOK_PLAN_MODE_DIR"]
 
-# Parse current step statuses from masterPlan.md
-# Match lines like: - **Status**: [ ] pending  or  - **Status**: [x] complete
-with open(file_path) as f:
-    content = f.read()
-
-step_pattern = re.compile(
-    r'^###\s+Step\s+(\d+):.*?\n'
-    r'.*?-\s+\*\*Status\*\*:\s*\[(.)\]',
-    re.MULTILINE | re.DOTALL
-)
-
+# Parse current step statuses — prefer plan.json
 current_steps = {}
-for match in step_pattern.finditer(content):
-    step_num = match.group(1)
-    status = match.group(2)
-    current_steps[step_num] = status
+plan_path_for_marker = master_plan  # default for marker file content
+
+if os.path.isfile(plan_json):
+    sys.path.insert(0, os.path.dirname(plan_utils_path))
+    import plan_utils
+    plan = plan_utils.read_plan(plan_json)
+    for step in plan.get("steps", []):
+        step_id = str(step["id"])
+        # Map JSON statuses to single-char for cache compatibility
+        status_map = {"pending": " ", "in_progress": "~", "done": "x", "blocked": "!"}
+        current_steps[step_id] = status_map.get(step["status"], " ")
+    plan_path_for_marker = plan_json
+elif os.path.isfile(master_plan):
+    # Legacy: parse masterPlan.md
+    with open(master_plan) as f:
+        content = f.read()
+    step_pattern = re.compile(
+        r'^###\s+Step\s+(\d+):.*?\n'
+        r'.*?-\s+\*\*Status\*\*:\s*\[(.)\]',
+        re.MULTILINE | re.DOTALL
+    )
+    for match in step_pattern.finditer(content):
+        current_steps[match.group(1)] = match.group(2)
+    plan_path_for_marker = master_plan
+else:
+    print(json.dumps({"newly_completed": []}))
+    sys.exit(0)
 
 # Read cached statuses
 cached_steps = {}
@@ -84,7 +109,7 @@ if os.path.exists(cache_file):
                 num, status = line.split(':', 1)
                 cached_steps[num.strip()] = status.strip()
 
-# Find steps that just transitioned to [x]
+# Find steps that just transitioned to done/[x]
 newly_completed = []
 for step_num, status in current_steps.items():
     if status == 'x' and cached_steps.get(step_num, ' ') != 'x':
@@ -96,20 +121,19 @@ with open(cache_file, 'w') as f:
     for num in sorted(current_steps.keys(), key=int):
         f.write(f"{num}:{current_steps[num]}\n")
 
-# If no new completions, exit silently
 if not newly_completed:
     print(json.dumps({"newly_completed": []}))
     sys.exit(0)
 
-# Create .verify-pending-N markers for each newly completed step
+# Create .verify-pending-N markers
 markers_created = []
 for step_num in newly_completed:
     marker_path = os.path.join(plan_mode_dir, f".verify-pending-{step_num}")
     with open(marker_path, 'w') as f:
-        f.write(f"{step_num}\n{file_path}\n")
+        f.write(f"{step_num}\n{plan_path_for_marker}\n")
     markers_created.append(step_num)
 
-print(json.dumps({"newly_completed": markers_created, "plan_path": file_path}))
+print(json.dumps({"newly_completed": markers_created, "plan_path": plan_path_for_marker}))
 PYEOF
 ) || true
 

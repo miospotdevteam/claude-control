@@ -8,24 +8,15 @@ concrete answers and your confidence is Medium or higher.
 
 ## Step 0: Run deps-query FIRST (when configured)
 
-**Before answering any question below**, check the "Minimum exploration
-actions" section in the conductor skill (injected at session start). If dep
-maps are configured, the conductor has the full resolved command. Run it on
-every file in scope — whether you're modifying, auditing, or reviewing. For
-audits, run on key entry points per module. Do this before reading files,
-before grepping, before anything else.
+If dep maps are configured, run `deps-query.py` on every file in scope
+BEFORE answering the questions below. The output reveals consumers,
+cross-module dependencies, and blast radius — shaping all subsequent
+exploration. A hook enforces deps-query usage; this step ensures you run
+it proactively rather than being blocked later.
 
-**Why first**: The deps-query output tells you which files matter — it
-reveals consumers, cross-module dependencies, and blast radius upfront.
-This shapes every subsequent exploration step. For audits, it shows which
-modules are highly depended on (high-impact bug areas) and where cross-module
-boundaries create integration risks. Without it, you'll waste time reading
-files that turn out to be irrelevant and miss files that are critical.
-
-Record all deps-query output — you'll need it for Q3, Q7, and the
-discovery.md. If the conductor says dep maps are NOT configured and this is
-a TypeScript project, suggest `/generate-deps` to the user — dep maps make
-consumer finding and blast-radius analysis instant. Then proceed to Q1.
+Record all output — you'll need it for Q3, Q7, and discovery.md. If dep
+maps are NOT configured and this is a TypeScript project, suggest
+`/generate-deps` to the user.
 
 ---
 
@@ -51,16 +42,9 @@ functions, exports, and line count.
 
 Who imports or uses the files you're changing?
 
-**HARD GATE**: If dep maps are configured (the conductor skill has the
-resolved command), you MUST run `deps-query.py` for every file you plan to
-modify. Do NOT use `Grep` as a substitute — `Grep` for import patterns is
-the fallback ONLY when dep maps are not configured. Dep maps give you
-complete, cross-module consumer data instantly; ad-hoc grep is slower, less
-reliable, and misses transitive consumers.
-
-**How to answer (dep maps configured)**: Run `deps-query.py` (use the exact
-command from the conductor skill) for each entry point file. Record the
-DEPENDENTS output.
+**How to answer (dep maps configured)**: Run `deps-query.py` for each entry
+point file. Record the DEPENDENTS output. A hook enforces this — grepping
+for import patterns will be blocked when dep maps exist.
 
 **How to answer (no dep maps)**: `Grep` for import/require statements
 referencing each entry point file. Example: `Grep pattern="from ['\"].*auth" type="ts"`
@@ -101,9 +85,8 @@ prettier config. Note import ordering, naming style, file organization.
 
 What could break if you get this wrong?
 
-**How to answer (dep maps configured)**: You MUST use `deps-query.py` —
-its DEPENDENTS section with count IS the direct blast radius. Do NOT
-estimate blast radius from ad-hoc grep when dep maps are available.
+**How to answer (dep maps configured)**: Use `deps-query.py` — its
+DEPENDENTS count is the blast radius. The hook enforces this over grep.
 
 **How to answer (no dep maps)**: For each entry point, count its consumers
 (from Q3). For shared types/utilities, grep for all usages. Identify any

@@ -4,7 +4,7 @@
 # Allows:
 #   - Edits to .temp/ (plan files themselves)
 #   - Edits when .temp/plan-mode/.no-plan exists (explicit bypass)
-#   - Edits when an active masterPlan.md exists
+#   - Edits when an active plan.json exists
 #
 # Denies:
 #   - All other Edit/Write calls — forces plan creation first.
@@ -58,40 +58,69 @@ if [ -f "$HANDOFF_MARKER" ]; then
   # Read the plan path stored in the marker
   PLAN_PATH=$(cat "$HANDOFF_MARKER" 2>/dev/null) || true
 
-  # Auto-clear if the plan has progressed (any [x] or [~] means execution started)
-  if [ -n "$PLAN_PATH" ] && [ -f "$PLAN_PATH" ]; then
-    done_count=$(grep -cE '^\s*-\s*\[x\]' "$PLAN_PATH" 2>/dev/null) || true
-    active_count=$(grep -cE '^\s*-\s*\[~\]' "$PLAN_PATH" 2>/dev/null) || true
-    if [ "$done_count" -gt 0 ] || [ "$active_count" -gt 0 ]; then
+  # Auto-clear if plan has progressed — check plan.json in same directory
+  if [ -n "$PLAN_PATH" ]; then
+    plan_dir="$(dirname "$PLAN_PATH")"
+    plan_json="$plan_dir/plan.json"
+    if [ -f "$plan_json" ]; then
+      PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+      PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+      is_fresh=$(python3 "$PLAN_UTILS" is-fresh "$plan_json" 2>/dev/null) || true
+      if [ "$is_fresh" = "false" ]; then
+        rm -f "$HANDOFF_MARKER"
+        exit 0
+      fi
+    elif [ -f "$PLAN_PATH" ]; then
+      # Legacy: plan.json doesn't exist yet, check masterPlan.md markers
+      done_count=$(grep -cE '^\s*-\s*\[x\]' "$PLAN_PATH" 2>/dev/null) || true
+      active_count=$(grep -cE '^\s*-\s*\[~\]' "$PLAN_PATH" 2>/dev/null) || true
+      if [ "$done_count" -gt 0 ] || [ "$active_count" -gt 0 ]; then
+        rm -f "$HANDOFF_MARKER"
+        exit 0
+      fi
+    else
+      # Neither plan.json nor masterPlan.md — stale marker, clear it
       rm -f "$HANDOFF_MARKER"
       exit 0
     fi
   else
-    # Plan file missing or marker empty — stale marker, clear it
+    # Marker empty — stale, clear it
     rm -f "$HANDOFF_MARKER"
     exit 0
   fi
 
-  # Plan is still fresh — soft warning (not a hard deny, to prevent stuck loops)
+  # Plan is still fresh — HARD DENY until Orbit review + plan mode handoff
   export HOOK_MARKER_PATH="$HANDOFF_MARKER"
+  export HOOK_PLAN_PATH="$PLAN_PATH"
   python3 << 'PYEOF'
 import json, sys, os
 
 marker = os.environ["HOOK_MARKER_PATH"]
+plan_path = os.environ.get("HOOK_PLAN_PATH", "unknown")
 
 output = {
     "hookSpecificOutput": {
         "hookEventName": "PreToolUse",
-        "additionalContext": (
-            "Plan mode handoff recommended. A fresh plan exists but you haven't "
-            "done the plan mode handoff yet.\n\n"
-            "Recommended before editing code:\n"
-            "1. Enter plan mode (EnterPlanMode)\n"
-            "2. Write a plan summary to the scratch pad\n"
-            "3. Exit plan mode (ExitPlanMode)\n\n"
-            "This gives the user the 'clear context and accept all edits' prompt, "
-            "ensuring execution starts with a fresh context.\n\n"
-            f"To dismiss: rm {marker}"
+        "permissionDecision": "deny",
+        "permissionDecisionReason": (
+            "BLOCKED: Fresh plan requires Orbit review before code edits.\n\n"
+            "## Step 1: Discover Orbit tools\n\n"
+            "Use ToolSearch to find orbit_await_review:\n"
+            "  ToolSearch query: \"+orbit await_review\"\n\n"
+            "## Step 2: Submit for review (blocking)\n\n"
+            "1. Tell the user: \"The plan is open in VS Code for review. "
+            "Add inline comments, then click Approve or Request Changes.\"\n"
+            f"2. Call orbit_await_review with sourcePath: {plan_path}\n"
+            "   This opens the plan in VS Code and BLOCKS until user responds.\n\n"
+            "## Step 3: Handle the response\n\n"
+            "- approved → proceed to Step 4\n"
+            "- changes_requested → update plan, re-submit\n"
+            "- timeout → ask user to review when ready\n\n"
+            "## Step 4: Plan mode handoff\n\n"
+            "1. Call EnterPlanMode\n"
+            "2. Write a summary to the scratch pad\n"
+            "3. Call ExitPlanMode\n\n"
+            f"To bypass (if Orbit unavailable): rm {marker}"
         )
     }
 }
@@ -139,17 +168,26 @@ PYEOF
   exit 0
 fi
 
-# Check for active plan
+# Check for active plan (plan.json or legacy masterPlan.md)
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 plan_found=false
 
 if [ -d "$ACTIVE_DIR" ]; then
-  for plan in "$ACTIVE_DIR"/*/masterPlan.md; do
+  for plan in "$ACTIVE_DIR"/*/plan.json; do
     if [ -f "$plan" ]; then
       plan_found=true
       break
     fi
   done
+  # Legacy fallback: check masterPlan.md if no plan.json found
+  if [ "$plan_found" = false ]; then
+    for plan in "$ACTIVE_DIR"/*/masterPlan.md; do
+      if [ -f "$plan" ]; then
+        plan_found=true
+        break
+      fi
+    done
+  fi
 fi
 
 if [ "$plan_found" = true ]; then
@@ -169,7 +207,7 @@ output = {
             "before editing code.\n\n"
             "To create a plan:\n"
             "1. Explore the codebase (read files, grep consumers)\n"
-            "2. Write a masterPlan.md to .temp/plan-mode/active/<plan-name>/masterPlan.md\n"
+            "2. Write plan.json + masterPlan.md to .temp/plan-mode/active/<plan-name>/\n"
             "3. Then proceed with edits\n\n"
             "To bypass for trivial changes: echo $PPID > .temp/plan-mode/.no-plan"
         )

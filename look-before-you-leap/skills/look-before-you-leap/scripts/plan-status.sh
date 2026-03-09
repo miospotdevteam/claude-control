@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Shows status of all active plans (default) or all plans (--all).
+# Reads plan.json when available, falls back to masterPlan.md grep for legacy.
 # Usage: bash .temp/plan-mode/scripts/plan-status.sh [--all]
 #        bash <plugin-root>/skills/look-before-you-leap/scripts/plan-status.sh [--all]
 #
@@ -43,64 +44,105 @@ if [ -z "$PLAN_DIR" ] || [ ! -d "$PLAN_DIR" ]; then
   exit 0
 fi
 
-# Function to display plans from a given directory with an optional label
+# Display a plan from plan.json
+show_plan_json() {
+  local plan_json="$1"
+  local dir="$(dirname "$plan_json")"
+  local name="$(basename "$dir")"
+  local label="${2:-}"
+
+  echo "========================================"
+  if [ -n "$label" ]; then
+    echo "  Plan: $name  [$label]"
+  else
+    echo "  Plan: $name"
+  fi
+  echo "----------------------------------------"
+
+  python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    plan = json.load(f)
+counts = {'pending': 0, 'in_progress': 0, 'done': 0, 'blocked': 0}
+for s in plan.get('steps', []):
+    st = s.get('status', 'pending')
+    counts[st] = counts.get(st, 0) + 1
+print(f'  Steps:  {counts[\"done\"]} done  |  {counts[\"in_progress\"]} active  |  {counts[\"pending\"]} pending  |  {counts[\"blocked\"]} blocked')
+for s in plan.get('steps', []):
+    st = s.get('status', 'pending')
+    markers = {'done': '[done]    ', 'in_progress': '[ACTIVE]  ', 'pending': '[pending] ', 'blocked': '[BLOCKED] '}
+    marker = markers.get(st, '[?]       ')
+    print(f'    {marker} Step {s[\"id\"]}: {s[\"title\"]}')
+    sp = s.get('subPlan')
+    if sp and sp.get('groups'):
+        for g in sp['groups']:
+            gst = g.get('status', 'pending')
+            print(f'      sub-group: {g[\"name\"]} ({gst})')
+" "$plan_json"
+  echo ""
+}
+
+# Display a plan from masterPlan.md (legacy fallback)
+show_plan_md() {
+  local plan="$1"
+  local dir="$(dirname "$plan")"
+  local name="$(basename "$dir")"
+  local label="${2:-}"
+
+  echo "========================================"
+  if [ -n "$label" ]; then
+    echo "  Plan: $name  [$label]"
+  else
+    echo "  Plan: $name"
+  fi
+  echo "----------------------------------------"
+
+  # Count step statuses
+  pending=$(grep -cE '\[ \]' "$plan" 2>/dev/null || true)
+  in_progress=$(grep -cE '\[~\]' "$plan" 2>/dev/null || true)
+  complete=$(grep -cE '\[x\]' "$plan" 2>/dev/null || true)
+  blocked=$(grep -cE '\[!\]' "$plan" 2>/dev/null || true)
+
+  echo "  Steps:  $complete done  |  $in_progress active  |  $pending pending  |  $blocked blocked"
+
+  # Show step titles with their statuses
+  grep -E '^### Step [0-9]+:' "$plan" | while read -r line; do
+    step_title=$(echo "$line" | sed 's/^### //')
+
+    # Find the status line right after this step header
+    status=$(grep -A2 "$line" "$plan" | grep -o '\[.\]' | head -1 || echo "[?]")
+
+    case "$status" in
+      "[x]") marker="[done]    " ;;
+      "[~]") marker="[ACTIVE]  " ;;
+      "[ ]") marker="[pending] " ;;
+      "[!]") marker="[BLOCKED] " ;;
+      *)     marker="[?]       " ;;
+    esac
+
+    echo "    $marker $step_title"
+  done
+
+  echo ""
+}
+
+# Show plans from a directory, preferring plan.json over masterPlan.md
 show_plans() {
   local search_dir="$1"
   local label="$2"
   local found=false
 
-  for plan in "$search_dir"/*/masterPlan.md; do
-    [ -f "$plan" ] || continue
-    found=true
+  for dir in "$search_dir"/*/; do
+    [ -d "$dir" ] || continue
 
-    dir="$(dirname "$plan")"
-    name="$(basename "$dir")"
-
-    echo "========================================"
-    if [ -n "$label" ]; then
-      echo "  Plan: $name  [$label]"
-    else
-      echo "  Plan: $name"
+    # Prefer plan.json, fall back to masterPlan.md
+    if [ -f "$dir/plan.json" ]; then
+      show_plan_json "$dir/plan.json" "$label"
+      found=true
+    elif [ -f "$dir/masterPlan.md" ]; then
+      show_plan_md "$dir/masterPlan.md" "$label"
+      found=true
     fi
-    echo "----------------------------------------"
-
-    # Count step statuses
-    # Match both "[ ] pending" (template format) and bare "[ ]" (common usage)
-    pending=$(grep -cE '\[ \]' "$plan" 2>/dev/null || true)
-    in_progress=$(grep -cE '\[~\]' "$plan" 2>/dev/null || true)
-    complete=$(grep -cE '\[x\]' "$plan" 2>/dev/null || true)
-    blocked=$(grep -cE '\[!\]' "$plan" 2>/dev/null || true)
-
-    echo "  Steps:  $complete done  |  $in_progress active  |  $pending pending  |  $blocked blocked"
-
-    # Show step titles with their statuses
-    grep -E '^### Step [0-9]+:' "$plan" | while read -r line; do
-      step_num=$(echo "$line" | grep -o 'Step [0-9]*')
-      step_title=$(echo "$line" | sed 's/^### //')
-
-      # Find the status line right after this step header
-      status=$(grep -A2 "$line" "$plan" | grep -o '\[.\]' | head -1 || echo "[?]")
-
-      case "$status" in
-        "[x]") marker="[done]    " ;;
-        "[~]") marker="[ACTIVE]  " ;;
-        "[ ]") marker="[pending] " ;;
-        "[!]") marker="[BLOCKED] " ;;
-        *)     marker="[?]       " ;;
-      esac
-
-      echo "    $marker $step_title"
-    done
-
-    # Show sub-plans
-    for sub in "$dir"/sub-plan-*.md; do
-      [ -f "$sub" ] || continue
-      subname="$(basename "$sub")"
-      substatus=$(grep -m1 '^\*\*Status\*\*:' "$sub" | sed 's/.*\*\*Status\*\*: //' || echo "unknown")
-      echo "    sub-plan: $subname ($substatus)"
-    done
-
-    echo ""
   done
 
   if [ "$found" = false ]; then

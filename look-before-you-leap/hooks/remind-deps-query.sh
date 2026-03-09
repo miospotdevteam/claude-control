@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# PreToolUse(Grep) hook: Remind to use deps-query.py when grepping for
-# import/consumer patterns and dep maps are configured.
+# PreToolUse(Grep) hook: Block grepping for import/consumer patterns when
+# dep maps are configured — forces use of deps-query.py instead.
 #
-# This hook does NOT block — it only injects a reminder via additionalContext.
-# It fires when the grep pattern looks like an import/consumer search
-# (import, from, require) on TypeScript files.
+# This hook DENIES the grep when dep maps are configured AND the pattern
+# looks like an import/consumer search on TypeScript files.
 #
 # Input: JSON on stdin with tool_name, tool_input (pattern, type, glob), cwd
 
@@ -74,7 +73,7 @@ if [ "$has_dep_maps" != "yes" ]; then
 fi
 
 # Dep maps ARE configured and the pattern looks like an import/consumer search.
-# Inject a reminder (do NOT block).
+# DENY the grep — Claude must use deps-query.py instead.
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 SCRIPTS_DIR="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts"
 
@@ -84,12 +83,15 @@ import json, sys
 output = {
     "hookSpecificOutput": {
         "hookEventName": "PreToolUse",
-        "additionalContext": (
-            "REMINDER: Dep maps are configured for this project. "
-            "You MUST use deps-query.py instead of grepping for import/consumer patterns. "
-            "Run: python3 ${SCRIPTS_DIR}/deps-query.py ${PROJECT_ROOT} <file_path>\n"
-            "Grep is only for non-TypeScript files, string references (config keys, env vars), "
-            "or projects without dep maps."
+        "permissionDecision": "deny",
+        "permissionDecisionReason": (
+            "Dep maps are configured — grepping for import/consumer patterns is blocked. "
+            "Use deps-query.py instead, which is faster and catches cross-module consumers.\n\n"
+            "Run: python3 ${SCRIPTS_DIR}/deps-query.py ${PROJECT_ROOT} <file_path>\n\n"
+            "Grep is only allowed for:\n"
+            "- Non-TypeScript files\n"
+            "- String references (config keys, env vars, literal text)\n"
+            "- Projects without dep maps configured"
         )
     }
 }

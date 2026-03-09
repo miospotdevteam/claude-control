@@ -50,88 +50,150 @@ rm -f "$PROJECT_ROOT/.temp/plan-mode/.handoff-pending"
 # --- Section 2: Active plan detection ---
 active_plan_summary=""
 ACTIVE_DIR="$PLAN_DIR/active"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
 
 if [ -d "$ACTIVE_DIR" ]; then
-  latest=""
+  # Try plan.json first
+  latest_json=$(python3 "$PLAN_UTILS" find-active "$PROJECT_ROOT" 2>/dev/null) || true
 
-  # macOS stat
-  latest=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
+  if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
+    plan_dir="$(dirname "$latest_json")"
+    plan_name="$(basename "$plan_dir")"
 
-  # Linux fallback
-  if [ -z "$latest" ]; then
-    latest=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
-  fi
+    # Read status from plan.json via plan_utils
+    export HOOK_PLAN_JSON="$latest_json"
+    export HOOK_PLAN_UTILS="$PLAN_UTILS"
 
-  if [ -n "$latest" ] && [ -f "$latest" ]; then
-    plan_name="$(basename "$(dirname "$latest")")"
+    plan_status_info=$(python3 << 'PYEOF'
+import json, os, sys
 
-    # Check if the plan has any non-complete steps
-    # Match both "[ ] pending" (template format) and bare "[ ]" (common usage)
-    # Only match checklist lines (not prose that mentions these markers)
-    has_pending=$(grep -cE '^\s*-\s*(\[ \]|\[~\]|\[!\])' "$latest" 2>/dev/null) || true
+plan_json = os.environ["HOOK_PLAN_JSON"]
+plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
 
-    if [ "$has_pending" -gt 0 ]; then
-      done_count=$(grep -cE '^\s*-\s*\[x\]' "$latest" 2>/dev/null) || true
-      active_count=$(grep -cE '^\s*-\s*\[~\]' "$latest" 2>/dev/null) || true
-      pending_count=$(grep -cE '^\s*-\s*\[ \]' "$latest" 2>/dev/null) || true
-      blocked_count=$(grep -cE '^\s*-\s*\[!\]' "$latest" 2>/dev/null) || true
+sys.path.insert(0, os.path.dirname(plan_utils_path))
+import plan_utils
 
-      # Find the next step to work on
-      next_step=""
-      if [ "$active_count" -gt 0 ]; then
-        next_step=$(grep -B5 -E '\[~\]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
-        [ -n "$next_step" ] && next_step="IN PROGRESS: $next_step"
-      elif [ "$pending_count" -gt 0 ]; then
-        next_step=$(grep -B5 -E '\[ \]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
-        [ -n "$next_step" ] && next_step="NEXT: $next_step"
-      fi
+plan = plan_utils.read_plan(plan_json)
+counts = plan_utils.count_by_status(plan)
 
-      # Check for active sub-plans
-      active_subplan=""
-      plan_dir="$(dirname "$latest")"
-      for sub in "$plan_dir"/sub-plan-*.md; do
-        [ -f "$sub" ] || continue
-        if grep -qE '\[~\]|\[ \]' "$sub" 2>/dev/null; then
-          subname="$(basename "$sub")"
-          active_subplan="Active sub-plan: $subname"
-          break
-        fi
-      done
+# Find next step
+next_step = plan_utils.get_next_step(plan)
+next_info = ""
+if next_step:
+    if next_step["status"] == "in_progress":
+        next_info = f"IN PROGRESS: Step {next_step['id']}: {next_step['title']}"
+    else:
+        next_info = f"NEXT: Step {next_step['id']}: {next_step['title']}"
 
-      # --- Session lock: prevent multiple instances from claiming the same plan ---
+has_work = counts.get("pending", 0) + counts.get("in_progress", 0) + counts.get("blocked", 0) > 0
+
+print(json.dumps({
+    "done": counts.get("done", 0),
+    "active": counts.get("in_progress", 0),
+    "pending": counts.get("pending", 0),
+    "blocked": counts.get("blocked", 0),
+    "next_step": next_info,
+    "has_work": has_work,
+}))
+PYEOF
+    ) || true
+
+    if [ -n "$plan_status_info" ]; then
+      done_count=$(python3 -c "import json; print(json.loads('$plan_status_info').get('done', 0))" 2>/dev/null) || true
+      active_count=$(python3 -c "import json; print(json.loads('$plan_status_info').get('active', 0))" 2>/dev/null) || true
+      pending_count=$(python3 -c "import json; print(json.loads('$plan_status_info').get('pending', 0))" 2>/dev/null) || true
+      blocked_count=$(python3 -c "import json; print(json.loads('$plan_status_info').get('blocked', 0))" 2>/dev/null) || true
+      next_step=$(python3 -c "import json; print(json.loads('$plan_status_info').get('next_step', ''))" 2>/dev/null) || true
+      has_work=$(python3 -c "import json; print(json.loads('$plan_status_info').get('has_work', False))" 2>/dev/null) || true
+    fi
+
+    if [ "$has_work" = "True" ]; then
+      # --- Session lock ---
       lock_file="$plan_dir/.session-lock"
       own_plan=true
 
       if [ -f "$lock_file" ]; then
         lock_pid=$(cat "$lock_file" 2>/dev/null) || true
         if [ -n "$lock_pid" ] && [ "$lock_pid" != "$PPID" ]; then
-          # Lock belongs to a different process — check if it's still alive
           if kill -0 "$lock_pid" 2>/dev/null; then
             own_plan=false
           fi
-          # If the process is dead, the lock is stale — we can reclaim
         fi
       fi
 
       if $own_plan; then
-        # Claim (or re-claim) the plan for this session
         echo "$PPID" > "$lock_file"
-
         active_plan_summary="ACTIVE PLAN DETECTED"
         active_plan_summary+=$'\n'"Plan: $plan_name"
-        active_plan_summary+=$'\n'"File: $latest"
+        active_plan_summary+=$'\n'"File: $latest_json"
         active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
         [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-        [ -n "$active_subplan" ] && active_plan_summary+=$'\n'"$active_subplan"
-        active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
+        active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the plan.json file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
       else
         active_plan_summary="NOTE: Active plan exists but is owned by another Claude session"
         active_plan_summary+=$'\n'"Plan: $plan_name"
-        active_plan_summary+=$'\n'"File: $latest"
+        active_plan_summary+=$'\n'"File: $latest_json"
         active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
         [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-        [ -n "$active_subplan" ] && active_plan_summary+=$'\n'"$active_subplan"
-        active_plan_summary+=$'\n'$'\n'"This plan is being worked on by another Claude session (PID: $lock_pid). Do NOT auto-resume it. Start fresh — only resume this plan if the user explicitly asks you to."
+        active_plan_summary+=$'\n'$'\n'"This plan is being worked on by another Claude session (PID: $lock_pid). Do NOT auto-resume it."
+      fi
+    fi
+  else
+    # Legacy fallback: find masterPlan.md
+    latest=""
+    latest=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
+    if [ -z "$latest" ]; then
+      latest=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
+    fi
+
+    if [ -n "$latest" ] && [ -f "$latest" ]; then
+      plan_name="$(basename "$(dirname "$latest")")"
+      has_pending=$(grep -cE '^\s*-\s*(\[ \]|\[~\]|\[!\])' "$latest" 2>/dev/null) || true
+
+      if [ "$has_pending" -gt 0 ]; then
+        done_count=$(grep -cE '^\s*-\s*\[x\]' "$latest" 2>/dev/null) || true
+        active_count=$(grep -cE '^\s*-\s*\[~\]' "$latest" 2>/dev/null) || true
+        pending_count=$(grep -cE '^\s*-\s*\[ \]' "$latest" 2>/dev/null) || true
+        blocked_count=$(grep -cE '^\s*-\s*\[!\]' "$latest" 2>/dev/null) || true
+
+        next_step=""
+        if [ "$active_count" -gt 0 ]; then
+          next_step=$(grep -B5 -E '\[~\]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
+          [ -n "$next_step" ] && next_step="IN PROGRESS: $next_step"
+        elif [ "$pending_count" -gt 0 ]; then
+          next_step=$(grep -B5 -E '\[ \]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
+          [ -n "$next_step" ] && next_step="NEXT: $next_step"
+        fi
+
+        plan_dir="$(dirname "$latest")"
+        lock_file="$plan_dir/.session-lock"
+        own_plan=true
+
+        if [ -f "$lock_file" ]; then
+          lock_pid=$(cat "$lock_file" 2>/dev/null) || true
+          if [ -n "$lock_pid" ] && [ "$lock_pid" != "$PPID" ]; then
+            if kill -0 "$lock_pid" 2>/dev/null; then
+              own_plan=false
+            fi
+          fi
+        fi
+
+        if $own_plan; then
+          echo "$PPID" > "$lock_file"
+          active_plan_summary="ACTIVE PLAN DETECTED"
+          active_plan_summary+=$'\n'"Plan: $plan_name"
+          active_plan_summary+=$'\n'"File: $latest"
+          active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
+          [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
+          active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
+        else
+          active_plan_summary="NOTE: Active plan exists but is owned by another Claude session"
+          active_plan_summary+=$'\n'"Plan: $plan_name"
+          active_plan_summary+=$'\n'"File: $latest"
+          active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
+          [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
+          active_plan_summary+=$'\n'$'\n'"This plan is being worked on by another Claude session (PID: $lock_pid). Do NOT auto-resume it."
+        fi
       fi
     fi
   fi
