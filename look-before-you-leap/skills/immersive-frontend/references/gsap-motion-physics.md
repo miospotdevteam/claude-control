@@ -131,6 +131,25 @@ const sliced = MotionPathPlugin.sliceRawPath(rawPath, 0.2, 0.8);
 const svgString = MotionPathPlugin.rawPathToString(rawPath);
 ```
 
+### MotionPathHelper — Visual Path Editor (Dev Tool)
+
+Interactive in-browser tool for editing motion paths. Drag anchors and
+control points, add points with ALT-click, copy the resulting path data.
+
+```javascript
+import { MotionPathHelper } from 'gsap/MotionPathHelper';
+gsap.registerPlugin(MotionPathHelper);
+
+// Attach to an existing MotionPath tween for visual editing
+MotionPathHelper.create('.rocket', {
+  path: '#flight-path',
+  // Opens an interactive editor overlay in the browser
+});
+```
+
+Use during development to visually design paths, then copy the path data
+into your code. Remove before production.
+
 ### Flying Particles Along Curved Paths
 
 ```javascript

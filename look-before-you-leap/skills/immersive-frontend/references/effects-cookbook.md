@@ -111,6 +111,7 @@ Complete Lenis + GSAP + Three.js ticker integration.
 
 ```javascript
 import Lenis from 'lenis';
+import 'lenis/dist/lenis.css'; // Lenis ships its own required CSS
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
@@ -118,10 +119,11 @@ gsap.registerPlugin(ScrollTrigger);
 
 // --- Lenis ---
 const lenis = new Lenis({
+  autoRaf: false,        // IMPORTANT: disable internal RAF when using GSAP ticker
   duration: 1.2,
   easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
   smoothWheel: true,
-  smoothTouch: false,
+  syncTouch: false,      // renamed from smoothTouch in recent versions
 });
 
 // --- Connect Lenis → ScrollTrigger ---
@@ -135,12 +137,9 @@ gsap.ticker.add((time) => {
 gsap.ticker.lagSmoothing(0);
 ```
 
-```css
-html.lenis, html.lenis body { height: auto; }
-.lenis.lenis-smooth { scroll-behavior: auto !important; }
-.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
-.lenis.lenis-stopped { overflow: hidden; }
-```
+**Why `autoRaf: false`**: Lenis defaults to running its own internal
+requestAnimationFrame loop. When using GSAP's ticker to drive everything,
+disable Lenis's internal loop to avoid double-updating scroll position.
 
 **Why `lagSmoothing(0)`**: Prevents GSAP from trying to "catch up" after
 dropped frames. With Lenis, any catchup creates visible tearing between
@@ -843,7 +842,7 @@ dirLight.position.set(5, 10, 5);
 scene.add(dirLight);
 
 // --- Smooth scroll ---
-const lenis = new Lenis({ duration: 1.2, smoothWheel: true });
+const lenis = new Lenis({ autoRaf: false, duration: 1.2, smoothWheel: true });
 lenis.on('scroll', ScrollTrigger.update);
 
 // --- ScrollTrigger drives camera ---

@@ -431,6 +431,79 @@ clampPx(600); // '500px'
 
 ---
 
+## 6. CSS Variable Animation (GSAP 3.13+)
+
+Animate CSS custom properties directly — works with design tokens,
+theme switching, and CSS-driven layouts.
+
+```javascript
+// Animate any CSS variable
+gsap.to('.progress-bar', {
+  '--progress': 1,
+  duration: 1.5,
+  ease: 'power2.out',
+});
+// CSS: .progress-bar { width: calc(var(--progress) * 100%); }
+
+// Theme transition
+gsap.to(':root', {
+  '--primary-hue': 200,
+  '--bg-lightness': '15%',
+  duration: 0.8,
+  ease: 'power2.inOut',
+});
+
+// Color variables
+gsap.to('.card', {
+  '--accent-color': '#ff6600',
+  '--shadow-opacity': 0.3,
+  duration: 0.5,
+});
+```
+
+**When to use:** Design token animations, theme transitions, any case
+where CSS variables drive visual properties (gradients, shadows, layout
+calculations via `calc()`).
+
+---
+
+## 7. gsap.delayedCall() and gsap.exportRoot()
+
+### delayedCall — GSAP-Aware setTimeout
+
+Unlike `setTimeout`, respects `globalTimeline.timeScale()` and pause.
+
+```javascript
+// Simple delayed callback
+gsap.delayedCall(2, () => showNotification('Ready!'));
+
+// With params
+gsap.delayedCall(1, (msg) => console.log(msg), ['Hello']);
+
+// Cancel
+const delayed = gsap.delayedCall(5, cleanup);
+delayed.kill(); // cancel before it fires
+```
+
+### exportRoot — Global Animation Control
+
+Wraps all currently active animations into a new Timeline. New animations
+created after `exportRoot()` are NOT captured — useful for game pause.
+
+```javascript
+// Pause all current animations (e.g., game pause)
+const snapshot = gsap.exportRoot();
+snapshot.pause();
+
+// User presses resume
+snapshot.resume();
+
+// Animations created after exportRoot are independent
+gsap.to('.ui-element', { opacity: 1 }); // this still plays during pause
+```
+
+---
+
 ## Quick Reference
 
 | Utility | Use Case |
@@ -454,3 +527,6 @@ clampPx(600); // '500px'
 | `gsap.utils.splitColor()` | Parse colors |
 | `gsap.utils.getUnit()` | Extract CSS units |
 | `gsap.utils.unitize()` | Append units to functions |
+| CSS `--variable` animation | Design token / theme transitions |
+| `gsap.delayedCall()` | GSAP-aware setTimeout |
+| `gsap.exportRoot()` | Snapshot all animations for global pause |

@@ -226,12 +226,14 @@ ScrollTrigger.matchMedia({
 
 ```javascript
 import Lenis from 'lenis';
+import 'lenis/dist/lenis.css';
 
 const lenis = new Lenis({
+  autoRaf: false,        // disable internal RAF when using GSAP ticker
   duration: 1.2,
   easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
   smoothWheel: true,
-  smoothTouch: false,
+  syncTouch: false,
   touchMultiplier: 2,
 });
 ```
@@ -430,7 +432,7 @@ import Lenis from 'lenis';
 gsap.registerPlugin(ScrollTrigger);
 
 // 1. Lenis
-const lenis = new Lenis({ duration: 1.2, smoothWheel: true });
+const lenis = new Lenis({ autoRaf: false, duration: 1.2, smoothWheel: true });
 lenis.on('scroll', ScrollTrigger.update);
 
 // 2. Three.js scene

@@ -180,6 +180,25 @@ look-before-you-leap/
     │   └── SKILL.md                     # Plan generation with TDD-granularity steps
     ├── frontend-design/
     │   └── SKILL.md                     # Frontend UI design with aesthetic axes
+    ├── immersive-frontend/
+    │   ├── SKILL.md                     # WebGL, Three.js, GSAP, scroll-driven 3D
+    │   └── references/
+    │       ├── architecture.md          # Preloader, canvas+DOM layering, perf budgets
+    │       ├── three-js-patterns.md     # Scene setup, cameras, materials, R3F, disposal
+    │       ├── shader-recipes.md        # GLSL: noise, chromatic aberration, distortion
+    │       ├── effects-cookbook.md       # 8 complete implementations (preloader, marquee, etc.)
+    │       ├── gsap-core-patterns.md    # context, matchMedia, quickTo, utils, CSS vars
+    │       ├── gsap-scroll-patterns.md  # Core tweens, timelines, ScrollTrigger, Lenis
+    │       ├── gsap-scroll-advanced.md  # ScrollSmoother, Observer patterns
+    │       ├── gsap-scroll-to-plugin.md # Animated scroll-to navigation
+    │       ├── gsap-layout-plugins.md   # Flip, Draggable, Observer
+    │       ├── gsap-text-plugins.md     # SplitText, ScrambleText, TextPlugin
+    │       ├── gsap-svg-plugins.md      # MorphSVG, DrawSVG, SVG transforms
+    │       ├── gsap-motion-physics.md   # MotionPath, Physics2D, PhysicsProps
+    │       ├── gsap-easing-advanced.md  # CustomEase, CustomBounce, CustomWiggle, EasePack
+    │       ├── gsap-value-plugins.md    # InertiaPlugin, Modifiers, Snap, roundProps
+    │       ├── gsap-helpers-cheatsheet.md # Dense all-in-one GSAP quick reference
+    │       └── gsap-common-mistakes.md  # Gotchas, debugging, FOUC prevention
     ├── refactoring/
     │   └── SKILL.md                     # Post-execution code simplification
     └── systematic-debugging/

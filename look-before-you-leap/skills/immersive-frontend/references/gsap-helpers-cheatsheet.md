@@ -29,8 +29,11 @@ import { CustomEase } from 'gsap/CustomEase';
 import { CustomBounce } from 'gsap/CustomBounce';
 import { CustomWiggle } from 'gsap/CustomWiggle';
 import { EasePack } from 'gsap/EasePack';
-import { EaselPlugin } from 'gsap/EaselPlugin';
-import { PixiPlugin } from 'gsap/PixiPlugin';
+import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
+import { InertiaPlugin } from 'gsap/InertiaPlugin';
+import { MotionPathHelper } from 'gsap/MotionPathHelper';
+import { EaselPlugin } from 'gsap/EaselPlugin';   // EaselJS/CreateJS integration
+import { PixiPlugin } from 'gsap/PixiPlugin';     // PixiJS integration
 import { GSDevTools } from 'gsap/GSDevTools';
 
 // For SSR/Next.js (no window):
@@ -70,6 +73,9 @@ gsap.registerPlugin(ScrollTrigger, Flip, SplitText, Observer);
 | `gsap.matchMedia()` | Responsive conditions |
 | `gsap.ticker` | The render loop |
 | `gsap.globalTimeline` | Root of all timelines |
+| `gsap.exportRoot()` | Wrap active animations for global control |
+| `gsap.delayedCall()` | setTimeout replacement on GSAP timing |
+| `gsap.getById()` | Find animation by id |
 | `gsap.defaults()` | Set global defaults |
 | `gsap.config()` | Global configuration |
 
@@ -615,6 +621,8 @@ gsap.ticker.lagSmoothing(0);   // disable lag compensation (recommended for scro
 gsap.ticker.remove(fn);        // remove listener
 gsap.ticker.sleep();           // pause ticker
 gsap.ticker.wake();            // resume ticker
+gsap.ticker.deltaRatio(60);    // multiplier for 60fps-independent updates
+// Returns 1 at 60fps, 2 at 30fps — use for consistent physics in ticker
 ```
 
 ### Single Render Loop Pattern (Three.js + Lenis + ScrollTrigger)
@@ -622,7 +630,7 @@ gsap.ticker.wake();            // resume ticker
 ```javascript
 import Lenis from 'lenis';
 
-const lenis = new Lenis();
+const lenis = new Lenis({ autoRaf: false });
 
 // Lenis listens to ScrollTrigger
 lenis.on('scroll', ScrollTrigger.update);
@@ -638,6 +646,52 @@ gsap.ticker.add((time, deltaTime) => {
   updateScene(time, deltaTime);
   renderer.render(scene, camera);
 });
+```
+
+---
+
+## exportRoot / delayedCall / getById
+
+```javascript
+// gsap.exportRoot() — wrap all active animations into a Timeline for global control
+// Useful for game pause: new animations after export are NOT affected
+const allAnimations = gsap.exportRoot();
+allAnimations.pause();   // pause everything currently running
+allAnimations.resume();  // resume
+
+// gsap.delayedCall(delay, callback, params) — GSAP-aware setTimeout
+// Respects globalTimeline.timeScale() and pause, unlike setTimeout
+const delayed = gsap.delayedCall(2, () => {
+  showNotification('Hello!');
+});
+delayed.kill(); // cancel
+
+// gsap.getById(id) — find animation by its id property
+gsap.to('.box', { x: 200, id: 'boxMove' });
+const tween = gsap.getById('boxMove');
+tween.pause();
+```
+
+### CSS Variable Animation (GSAP 3.13+)
+
+```javascript
+// Animate CSS custom properties directly
+gsap.to('.element', {
+  '--progress': 1,           // animate a CSS variable
+  '--color': '#ff0000',      // color variables work too
+  duration: 1,
+});
+
+// Use with design tokens
+gsap.to(':root', {
+  '--primary-hue': 200,
+  duration: 2,
+  ease: 'power2.inOut',
+});
+
+// Drive CSS from a variable animated by GSAP
+// CSS: .bar { width: calc(var(--progress) * 100%); }
+gsap.to('.bar', { '--progress': 1, duration: 1.5 });
 ```
 
 ---
@@ -701,7 +755,6 @@ gsap.config({
   autoSleep: 60,          // seconds of inactivity before ticker sleeps
   force3D: 'auto',        // force GPU acceleration (true, false, 'auto')
   nullTargetWarn: false,   // suppress warnings for null targets
-  trialWarn: false,        // suppress trial plugin warnings
   units: { x: 'px', y: 'px', rotation: 'deg' }, // default units
 });
 
@@ -1227,6 +1280,115 @@ GSDevTools.create({
   loop: true,
   minimal: false,
 });
+```
+
+### ScrollToPlugin
+
+```javascript
+import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
+gsap.registerPlugin(ScrollToPlugin);
+
+// Scroll to pixel position
+gsap.to(window, { scrollTo: 400, duration: 1 });
+
+// Scroll to element
+gsap.to(window, { scrollTo: '#section-3', duration: 1.5, ease: 'power2.inOut' });
+
+// With offset (for fixed header)
+gsap.to(window, { scrollTo: { y: '#section', offsetY: 80 }, duration: 1 });
+
+// Scroll to bottom
+gsap.to(window, { scrollTo: 'max', duration: 2 });
+
+// Container scroll
+gsap.to('#scrollable-div', { scrollTo: { y: 300, x: 200 }, duration: 1 });
+
+// Auto-cancel on manual scroll
+gsap.to(window, { scrollTo: { y: '#target', autoKill: true }, duration: 1 });
+
+// Global config
+ScrollToPlugin.config({ autoKill: true });
+```
+
+### InertiaPlugin
+
+```javascript
+import { InertiaPlugin } from 'gsap/InertiaPlugin';
+gsap.registerPlugin(InertiaPlugin);
+
+// Basic momentum
+gsap.to(obj, { inertia: { x: 500, y: -300 } }); // velocity in px/sec
+
+// With boundaries and snap
+gsap.to(obj, {
+  inertia: {
+    x: { velocity: 500, min: 0, max: 1024, end: [0, 256, 512, 768, 1024] },
+  },
+});
+
+// Velocity tracking (standalone, without Draggable)
+InertiaPlugin.track(target, 'x,y');        // start tracking
+InertiaPlugin.getVelocity(target, 'x');    // read velocity
+InertiaPlugin.isTracking(target, 'x');     // check status
+InertiaPlugin.untrack(target);             // stop tracking
+
+// Auto velocity from tracking
+gsap.to(obj, { inertia: { x: 'auto', y: 'auto' } });
+```
+
+### Modifiers (Core — No Import)
+
+```javascript
+// Per-frame value interception
+gsap.to('.el', {
+  x: 500,
+  modifiers: {
+    x: (value, target) => {
+      // intercept, transform, return
+      return Math.round(parseFloat(value) / 50) * 50;
+    },
+  },
+});
+
+// Infinite carousel via wrap
+gsap.to(items, {
+  x: `-=${totalWidth}`,
+  repeat: -1,
+  ease: 'none',
+  modifiers: {
+    x: gsap.utils.unitize(gsap.utils.wrap(-itemWidth, totalWidth - itemWidth)),
+  },
+});
+```
+
+### Snap (Core — No Import)
+
+```javascript
+// Snap to integers
+gsap.to('.el', { x: 1000, snap: 'x,y' });
+
+// Snap to increment
+gsap.to('.el', { x: 1000, snap: { x: 20 } }); // nearest multiple of 20
+
+// Snap to array
+gsap.to('.el', { x: 1000, snap: { x: [0, 100, 250, 500] } });
+
+// Snap with radius (magnetic)
+gsap.to('.el', { x: 1000, snap: { x: { values: [0, 250, 500], radius: 30 } } });
+```
+
+### roundProps (Core — No Import)
+
+```javascript
+// Round specific properties to integers every frame
+gsap.to('.el', { x: 300.7, y: 150.3, roundProps: 'x,y' });
+
+// Counter with whole numbers
+const c = { value: 0 };
+gsap.to(c, { value: 1000, roundProps: 'value', onUpdate: () => display(c.value) });
+
+// NOTE: roundProps, snap, and modifiers share the same mechanism —
+// cannot combine them on the same property
 ```
 
 ---

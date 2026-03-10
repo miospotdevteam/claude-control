@@ -107,6 +107,12 @@ Does it need 3D objects / WebGL?
 ├── Custom easing (bounce, wiggle, rough, slow-mo)?
 │   └── Read: references/gsap-easing-advanced.md
 │
+├── Animated scroll-to navigation (anchor links, back-to-top)?
+│   └── Read: references/gsap-scroll-to-plugin.md
+│
+├── Momentum/throw physics, infinite loops, value snapping?
+│   └── Read: references/gsap-value-plugins.md
+│
 └── NO (2D motion only: text reveals, parallax, marquees)
     └── Read: references/gsap-scroll-patterns.md + references/effects-cookbook.md
 ```
@@ -444,7 +450,7 @@ steps):
 |------|----------|--------------|
 | `references/architecture.md` | Preloader, canvas+DOM layering, DOM-to-WebGL sync, page transitions, performance budgets | Site architecture decisions |
 | `references/gsap-scroll-patterns.md` | GSAP core, ScrollTrigger, Lenis, SplitText basics, Motion, timelines | Any scroll-driven animation |
-| `references/gsap-core-patterns.md` | gsap.context() cleanup, gsap.matchMedia() responsive, quickTo/quickSetter, registerEffect, gsap.utils | Every GSAP project |
+| `references/gsap-core-patterns.md` | gsap.context() cleanup, gsap.matchMedia() responsive, quickTo/quickSetter, registerEffect, gsap.utils, CSS variable animation, delayedCall, exportRoot | Every GSAP project |
 | `references/gsap-helpers-cheatsheet.md` | Full import table, methods, timeline control, position parameter, stagger, easing, ScrollTrigger config, ticker | Quick lookup / cheatsheet |
 
 ### WebGL & Shaders
@@ -464,6 +470,8 @@ steps):
 | `references/gsap-motion-physics.md` | MotionPath (SVG path animation), Physics2D (velocity/gravity), PhysicsProps (per-property physics) | Path animation, particle explosions, physics simulation |
 | `references/gsap-scroll-advanced.md` | ScrollSmoother (vs Lenis comparison), advanced Observer patterns, velocity carousel | Choosing smooth scroll approach, full-page snapping |
 | `references/gsap-easing-advanced.md` | CustomEase (SVG paths), CustomBounce (squash), CustomWiggle (oscillation), EasePack (RoughEase, SlowMo, ExpoScaleEase) | Custom/branded motion curves, glitch effects, dramatic reveals |
+| `references/gsap-scroll-to-plugin.md` | ScrollToPlugin — animated scroll to positions/elements, offsetY, autoKill, container scrolling | Nav links, scroll-to-section, back-to-top, programmatic scrolling |
+| `references/gsap-value-plugins.md` | InertiaPlugin (momentum/throw), Modifiers (per-frame value interception, infinite loops), Snap (live grid/array snapping), roundProps (integer rounding) | Momentum physics, infinite carousels, value snapping, pixel-perfect counters |
 
 ### Debugging & Patterns
 

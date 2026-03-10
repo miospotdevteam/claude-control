@@ -86,6 +86,36 @@ gsap.to('#shape', {
 });
 ```
 
+### smooth — Extra Anchor Points (GSAP 3.14+)
+
+Adds extra anchor points for smoother morph transitions, reducing mid-morph
+kinks and sharp angles:
+
+```javascript
+gsap.to('#shape', {
+  morphSVG: {
+    shape: '#target',
+    smooth: 80,        // number of extra points (higher = smoother)
+    // smooth: 'auto', // let GSAP decide based on path complexity
+  },
+  duration: 1.5,
+});
+```
+
+### curveMode — Prevent Mid-Animation Kinks (GSAP 3.14+)
+
+Prevents angular artifacts during the morph transition:
+
+```javascript
+gsap.to('#shape', {
+  morphSVG: {
+    shape: '#target',
+    curveMode: true,   // smoother interpolation, prevents kinks
+  },
+  duration: 1.5,
+});
+```
+
 ### RawPath Utilities (Canvas Rendering)
 
 For rendering morphed paths to `<canvas>` instead of SVG:

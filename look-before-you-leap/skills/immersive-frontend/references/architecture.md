@@ -302,7 +302,11 @@ but WebGL has not updated — visible tearing.
 ### The Solution: Lenis + GSAP Ticker
 
 ```javascript
-const lenis = new Lenis({ duration: 1.2, smoothWheel: true });
+const lenis = new Lenis({
+  autoRaf: false,        // disable internal RAF — GSAP ticker drives everything
+  duration: 1.2,
+  smoothWheel: true,
+});
 lenis.on('scroll', ScrollTrigger.update);
 
 gsap.ticker.add((time) => {
@@ -727,14 +731,14 @@ latest stable versions before using — these may be outdated:**
 
 ```html
 <!-- Three.js (https://www.npmjs.com/package/three) -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.min.js"></script>
 
 <!-- GSAP + Plugins (https://www.npmjs.com/package/gsap) -->
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/ScrollTrigger.min.js"></script>
 
 <!-- Lenis Smooth Scroll (https://www.npmjs.com/package/lenis) -->
-<script src="https://cdn.jsdelivr.net/npm/lenis@1.2.3/dist/lenis.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.3.0/dist/lenis.min.js"></script>
 ```
 
 ---
@@ -761,7 +765,7 @@ src/
 // App.js — the orchestrator
 class App {
   constructor() {
-    this.lenis = new Lenis({ duration: 1.2, smoothWheel: true });
+    this.lenis = new Lenis({ autoRaf: false, duration: 1.2, smoothWheel: true });
     this.lenis.on('scroll', ScrollTrigger.update);
     gsap.ticker.add((time) => this.lenis.raf(time * 1000));
     gsap.ticker.lagSmoothing(0);

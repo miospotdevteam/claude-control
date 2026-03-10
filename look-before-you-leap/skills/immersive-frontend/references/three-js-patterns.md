@@ -415,11 +415,91 @@ export default function App() {
 - R3F auto-handles disposal on unmount
 - Use `gsap.context()` for GSAP cleanup in React components
 
+### Drei Loading Hooks
+
+The most-used Drei hooks for asset loading. These are the standard way to
+load assets in R3F — prefer them over raw Three.js loaders.
+
+```jsx
+import { useGLTF, useTexture, useEnvironment, useProgress } from '@react-three/drei';
+import { Html } from '@react-three/drei';
+
+// --- useGLTF: Load GLTF/GLB with auto-Draco decompression ---
+function Model({ url }) {
+  const { scene, nodes, materials, animations } = useGLTF(url);
+
+  // Access specific nodes and materials (typed from the file)
+  return (
+    <group>
+      <mesh geometry={nodes.Body.geometry} material={materials.Metal} castShadow />
+      <mesh geometry={nodes.Head.geometry} material={materials.Glass} />
+    </group>
+  );
+}
+// Preload outside component (fires immediately, not on mount)
+useGLTF.preload('/models/robot.glb');
+
+// --- useTexture: Load PBR texture maps ---
+function TexturedSphere() {
+  // Object map — keys match MeshStandardMaterial properties
+  const textures = useTexture({
+    map: '/textures/albedo.jpg',
+    normalMap: '/textures/normal.jpg',
+    roughnessMap: '/textures/roughness.jpg',
+    metalnessMap: '/textures/metalness.jpg',
+  });
+
+  return (
+    <mesh>
+      <sphereGeometry args={[1, 64, 64]} />
+      <meshStandardMaterial {...textures} />
+    </mesh>
+  );
+}
+
+// --- useEnvironment: Declarative environment maps ---
+function Scene() {
+  const envMap = useEnvironment({ preset: 'sunset' });
+  // Or: useEnvironment({ files: '/textures/env.hdr' })
+  return <primitive object={envMap} attach="environment" />;
+}
+useEnvironment.preload({ preset: 'sunset' });
+
+// --- useProgress: Loading state for Suspense fallback ---
+function Loader() {
+  const { active, progress, errors, item, loaded, total } = useProgress();
+  return <Html center>{Math.round(progress)}% loaded</Html>;
+}
+
+// Usage: wrap async components in Suspense
+function App() {
+  return (
+    <Canvas>
+      <Suspense fallback={<Loader />}>
+        <Model url="/models/scene.glb" />
+        <TexturedSphere />
+      </Suspense>
+    </Canvas>
+  );
+}
+```
+
+**Loading rules:**
+- Always wrap async components in `<Suspense>` — R3F hooks suspend
+  during loading
+- Use `.preload()` for assets needed immediately (call at module scope)
+- `useTexture` object map keys match material property names — spread
+  directly onto `<meshStandardMaterial {...textures} />`
+- `useGLTF` auto-detects Draco and MeshOpt compression
+
 ---
 
 ## 9. Performance Optimization
 
-### InstancedMesh (reduce draw calls 90%+)
+### InstancedMesh (same geometry, different transforms)
+
+Use when all instances share the **same geometry**. 1 draw call for
+thousands of objects.
 
 ```javascript
 const count = 10000;
@@ -435,6 +515,74 @@ for (let i = 0; i < count; i++) {
 mesh.instanceMatrix.needsUpdate = true;
 scene.add(mesh); // 1 draw call for 10,000 objects
 ```
+
+### BatchedMesh (multiple geometries, 1 draw call)
+
+Use when instances have **different geometries** (e.g., trees with trunk +
+canopy, mixed furniture). More flexible than InstancedMesh.
+
+```javascript
+const box = new THREE.BoxGeometry(1, 1, 1);
+const sphere = new THREE.SphereGeometry(1, 12, 12);
+const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+
+// Allocate: max instances, max vertices, max indices
+const batchedMesh = new THREE.BatchedMesh(100, 5000, 10000, material);
+
+// Register geometries (returns geometry IDs)
+const boxId = batchedMesh.addGeometry(box);
+const sphereId = batchedMesh.addGeometry(sphere);
+
+// Add instances referencing different geometries
+const matrix = new THREE.Matrix4();
+for (let i = 0; i < 50; i++) {
+  const geoId = i % 2 === 0 ? boxId : sphereId;
+  const instanceId = batchedMesh.addInstance(geoId);
+  matrix.setPosition(Math.random() * 20, 0, Math.random() * 20);
+  batchedMesh.setMatrixAt(instanceId, matrix);
+  batchedMesh.setColorAt(instanceId, new THREE.Color(Math.random() * 0xffffff));
+}
+
+scene.add(batchedMesh); // 1 draw call for 50 mixed objects
+```
+
+**InstancedMesh vs BatchedMesh:**
+
+| Feature | InstancedMesh | BatchedMesh |
+|---------|--------------|-------------|
+| Geometry | Same for all | Multiple different geometries |
+| Per-instance color | `.setColorAt()` | `.setColorAt()` |
+| Dynamic add/remove | No (fixed count) | Yes (`.addInstance()`, `.deleteInstance()`) |
+| Per-object frustum culling | No | Yes (`.perObjectFrustumCulled`) |
+| Best for | Particles, grass, crowds | Mixed props, environments, LOD |
+
+### KTX2 Compressed Textures (mobile performance)
+
+KTX2 reduces GPU texture memory by 75%+ via hardware-compressed formats.
+Essential for mobile. The transcoder auto-selects the best format for the
+device (ASTC, BCn, ETC).
+
+```javascript
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+
+const ktx2Loader = new KTX2Loader()
+  .setTranscoderPath('/basis/')   // Basis Universal transcoder WASM
+  .detectSupport(renderer);       // auto-detect GPU format support
+
+ktx2Loader.load('/textures/albedo.ktx2', (texture) => {
+  material.map = texture;
+  material.needsUpdate = true;
+});
+
+// With GLTFLoader (auto KTX2 if model uses KHR_texture_basisu)
+gltfLoader.setKTX2Loader(ktx2Loader);
+
+// In R3F with Drei: useGLTF handles KTX2 automatically when
+// the .glb uses KHR_texture_basisu extension
+```
+
+**When to use:** Any project targeting mobile, or textures larger than
+1024x1024. Convert with `toktx` from Khronos KTX-Software.
 
 ### Performance Monitoring
 
