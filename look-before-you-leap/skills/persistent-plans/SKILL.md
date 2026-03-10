@@ -22,14 +22,16 @@ Every plan consists of two files:
 
 - **`plan.json`** — Source of truth for execution. Steps, progress, state,
   inline sub-plans. Parsed by hooks, updated by Claude via `plan_utils.py`.
-  Agent-facing. This is what you read to know where you are.
+  Agent-facing. This is what you read to know where you are. Updated
+  constantly during execution.
 - **`masterPlan.md`** — Proposal document for user review via Orbit.
   Summarizes what, why, critical decisions, warnings, risk areas.
-  Human-facing. Does NOT contain execution state.
+  Human-facing. **Write-once**: frozen after Orbit approval, never updated
+  during execution.
 
 Hooks read `plan.json`. You update `plan.json`. The user reviews
-`masterPlan.md`. Never put execution state (`[x]`/`[ ]` checkboxes) in
-masterPlan.md — that's what plan.json is for.
+`masterPlan.md` once during planning. After approval, only plan.json
+changes — masterPlan.md is a stable record of what was agreed upon.
 
 ---
 
@@ -162,7 +164,8 @@ When the user gives you a task:
    `.temp/plan-mode/active/<plan-name>/`:
    - `plan.json` — structured execution plan (see
      `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/plan-schema.md`)
-   - `masterPlan.md` — user-facing proposal for Orbit review
+   - `masterPlan.md` — user-facing proposal for Orbit review (write-once,
+     frozen after approval)
 
 The plan.json schema is documented in
 `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/plan-schema.md`.

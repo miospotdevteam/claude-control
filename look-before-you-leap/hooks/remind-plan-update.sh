@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # PostToolUse hook: Enforce plan checkpointing during execution.
 #
-# Tracks edits to non-plan files. After 3 code edits without a
-# masterPlan.md update, injects a strong reminder into context.
+# Tracks edits to non-plan files. After 5 code edits without a
+# plan file update, injects a strong reminder into context.
 #
 # Counter file: .temp/plan-mode/.edit-count
 #   - Incremented on each Edit/Write to a non-.temp file
-#   - Reset to 0 when masterPlan.md (or sub-plan) is edited
+#   - Reset to 0 when any plan file (plan.json, masterPlan.md, etc.) is edited
 #
 # Input: JSON on stdin with tool_name, tool_input.file_path, cwd
 

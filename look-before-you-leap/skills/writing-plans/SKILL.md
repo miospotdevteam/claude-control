@@ -7,9 +7,9 @@ description: "Use after discovery to write implementation plans with TDD-granula
 
 Turn discovery findings into bite-sized implementation plans. Assume the
 implementing engineer has zero context for this codebase and questionable
-taste. Document everything they need: which files to touch, complete code,
-exact commands, expected output. Give them the whole plan as bite-sized
-tasks. DRY. YAGNI. TDD. Frequent commits.
+taste. Document everything they need: which files to touch, precise
+descriptions with file paths, exact commands, expected output. Give them
+the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
 
 **Announce at start:** "I'm using the writing-plans skill to create the
 implementation plan."
@@ -23,16 +23,29 @@ in the plan directory, go back to Step 1 (Explore) first.
 
 ### 1. Read the discovery
 
-Read `discovery.md` from `.temp/plan-mode/active/<plan-name>/`. Understand
-the scope, entry points, consumers, existing patterns, test infrastructure,
-and blast radius. This feeds directly into both plan.json and masterPlan.md.
+Read `discovery.md` from `.temp/plan-mode/active/<plan-name>/`. This is the
+raw exploration log — an append-only markdown file written during Step 1.
+
+**Discovery flow** (each written once, never updated during execution):
+1. **`discovery.md`** — raw exploration log (may have duplicates, rough notes)
+2. **`plan.json.discovery`** — structured extraction: the 8 discovery fields
+   distilled from the raw log into clean, self-contained summaries
+3. **`masterPlan.md` Discovery Summary** — human-readable rendering of the
+   same findings for Orbit review
+
+Read discovery.md and extract what you need into plan.json's `discovery`
+object. masterPlan.md's Discovery Summary is a human rendering of the same
+data — both are written once during planning, then frozen.
 
 If dep maps are configured, the discovery MUST include `deps-query.py` output
 for every file in scope. If the discovery lacks deps-query output for a
 TypeScript project, go back to Step 1 (Explore) and run it before planning.
 
-If the brainstorming skill produced a `design.md` in the same plan
-directory, read that too — it contains the approved design decisions.
+**design.md**: If the brainstorming skill produced a `design.md` in the same
+plan directory, read it — it contains approved design decisions that must
+inform the plan. Reference specific design decisions in step descriptions
+where relevant (e.g., "Per design.md: use composition over inheritance for
+the validator chain").
 
 ### 2. Identify applicable disciplines
 
@@ -67,37 +80,14 @@ read and what Claude updates during execution. Include:
 - Inline sub-plans for large steps (see Step 4 below)
 - Exact skill identifiers in `skill` fields
 
-#### masterPlan.md — user-facing proposal
+#### masterPlan.md — user-facing proposal (write-once)
 
-This is the document the user reviews via Orbit. It should communicate
-**intent**, not execution state. Format:
+This is the document the user reviews via Orbit. It communicates **intent**,
+not execution state. **It is frozen after Orbit approval** — never updated
+during execution. All runtime state lives in plan.json.
 
-```markdown
-# Plan: <Title>
-
-## What I Want To Do
-[2-3 paragraph summary — the "elevator pitch" for the user]
-
-## Critical Decisions
-- Decision 1 and its implications
-- Decision 2 and its implications
-
-## Warnings
-- Risk 1 and mitigation
-- Risk 2 and mitigation
-
-## Steps Overview
-1. Step title → key files
-2. Step title → key files
-...
-
-## Risk Areas
-- High blast radius areas
-- Integration points that could break
-```
-
-No `[x]`/`[ ]` checkboxes. No execution state. Just what, why, and what
-could go wrong.
+Use the template from `references/master-plan-format.md`. No `[x]`/`[ ]`
+checkboxes. No execution state. Just what, why, and what could go wrong.
 
 #### Step granularity: how steps map to TDD
 
@@ -161,7 +151,9 @@ Default to `false` for simple steps.
   skill name (e.g., `look-before-you-leap:frontend-design`), never vague
   hints. Post-compaction Claude has no memory — only exact names work.
   Use `"none"` for steps that don't need a specialized skill.
-- **Complete code in every step** — not "add validation" but the actual code
+- **Precise descriptions with file paths** — not vague "add validation" but
+  specific what-to-do with exact file paths and acceptance criteria. Plans
+  describe *what* to build; the executing engineer writes the code.
 - **Exact file paths** — every step lists files in the `files` array
 - **Exact commands with expected outcome** — in description or acceptance
   criteria, include the command and expected result
@@ -235,10 +227,10 @@ After the plan is approved via Orbit:
 
 1. **If not already in plan mode**, call `EnterPlanMode` to enter it.
 2. Read the plan.json you just wrote from disk.
-3. Write a summary to the **plan mode scratch pad** (the file specified in
-   the plan mode system message — NOT the masterPlan.md). Include: the key
-   steps, files involved, and acceptance criteria — enough for the user to
-   approve or reject.
+3. Write a summary to the **plan mode scratch pad** (the file path is
+   specified in the plan mode system message — it is NOT masterPlan.md and
+   NOT plan.json). Include: the key steps, files involved, and acceptance
+   criteria — enough for the user to approve or reject.
 4. Call `ExitPlanMode` to present the plan to the user.
 
 This gives the user the built-in **"autoaccept edits and clear context?"**
@@ -282,6 +274,10 @@ directory).
   the engineer to make good test design or naming decisions
 - **One component per step** — TDD rhythm in progress items, not separate steps
 - **TDD by default** — test first, then implement, always
-- **Complete code** — never write "add error handling", write the actual code
+- **Precise descriptions** — never write vague "add error handling"; specify
+  exactly what to do, which files, and how to verify. Plans describe intent;
+  the executing engineer writes the code.
+- **masterPlan.md is write-once** — frozen after Orbit approval. All runtime
+  state lives in plan.json
 - **DRY / YAGNI** — only what's needed now, nothing speculative
 - **Sub-plans are mandatory** — if a step meets the criteria, it gets one

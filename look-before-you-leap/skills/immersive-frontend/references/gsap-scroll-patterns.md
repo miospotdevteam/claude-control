@@ -275,11 +275,18 @@ lenis.direction // 1 (down) or -1 (up)
 
 ---
 
-## 5. SplitText
+## 5. SplitText (now free — included with `bun add gsap`)
+
+> SplitText is now 100% free with GSAP. Use it instead of manual splitting —
+> it handles emoji, ligatures, RTL, nested elements, and screen readers.
+> For full API reference, see `gsap-text-plugins.md`.
 
 ### Character Cascade
 
 ```javascript
+import { SplitText } from 'gsap/SplitText';
+gsap.registerPlugin(SplitText);
+
 const split = new SplitText('.hero-title', { type: 'chars,words' });
 
 gsap.fromTo(split.chars, {
@@ -292,68 +299,27 @@ gsap.fromTo(split.chars, {
 });
 ```
 
-### Line-by-Line Masked Reveal
+### Line-by-Line Masked Reveal (using built-in mask)
 
 ```javascript
-const split = new SplitText('.paragraph', { type: 'lines', linesClass: 'line' });
-
-// Wrap each line in overflow:hidden for mask effect
-split.lines.forEach(line => {
-  const wrapper = document.createElement('div');
-  wrapper.style.overflow = 'hidden';
-  line.parentNode.insertBefore(wrapper, line);
-  wrapper.appendChild(line);
-});
-
-gsap.from(split.lines, {
-  yPercent: 105, duration: 0.8, ease: 'power4.out', stagger: 0.12,
-  scrollTrigger: { trigger: '.paragraph', start: 'top 85%' },
-});
-```
-
-### Manual Split (no SplitText plugin needed)
-
-For when you cannot use the paid SplitText plugin. Split text into
-character spans using safe DOM methods.
-
-```javascript
-function manualSplitChars(el) {
-  const text = el.textContent;
-  // Clear using textContent (safe, no XSS risk)
-  el.textContent = '';
-
-  text.split(' ').forEach((word, i) => {
-    const wordSpan = document.createElement('span');
-    wordSpan.style.display = 'inline-block';
-    wordSpan.style.whiteSpace = 'nowrap';
-
-    word.split('').forEach(char => {
-      const charSpan = document.createElement('span');
-      charSpan.textContent = char; // textContent is safe
-      charSpan.style.display = 'inline-block';
-      charSpan.classList.add('char');
-      wordSpan.appendChild(charSpan);
+// NEW: mask property adds overflow:hidden wrappers automatically
+const split = new SplitText('.paragraph', {
+  type: 'lines',
+  mask: 'lines',        // built-in masking — no manual wrappers needed
+  autoSplit: true,       // auto re-split on resize
+  onSplit: (self) => {   // fires on split and every re-split
+    gsap.from(self.lines, {
+      yPercent: 100, duration: 0.8, ease: 'power4.out', stagger: 0.12,
+      scrollTrigger: { trigger: '.paragraph', start: 'top 85%' },
     });
-
-    el.appendChild(wordSpan);
-
-    // Add space between words using a text node
-    if (i < text.split(' ').length - 1) {
-      const space = document.createElement('span');
-      space.textContent = '\u00A0'; // non-breaking space (safe)
-      space.style.display = 'inline-block';
-      el.appendChild(space);
-    }
-  });
-
-  return el.querySelectorAll('.char');
-}
+  },
+});
 ```
 
 ### Cleanup
 
 ```javascript
-split.revert(); // Always revert before re-splitting on resize
+split.revert(); // Always revert before re-splitting (unless using autoSplit)
 ```
 
 ---

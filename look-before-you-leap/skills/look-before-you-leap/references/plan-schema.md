@@ -168,11 +168,18 @@ python3 /path/to/plan_utils.py next-step /path/to/plan.json
 
 ## masterPlan.md (companion file)
 
-masterPlan.md is the human-facing presentation document. It lives alongside
-plan.json in the same directory. Its purpose:
+masterPlan.md is the human-facing proposal document. It lives alongside
+plan.json in the same directory. **It is write-once** — frozen after Orbit
+approval and never updated during execution.
+
+Its purpose:
 
 - Present the plan to the user for Orbit review
 - Summarize what, why, critical decisions, warnings, risk areas
 - Does NOT contain execution state (no `[x]`/`[ ]` checkboxes)
+- Serves as a stable record of what was agreed upon
 
-See the writing-plans skill for the masterPlan.md format.
+All runtime state (progress, results, completed summaries, deviations)
+lives exclusively in plan.json.
+
+See `references/master-plan-format.md` for the template.

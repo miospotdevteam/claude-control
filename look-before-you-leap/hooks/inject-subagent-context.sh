@@ -21,13 +21,20 @@ print(data.get('cwd', ''))
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 
-# Build active plan notice
+# Build active plan notice — prefer plan.json (execution source of truth)
 active_plan_path=""
 if [ -d "$ACTIVE_DIR" ]; then
-  # Find most recent masterPlan.md (macOS stat, then Linux fallback)
-  active_plan_path=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
+  # Find most recent plan.json (macOS stat, then Linux fallback)
+  active_plan_path=$(find "$ACTIVE_DIR" -name "plan.json" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
   if [ -z "$active_plan_path" ]; then
-    active_plan_path=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
+    active_plan_path=$(find "$ACTIVE_DIR" -name "plan.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
+  fi
+  # Legacy fallback to masterPlan.md
+  if [ -z "$active_plan_path" ]; then
+    active_plan_path=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
+    if [ -z "$active_plan_path" ]; then
+      active_plan_path=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
+    fi
   fi
 fi
 
@@ -166,13 +173,16 @@ else:
 
 if active_plan:
     plan_dir = pathlib.Path(active_plan).parent
+    plan_json_path = plan_dir / "plan.json"
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    plan_utils_cmd = os.path.join(plugin_root, "skills", "look-before-you-leap", "scripts", "plan_utils.py") if plugin_root else "plan_utils.py"
     preamble_lines.extend([
         "",
         f"- Active plan exists at: {active_plan} — read it before starting work",
-        "- PROGRESS TRACKING: If your work corresponds to Progress items in the plan,",
-        f"  mark each `- [ ]` item `- [x]` in {active_plan} as you complete it.",
-        "  Use Edit tool on the masterPlan.md file. Do NOT wait until you're done —",
-        "  update after each sub-task so compaction can't lose your progress.",
+        "- PROGRESS TRACKING: If your work corresponds to progress items in plan.json,",
+        f"  update via: `python3 {plan_utils_cmd} update-progress {plan_json_path} <step> <index> done`",
+        "  Do NOT wait until you're done — update after each sub-task so compaction",
+        "  can't lose your progress.",
     ])
 
 # --- Discovery file (lives in plan directory, created on demand) ---

@@ -138,8 +138,8 @@ from zero.
 **Invoke `look-before-you-leap:writing-plans`** to produce the plan.
 The skill consumes your discovery.md, identifies applicable discipline
 checklists, structures TDD-granularity steps, and writes both:
-- `plan.json` — execution source of truth (hooks read this)
-- `masterPlan.md` — user-facing proposal for Orbit review
+- `plan.json` — execution source of truth (hooks read this, updated during execution)
+- `masterPlan.md` — user-facing proposal for Orbit review (write-once, frozen after approval)
 
 Follow **persistent-plans Phase 1** (Create the Plan) for the structural
 rules — the writing-plans skill handles the content.

@@ -5,6 +5,11 @@ It communicates intent, critical decisions, warnings, and risk — NOT
 execution state. Execution state lives in `plan.json` (see
 `references/plan-schema.md`).
 
+**Write-once**: masterPlan.md is frozen after Orbit approval. It is never
+updated during execution. All runtime state (progress, results, deviations)
+lives in `plan.json`. This keeps the proposal document as a stable record
+of what was agreed upon.
+
 No `[x]`/`[ ]` checkboxes. No progress tracking. No result fields.
 Just what, why, and what could go wrong.
 
@@ -88,19 +93,11 @@ disciplines.">
 <List anything that's blocked, why, and what's needed to unblock.
 If nothing is blocked, write "None.">
 
-## Completed Summary
+## Risk Areas
 
-<Updated as steps complete. Running log for context resumption. Format:
-
-- **Step 1** (complete): Created apiClient.ts with typed wrappers.
-- **Step 2** (complete): Migrated schema, verified all queries.
-
-Start with "No steps completed yet.">
-
-## Deviations
-
-<Places where implementation deviated from the plan and why.
-Start with "None yet.">
+<Highlight areas where things could go wrong — consumer breakage, security
+implications, performance concerns, areas requiring manual verification.
+If no notable risks, write "None.">
 ```
 
 ---
@@ -170,11 +167,8 @@ High — issue is clear, fix is straightforward.
 ## Blocked Items
 None.
 
-## Completed Summary
-No steps completed yet.
-
-## Deviations
-None yet.
+## Risk Areas
+None.
 ```
 
 ## Relationship to plan.json
@@ -186,7 +180,7 @@ masterPlan.md and plan.json are written together during the planning phase
 |---|---|---|
 | **Audience** | Claude + hooks | User (via Orbit) |
 | **Execution state** | Yes (status, progress, results) | No |
-| **Updated during execution** | Yes (constantly) | Only Completed Summary + Deviations |
+| **Updated during execution** | Yes (constantly) | Never (frozen after approval) |
 | **Reviewed via Orbit** | No | Yes |
 | **Parsed by hooks** | Yes | Legacy fallback only |
 

@@ -11,7 +11,7 @@
         "Reads relevant discipline checklists based on the task",
         "Writes masterPlan.md to .temp/plan-mode/active/migrate-auth-to-v2/",
         "masterPlan includes the updated header directive referencing engineering-discipline AND step-specific skills",
-        "masterPlan has all required sections: Context, Required Skills, Applicable Disciplines, Discovery Summary (all 8 subsections), Steps, Blocked Items, Completed Summary, Deviations",
+        "masterPlan has all required sections: Context, Required Skills, Applicable Disciplines, Discovery Summary (all 8 subsections), Steps, Blocked Items, Risk Areas",
         "Each step has Status, Skill, Simplify, Files involved, Description, Acceptance criteria, Progress, Result fields",
         "Progress items encode TDD rhythm (write test, verify fail, implement, verify pass, commit)",
         "Calls EnterPlanMode or uses existing plan mode, writes summary, calls ExitPlanMode"
@@ -23,12 +23,11 @@
       "expected_output": "The model creates a masterPlan with sub-plans for steps that exceed the 10-file or 5-sub-task threshold",
       "assertions": [
         "Reads discovery.md before planning",
-        "Creates sub-plans for steps that touch more than 10 files",
-        "Sub-plans follow the template from references/sub-plan-format.md",
-        "Sweep-style sub-plans use Groups of 3-8 files each",
-        "masterPlan steps reference their sub-plan files by name",
-        "Sub-plans include Pre-conditions, Post-conditions, and Verification sections",
-        "Each sub-plan has a Parent reference back to the master step"
+        "Creates inline subPlan in plan.json for steps that touch more than 10 files",
+        "Sub-plans use groups array with 3-8 files per group",
+        "Each group has name, files, status, and notes fields",
+        "masterPlan steps mention sub-plan existence but execution details live in plan.json",
+        "Evaluates EVERY step against sub-plan criteria before saving (mandatory checkpoint)"
       ]
     },
     {

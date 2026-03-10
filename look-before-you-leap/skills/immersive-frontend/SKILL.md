@@ -91,7 +91,21 @@ Does it need 3D objects / WebGL?
 ├── YES → Read: references/three-js-patterns.md
 │   ├── Custom shaders needed? → Also read: references/shader-recipes.md
 │   ├── Scroll drives the 3D scene? → Also read: references/gsap-scroll-patterns.md
-│   └── Heavy assets (models, textures)? → Also read: references/architecture.md (preloader)
+│   │   └── ScrollSmoother or Observer? → Also read: references/gsap-scroll-advanced.md
+│   ├── Heavy assets (models, textures)? → Also read: references/architecture.md (preloader)
+│   └── Physics, motion paths, particles? → Also read: references/gsap-motion-physics.md
+│
+├── SVG morphing, drawing, or stroke animation?
+│   └── Read: references/gsap-svg-plugins.md
+│
+├── Layout animations (Flip, Draggable, Observer)?
+│   └── Read: references/gsap-layout-plugins.md
+│
+├── Text effects (SplitText, ScrambleText, decode)?
+│   └── Read: references/gsap-text-plugins.md
+│
+├── Custom easing (bounce, wiggle, rough, slow-mo)?
+│   └── Read: references/gsap-easing-advanced.md
 │
 └── NO (2D motion only: text reveals, parallax, marquees)
     └── Read: references/gsap-scroll-patterns.md + references/effects-cookbook.md
@@ -99,6 +113,14 @@ Does it need 3D objects / WebGL?
 
 **Always read:** `references/architecture.md` for the canvas+DOM layering
 pattern and smooth scroll setup — these apply to every immersive site.
+
+**Always read:** `references/gsap-core-patterns.md` for gsap.context()
+(cleanup), gsap.matchMedia() (responsive), and gsap.utils (utilities) —
+these apply to every GSAP project.
+
+**When debugging:** Read `references/gsap-common-mistakes.md` for common
+pitfalls. Keep `references/gsap-helpers-cheatsheet.md` handy as a quick
+lookup for imports, methods, and configuration.
 
 ### Complexity Tiers
 
@@ -198,7 +220,7 @@ gsap.ticker.lagSmoothing(0); // Prevent desync after lag spikes
 | 3D in React app | **React Three Fiber + Drei** | Declarative, auto-disposal, hooks |
 | Scroll-linked animations | **GSAP ScrollTrigger** | Scrub, pin, snap, batch, timeline |
 | Smooth scrolling | **Lenis** | Syncs with rAF, works with ScrollTrigger |
-| Text split/reveal | **GSAP SplitText** (or manual split) | Industry standard for char/word/line animation |
+| Text split/reveal | **GSAP SplitText** (free, included with gsap) | Industry standard for char/word/line animation |
 | Page transitions (MPA) | **Barba.js** | Preserves canvas across navigations |
 | Spring physics (React) | **Motion (Framer Motion)** | AnimatePresence, layout animations |
 | Custom visual effects | **GLSL shaders** | GPU-accelerated, per-pixel control |
@@ -414,12 +436,40 @@ steps):
 
 ## Reference Files
 
+> **Note:** GSAP is now 100% free — all plugins included with `bun add gsap`.
+
+### Core References (read for every project)
+
+| File | Contents | When to Read |
+|------|----------|--------------|
+| `references/architecture.md` | Preloader, canvas+DOM layering, DOM-to-WebGL sync, page transitions, performance budgets | Site architecture decisions |
+| `references/gsap-scroll-patterns.md` | GSAP core, ScrollTrigger, Lenis, SplitText basics, Motion, timelines | Any scroll-driven animation |
+| `references/gsap-core-patterns.md` | gsap.context() cleanup, gsap.matchMedia() responsive, quickTo/quickSetter, registerEffect, gsap.utils | Every GSAP project |
+| `references/gsap-helpers-cheatsheet.md` | Full import table, methods, timeline control, position parameter, stagger, easing, ScrollTrigger config, ticker | Quick lookup / cheatsheet |
+
+### WebGL & Shaders
+
 | File | Contents | When to Read |
 |------|----------|--------------|
 | `references/three-js-patterns.md` | Scene setup, cameras, materials, R3F, particles, post-processing, disposal | Any WebGL work |
-| `references/gsap-scroll-patterns.md` | GSAP core, ScrollTrigger, Lenis, SplitText, Motion, timelines | Any scroll-driven animation |
 | `references/shader-recipes.md` | Complete GLSL: noise displacement, chromatic aberration, distortion, grain, ripple, vignette, fresnel | Custom shader effects |
-| `references/architecture.md` | Preloader, canvas+DOM layering, DOM-to-WebGL sync, page transitions, performance budgets | Site architecture decisions |
+
+### GSAP Plugin References
+
+| File | Contents | When to Read |
+|------|----------|--------------|
+| `references/gsap-text-plugins.md` | SplitText (new free API: mask, autoSplit, onSplit, aria), ScrambleText, TextPlugin | Text reveal, decode, typewriter effects |
+| `references/gsap-svg-plugins.md` | MorphSVG (morphing, convertToPath, shapeIndex), DrawSVG (stroke animation), SVG transforms | SVG morphing, line drawing, stroke animation |
+| `references/gsap-layout-plugins.md` | Flip (FLIP layout animation), Draggable (drag with physics), Observer (event unification) | Layout transitions, drag-to-reorder, scroll hijacking |
+| `references/gsap-motion-physics.md` | MotionPath (SVG path animation), Physics2D (velocity/gravity), PhysicsProps (per-property physics) | Path animation, particle explosions, physics simulation |
+| `references/gsap-scroll-advanced.md` | ScrollSmoother (vs Lenis comparison), advanced Observer patterns, velocity carousel | Choosing smooth scroll approach, full-page snapping |
+| `references/gsap-easing-advanced.md` | CustomEase (SVG paths), CustomBounce (squash), CustomWiggle (oscillation), EasePack (RoughEase, SlowMo, ExpoScaleEase) | Custom/branded motion curves, glitch effects, dramatic reveals |
+
+### Debugging & Patterns
+
+| File | Contents | When to Read |
+|------|----------|--------------|
+| `references/gsap-common-mistakes.md` | 8 ScrollTrigger mistakes, 8 GSAP core mistakes, FOUC prevention, SVG gotchas, debugging checklist | Debugging, code review, avoiding pitfalls |
 | `references/effects-cookbook.md` | 8 complete implementations: preloader, smooth scroll, text reveal, marquee, magnetic cursor, image distortion, parallax, camera path | Building specific effects |
 
 ### Routing to Other Skills
