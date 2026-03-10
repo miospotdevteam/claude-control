@@ -69,6 +69,17 @@ already exists), no onboarding is injected — proceed normally.
 Shallow exploration is the #1 cause of failed plans — every minute exploring
 saves five minutes fixing.
 
+### Creative tasks: brainstorm first
+
+If the task is a **new feature, new component, or behavior change** where
+the design isn't obvious, invoke `look-before-you-leap:brainstorming`
+before deep exploration. The brainstorming skill includes its own
+exploration (engineering-discipline Phase 1) and produces a `design.md`
+that feeds into Step 2 (planning). After brainstorming completes, return
+here for any remaining exploration gaps.
+
+### Exploration protocol
+
 Follow **engineering-discipline Phase 1** (Orient Before You Touch Anything).
 
 Additionally, read `references/exploration-protocol.md` and answer all 8
@@ -176,6 +187,35 @@ Follow **persistent-plans Phase 2** (Execute the Plan) for the execution
 loop, checkpointing, and result tracking. Follow **engineering-discipline
 Phase 2** (Make Changes Carefully) for the rules applied during execution.
 
+### Skill dispatch during execution
+
+When starting a step, check its `skill` field in plan.json. If the field
+is not `"none"`, **invoke that skill** before executing the step. The skill
+provides the execution guidance — follow its phases mechanically.
+
+| Step `skill` value | What happens |
+|---|---|
+| `look-before-you-leap:test-driven-development` | Follow red-green-refactor cycles. Each progress item is one phase (RED/GREEN/REFACTOR). Write tests before implementation — no exceptions. |
+| `look-before-you-leap:frontend-design` | Follow the design system, component patterns, and accessibility checklist from the skill. |
+| `look-before-you-leap:immersive-frontend` | Follow the WebGL/GSAP/scroll-driven execution guidance from the skill. |
+| `look-before-you-leap:react-native-mobile` | Follow the native-feel, gesture, and haptic patterns from the skill. |
+| `look-before-you-leap:systematic-debugging` | Follow the four-phase investigation. No fixes without root cause confirmed. |
+| `look-before-you-leap:refactoring` | Follow Phase 3 execution order (see below). |
+| `"none"` | No skill dispatch — follow engineering-discipline directly. |
+
+**The `skill` field is not decorative.** It exists so that post-compaction
+Claude knows exactly which skill to invoke for each step. If you skip the
+dispatch, you lose the specialized guidance that makes the step succeed.
+
+### Debugging during execution
+
+When tests fail or unexpected behavior occurs mid-step, **invoke
+`look-before-you-leap:systematic-debugging`** instead of guessing at fixes.
+Follow its four phases (investigate → analyze → hypothesize → implement).
+Do not stack speculative fixes — find the root cause first.
+
+### Refactoring tasks
+
 For refactoring tasks, also follow the execution order from
 `look-before-you-leap:refactoring` Phase 3 — it minimizes broken
 intermediate states (e.g., create at new location first, then update
@@ -258,6 +298,10 @@ Follow **engineering-discipline Phase 3** (Verify Before Declaring Done).
 
 See `references/verification-commands.md` for framework-specific commands.
 Always check the project's own scripts first (package.json, Makefile).
+
+If verification fails (tests break, type errors, lint errors), **invoke
+`look-before-you-leap:systematic-debugging`** — do not guess at fixes.
+Follow its root cause investigation before attempting corrections.
 
 Before declaring done, re-read the user's original request word by word.
 Confirm every requirement is implemented and working. If anything is

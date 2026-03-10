@@ -184,9 +184,11 @@ or add more instrumentation.
 
 ### 1. Create a failing test
 
-Write the simplest possible test that reproduces the bug. Use the Red
-phase from `look-before-you-leap:test-driven-development` to write a
-failing test that captures the bug.
+Write the simplest possible test that reproduces the bug. **Invoke
+`look-before-you-leap:test-driven-development`** and follow its Red
+phase to write a failing test that captures the bug. The TDD skill
+ensures proper test structure (Arrange-Act-Assert) and prevents
+implementation-first shortcuts.
 
 A test proves the bug exists, proves the fix works, and prevents
 regression. Never fix bugs without a test.

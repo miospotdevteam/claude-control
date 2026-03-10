@@ -134,6 +134,27 @@ single "Implement everything" item. That's test-first waterfall, not TDD.
 The whole point of TDD is that each cycle's implementation informs what
 the next cycle should test.
 
+#### Which `skill` to assign each step
+
+For each step, determine if a specialized skill should guide execution.
+The `skill` field is read by the conductor at Step 3 — it dispatches the
+skill before the step runs. Post-compaction, this is the ONLY way the
+executor knows which guidance to follow.
+
+| If the step involves... | Set `skill` to... |
+|---|---|
+| Writing new functions/components with tests, TDD cycles | `look-before-you-leap:test-driven-development` |
+| Building/designing web UI, layouts, design systems, typography | `look-before-you-leap:frontend-design` |
+| WebGL, Three.js, R3F, GSAP ScrollTrigger, 3D, scroll-driven | `look-before-you-leap:immersive-frontend` |
+| React Native, mobile app, gestures, haptics, native feel | `look-before-you-leap:react-native-mobile` |
+| Rename/move/extract across 3+ files | `look-before-you-leap:refactoring` |
+| Bug investigation with root cause analysis | `look-before-you-leap:systematic-debugging` |
+| All other steps (config, wiring, glue code) | `"none"` |
+
+**When in doubt, prefer TDD over `"none"`** for any step that creates
+testable behavior. TDD is the default for new logic — only use `"none"`
+when the step has nothing to test (config files, wiring, migrations).
+
 #### When to set `simplify: true`
 
 Set `simplify: true` on a step when any of these apply:

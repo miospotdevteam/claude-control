@@ -154,6 +154,26 @@ If dep maps are configured, the refactoring skill uses `deps-query.py` to
 find all consumers instantly. After the refactoring, it regenerates stale
 dep maps so future queries reflect the new structure.
 
+### TDD steps require the TDD skill
+
+If the current step has `skill: "look-before-you-leap:test-driven-development"`
+in plan.json, or its progress items follow the TDD rhythm (Cycle N RED,
+Cycle N GREEN, Refactor), **invoke the TDD skill** and follow its
+red-green-refactor cycle mechanically:
+
+1. **RED**: Write failing tests — run them, verify they fail
+2. **GREEN**: Write minimal implementation — run tests, verify they pass
+3. **REFACTOR**: Clean up while keeping tests green
+4. **Repeat** for each cycle in the progress items
+
+Do NOT write implementation before tests. Do NOT write all tests at once
+then implement. Each cycle is one behavior slice — test it, implement it,
+move to the next.
+
+If you find yourself writing implementation code before the corresponding
+RED progress item is done, STOP — you're violating TDD. Go back and write
+the test first.
+
 ### Install before import
 
 If you add a new import, verify the package exists in the project:
@@ -209,7 +229,12 @@ for framework-specific commands, but the general approach is:
 for the project's standard commands. Use whatever the project already uses
 rather than guessing generic commands.
 
-If any verification step fails, fix the failures before declaring done.
+If any verification step fails, **invoke
+`look-before-you-leap:systematic-debugging`** to investigate the root cause.
+Do not guess at fixes or stack speculative changes. The debugging skill's
+four-phase process (investigate → analyze → hypothesize → implement)
+prevents the thrashing that comes from random fix attempts.
+
 This step is not optional. It is not something you do when asked. It is
 something you do EVERY TIME, automatically, as the final step of every task.
 
@@ -333,3 +358,6 @@ If you catch yourself doing any of these, stop and reconsider:
 | Moving a plan to completed/ before all steps are done | Finish the work or flag what's remaining to the user |
 | Renaming/moving/extracting across 3+ files without a contract | Invoke `look-before-you-leap:refactoring` first — build the contract |
 | Refactoring without running deps-query.py first (when dep maps exist) | Run deps-query.py on every target to get complete consumer lists |
+| Writing implementation before tests on a TDD step | Follow RED-GREEN-REFACTOR — tests first, always. Invoke the TDD skill |
+| Guessing at fixes when tests fail during verification | Invoke `look-before-you-leap:systematic-debugging` — root cause first |
+| Starting a new feature without brainstorming the design | Invoke `look-before-you-leap:brainstorming` for creative tasks |
