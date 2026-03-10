@@ -194,9 +194,123 @@ Prioritize these over scattered micro-interactions:
   (300ms) for state changes, slow (500ms+) for choreographed entrances
 - Always respect `prefers-reduced-motion`
 
+### Micro-interaction pattern library
+
+Complete recipes for common interactive elements:
+
+**Focus ring (keyboard-only):**
+```css
+/* Only show on keyboard navigation, not mouse clicks */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--ring);
+}
+```
+
+**Toggle switch:**
+```css
+.toggle {
+  width: 44px; height: 24px;
+  background: var(--muted);
+  border-radius: 9999px;
+  transition: background 200ms ease;
+  position: relative;
+}
+.toggle[aria-checked="true"] { background: var(--primary); }
+.toggle::after {
+  content: '';
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: white;
+  position: absolute; top: 2px; left: 2px;
+  transition: transform 200ms ease;
+}
+.toggle[aria-checked="true"]::after { transform: translateX(20px); }
+```
+
+**Dropdown / menu open:**
+```css
+.dropdown-menu {
+  transform-origin: top;
+  transform: scaleY(0);
+  opacity: 0;
+  transition: transform 150ms ease-out, opacity 100ms ease-out;
+}
+.dropdown-menu[data-open] {
+  transform: scaleY(1);
+  opacity: 1;
+}
+```
+
+**Animated underline link:**
+```css
+.link {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 2px;
+  background-position: left bottom;
+  background-repeat: no-repeat;
+  transition: background-size 250ms ease-out;
+}
+.link:hover { background-size: 100% 2px; }
+```
+
+**Button press feedback:**
+```css
+.btn { transition: transform 100ms ease; }
+.btn:active { transform: scale(0.97); }
+```
+
+**Card hover with border glow:**
+```css
+.card {
+  border: 1px solid var(--border);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+```
+
+**Reduced motion override** — wrap ALL micro-interactions:
+```css
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+```
+
 ---
 
 ## Color System
+
+### Pre-built palette libraries (recommended first)
+
+Before generating colors from scratch, consider using a pre-curated system.
+These are expert-designed, accessibility-tested, and avoid color clashes:
+
+| Library | Best for | Install |
+|---|---|---|
+| **Radix Colors** (`@radix-ui/colors`) | Projects with dark mode — 12-step functional scales with built-in light/dark pairs. Each step has a specific purpose (bg, subtle bg, border, text, etc.) | `npm i @radix-ui/colors` |
+| **Open Color** (`open-color`) | Simple projects — 13 hues × 10 shades, clean and balanced | `npm i open-color` |
+| **Palx** (`palx`) | Brand color expansion — one hex in, full-spectrum palette out | `npm i palx` |
+| **Tailwind v4 built-in** | Already using Tailwind — OKLCH palette, wide gamut | Built-in |
+
+**When to use pre-built vs generate:**
+- **Use pre-built** when you need a reliable, accessible palette quickly, or
+  when dark mode support matters (Radix is excellent for this)
+- **Generate from brand color** when the project has a specific brand hex
+  that must anchor the palette (use Palx, tints.dev, or the methods below)
+- **Use Tailwind built-in** when the project already uses Tailwind and the
+  default palette fits the design direction
+
+For Tailwind projects, `tailwindcss-radix-colors` brings Radix's functional
+scales into Tailwind utilities with automatic dark mode.
+
+See `PACKAGES.md` in the plugin root for the full list of recommended
+packages and online tools.
 
 ### Building a palette from the axes
 
@@ -217,6 +331,85 @@ Prioritize these over scattered micro-interactions:
 
 4. **Define the full scale**: for each color, generate a 50-950 scale (or
    at minimum: light, default, dark variants)
+
+### Palette Generation Methods
+
+Given a brand color, generate a full system:
+
+**Method 1: HSL Shift** (simplest, good for most projects)
+1. Convert the brand hex to HSL
+2. Hold hue constant; vary saturation and lightness:
+   - 50 (lightest): S -40%, L 95%
+   - 100: S -30%, L 90%
+   - 200: S -20%, L 80%
+   - ...ramp down to...
+   - 900 (darkest): S +5%, L 15%
+   - 950: S +10%, L 8%
+3. The 500 shade should be close to the original brand color
+
+**Method 2: OKLCH** (perceptually uniform — better for dark mode)
+1. Convert the brand hex to OKLCH (`oklch(L C H)`)
+2. Hold hue (H) constant; vary lightness (L) and chroma (C):
+   - Light shades: high L (0.90-0.97), reduce C slightly
+   - Dark shades: low L (0.15-0.30), reduce C to avoid muddy saturation
+3. OKLCH produces more visually consistent steps than HSL because it
+   models human perception
+
+**Method 3: Complementary / Split-Complementary** (for secondary + accent)
+1. Primary hue established from brand color
+2. Secondary: rotate hue 180° (complementary) or ±150° (split-complementary)
+3. Accent: rotate hue 30-60° from primary (analogous but more saturated)
+4. Generate each color's 50-950 scale using Method 1 or 2
+
+**Neutral generation:** Tint neutrals toward the primary hue for cohesion:
+```css
+/* Warm neutrals (primary is warm) */
+--neutral-50: oklch(0.97 0.005 80);
+--neutral-900: oklch(0.15 0.01 80);
+
+/* Cool neutrals (primary is cool) */
+--neutral-50: oklch(0.97 0.005 250);
+--neutral-900: oklch(0.15 0.01 250);
+```
+
+### Dark Mode Color Adaptation
+
+When adapting a light-theme palette for dark mode:
+
+1. **Backgrounds**: Don't use pure black. Use the darkest neutral with a
+   subtle hue tint: `oklch(0.13 0.01 <hue>)` for base,
+   `oklch(0.16 0.01 <hue>)` for surface-1, `oklch(0.19 0.01 <hue>)` for
+   surface-2. Higher elevation = lighter.
+
+2. **Text**: Reduce contrast slightly. Use `oklch(0.90 0.005 <hue>)` for
+   body text instead of pure white. This reduces eye strain.
+
+3. **Primary color**: The 500 shade used in light mode often needs to shift
+   to 400 or 300 in dark mode for sufficient contrast against dark
+   backgrounds. Test the pair: `primary-on-surface` must meet 4.5:1.
+
+4. **Borders and dividers**: Use `oklch(0.25 0.01 <hue>)` — visible but
+   subtle. Light mode borders (usually gray-200) don't translate directly.
+
+5. **Shadows**: Darker and more diffuse. Shadows on dark surfaces are
+   nearly invisible at light-mode opacity — increase opacity by 2-3x or
+   use a colored shadow (subtle primary glow) for elevation cues.
+
+6. **Semantic tokens** that adapt:
+```css
+:root {
+  --surface-0: oklch(0.98 0.005 250);
+  --surface-1: oklch(0.96 0.005 250);
+  --on-surface: oklch(0.15 0.02 250);
+  --border: oklch(0.88 0.01 250);
+}
+.dark {
+  --surface-0: oklch(0.13 0.01 250);
+  --surface-1: oklch(0.17 0.01 250);
+  --on-surface: oklch(0.90 0.005 250);
+  --border: oklch(0.25 0.01 250);
+}
+```
 
 ### Accessibility-first color rules
 

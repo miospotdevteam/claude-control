@@ -1,0 +1,43 @@
+[
+  {
+    "query": "Build a settings dashboard with dark and light mode support. It should have a sidebar nav, a main content area with form controls, and a theme toggle. Use Tailwind and React. The design should feel premium in both themes.",
+    "should_trigger": true,
+    "assertions": [
+      "Announces it is using the frontend-design skill",
+      "Provides specific dark mode color adaptation guidance (not just 'invert the colors')",
+      "Defines semantic color tokens that work across both themes (e.g., surface, on-surface, muted)",
+      "Addresses contrast requirements for dark backgrounds (light text at 4.5:1+ ratio)",
+      "Specifies how shadows, borders, and elevation change between light and dark modes",
+      "Does NOT use pure black (#000) as the dark mode background — uses near-black with tint",
+      "Covers the theme toggle implementation approach (CSS variables, class toggle, or Tailwind dark:)"
+    ]
+  },
+  {
+    "query": "Design a pricing page with three tiers. I want it to feel alive — polished micro-interactions on hover, focus, and when toggling between monthly/annual billing. The cards should respond to user interaction. Vanilla HTML/CSS/JS, single file.",
+    "should_trigger": true,
+    "assertions": [
+      "Announces it is using the frontend-design skill",
+      "Provides specific hover interaction recipes (not just 'add a hover effect')",
+      "Includes focus state styling with visible focus rings for keyboard navigation",
+      "Provides a toggle animation pattern for the monthly/annual billing switch",
+      "Specifies transition timing, easing, and properties for each interaction",
+      "Uses transform and opacity for GPU-composited animations",
+      "Includes prefers-reduced-motion fallback for all micro-interactions",
+      "Card interactions feel intentional — not generic shadow-lift on hover"
+    ]
+  },
+  {
+    "query": "I'm building a new SaaS product. The brand color is #E84855 (a warm red). Generate a complete color system from this, and design a component system with consistent spacing, border-radius, and shadow scales. React + Tailwind.",
+    "should_trigger": true,
+    "assertions": [
+      "Announces it is using the frontend-design skill",
+      "Generates a multi-shade palette (50-950 or similar scale) from the brand color",
+      "Describes the palette generation method used (HSL manipulation, OKLCH, complementary, etc.)",
+      "Generates complementary/analogous secondary and accent colors with rationale",
+      "Defines a spacing scale for component padding (e.g., compact/default/spacious)",
+      "Defines a border-radius scale (e.g., sm/md/lg/full) with specific values",
+      "Defines a shadow scale (e.g., sm/md/lg/xl) with specific values tied to elevation",
+      "Shows how these scales compose in actual components (button sizes, card variants)"
+    ]
+  }
+]

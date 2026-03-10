@@ -92,6 +92,13 @@ Standard POSIX tools (`find`, `grep`, `sed`, `awk`, `stat`, `sort`, `head`, `cut
 | `madge` | Dependency graph analysis for blast-radius tracking. Only needed if you configure `dep_maps` in `.claude/look-before-you-leap.local.md` | `npm install -g madge` or use on-demand via `npx` (no install needed) |
 | Node.js | Required only if using `madge` | [nodejs.org](https://nodejs.org) |
 
+### Recommended Packages
+
+The plugin's skills (frontend-design, immersive-frontend) reference specific
+npm packages for color palettes, animation, and WebGL. See
+[`PACKAGES.md`](look-before-you-leap/PACKAGES.md) for the full list with
+install commands.
+
 ## Installation
 
 ### From the plugin marketplace
@@ -111,6 +118,7 @@ claude plugin install --source ~/claude-code-setup/look-before-you-leap
 
 ```
 look-before-you-leap/
+├── PACKAGES.md                            # Recommended npm packages for skills
 ├── .claude-plugin/
 │   └── plugin.json
 ├── hooks/

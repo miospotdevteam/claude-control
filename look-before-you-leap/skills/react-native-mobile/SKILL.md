@@ -1,6 +1,6 @@
 ---
 name: react-native-mobile
-description: "Build premium, native-feeling React Native mobile apps with spring animations, gesture-driven UI, haptic feedback, and platform-specific conventions. Use this skill whenever the user asks for: React Native app, mobile app, Expo app, native feel, gesture animations, haptic feedback, mobile UI, iOS/Android app, cross-platform mobile, Reanimated animations, bottom sheet, swipe gestures, pull-to-refresh, mobile navigation, tab bar, mobile onboarding, mobile performance, FlashList, MMKV storage, offline-first mobile, React Native new architecture, mobile dark mode, Dynamic Type, VoiceOver/TalkBack accessibility, or any request for building mobile applications that should feel indistinguishable from native apps. Also use when the user references apps like Things 3, Apollo, Spotify, or Apple's HIG / Material Design 3. Do NOT use for: React web apps (use frontend-design), React Native Web without mobile focus, backend APIs, or admin dashboards — this skill is exclusively for native mobile experiences."
+description: "Build premium, native-feeling React Native mobile apps with spring animations, gesture-driven UI, haptic feedback, and platform-specific conventions. Use this skill whenever the user asks for: React Native app, mobile app, Expo app, native feel, gesture animations, haptic feedback, mobile UI, iOS/Android app, cross-platform mobile, Reanimated animations, bottom sheet, swipe gestures, pull-to-refresh, mobile navigation, tab bar, mobile onboarding, mobile performance, FlashList, MMKV storage, offline-first mobile, React Native new architecture, mobile dark mode, Dynamic Type, VoiceOver/TalkBack accessibility, Liquid Glass, or any request for building mobile applications that should feel indistinguishable from native apps. Also use when the user references apps like Things 3, Apollo, Spotify, Discord, Shopify, or Apple's HIG / Material Design 3. Do NOT use for: React web apps (use frontend-design), React Native Web without mobile focus, backend APIs, or admin dashboards — this skill is exclusively for native mobile experiences."
 ---
 
 # React Native Mobile
@@ -9,6 +9,11 @@ Build mobile apps that feel indistinguishable from native. Spring-driven
 animations, gesture-first interactions, haptic feedback on every state
 change, and platform conventions that make iOS users feel at home on iOS
 and Android users feel at home on Android.
+
+The difference between a good React Native app and a premium one isn't the
+framework — it's intentional design direction, consistent animation
+personality, and platform-native materials. This skill prevents convergence
+to the generic blue/gray/Inter template that plagues AI-generated mobile UI.
 
 **Announce at start:** "I'm using the react-native-mobile skill to build
 this mobile experience."
@@ -19,13 +24,35 @@ this mobile experience."
 
 This skill operates within the conductor's Step 1-3:
 
-- **Phase 1** (Assessment) runs during Step 1 (Explore).
+- **Phase 1** (Assessment + Design Direction) runs during Step 1 (Explore).
 - **Phase 2** (Architecture) feeds into the masterPlan via `writing-plans`.
 - **Phase 3** (Implementation) runs during Step 3 (Execute).
 - **Phase 4** (Verification) runs after implementation.
 
 If `brainstorming` ran first and produced design direction: use those
-decisions and skip to Phase 2.
+decisions and skip the Design Direction assessment in Phase 1.
+
+---
+
+## Integration with Other Skills
+
+**After brainstorming:** If `brainstorming` produced a `design.md` with
+visual direction (colors, typography, animation feel): skip the Design
+Direction assessment. Use the approved choices directly.
+
+**Full design treatment:** For apps that need serious aesthetic work
+(consumer-facing, brand-driven), invoke `frontend-design` Phase 2 for
+the full 6-axis Decision Matrix, creative seed, and concrete typography/color
+choices. Then translate those outputs into mobile design tokens. This skill
+handles the mobile implementation; `frontend-design` handles the aesthetic
+decision-making.
+
+**Web companion:** If the mobile app has a web counterpart, coordinate
+design tokens with `frontend-design` so both platforms share the same
+color system, typography scale, and animation philosophy.
+
+**Design already decided:** If the user has a Figma file, design spec, or
+brand guidelines: skip design direction entirely, proceed to Phase 2.
 
 ---
 
@@ -56,6 +83,58 @@ state management, and storage — these apply to every React Native app.
 | **Polished Standard** | Clean screens, smooth navigation, proper platform conventions. No custom gestures. | Expo + Expo Router + Zustand + MMKV | architecture, platform-patterns, component-recipes |
 | **Motion-Rich** | Spring animations, shared element transitions, animated lists, haptic feedback on interactions. | + Reanimated + Moti + expo-haptics | + animation-patterns, gesture-cookbook |
 | **Full Premium** | Custom gesture-driven UI, drag-to-reorder, swipe choreography, physics-based interactions, offline-first. | + Gesture Handler + FlashList + TanStack Query + WatermelonDB | All reference files |
+
+### Design Direction — App Personality
+
+Most mobile apps converge on the same look: blue primary, gray surfaces,
+Inter font, card-based layouts. Premium apps — Things 3, Spotify, Discord,
+Shopify — feel distinct because their visual choices are intentional. Before
+writing code, answer these four questions to define the app's personality:
+
+**1. Animation Feel** — How should interactions feel?
+
+| Personality | Reanimated Config | Feels Like |
+|---|---|---|
+| **Snappy** | `withSpring({ damping: 20, stiffness: 300 })` | Things 3, Apple apps — precise, responsive, no overshoot |
+| **Bouncy** | `withSpring({ damping: 12, stiffness: 180 })` | Duolingo, playful apps — energetic, overshoots then settles |
+| **Smooth** | `withSpring({ damping: 20, stiffness: 120 })` | Spotify, Calm — gentle, flowing, no overshoot |
+
+Pick ONE personality and use it consistently across the app. Mixed animation
+feels create incoherence — like a room with three different floor materials.
+
+**2. Color Temperature** — Warm (organic, rounded, earthy tones) or cool
+(geometric, precise, tech tones)? This guides the primary color away from
+default blue. A fitness app might use warm coral; a finance app might use
+cool teal; a creative tool might use warm amber. The color should feel
+inevitable for this product, not arbitrary.
+
+**3. Visual Density** — Spacious (generous padding, breathing room, fewer
+items visible) or compact (dense information, tighter spacing, more
+visible at once)? This maps directly to your spacing scale. Lifestyle apps
+tend spacious; productivity apps tend compact.
+
+**4. Typography Character** — Does the brand have a custom font? If not,
+consider alternatives to Inter for the display/heading font:
+
+| App Type | Consider | Character |
+|---|---|---|
+| Friendly / consumer | **Figtree**, **DM Sans** | Approachable, warm, rounded |
+| Modern / geometric | **Satoshi**, **Outfit** | Clean, distinctive, contemporary |
+| Professional / serious | **General Sans**, **Manrope** | Refined, trustworthy, neutral-warm |
+| System-native feel | **SF Pro** (iOS) / **Roboto** (Android) | Platform-native, invisible, optimal |
+
+Body text can stay with the system font — it has the best readability and
+Dynamic Type support. The display/heading font is where brand personality
+lives. Load custom fonts via `expo-font` or `@fontsource`.
+
+**When to invoke `frontend-design`:** If you need the full aesthetic
+treatment — 6-axis scoring, creative seed protocol, color palette
+generation, complete typography pairing — invoke `frontend-design` Phase 2
+and translate its outputs to mobile design tokens. The four questions above
+are the quick path; `frontend-design` is the thorough path.
+
+Document personality choices in `discovery.md` alongside complexity tier
+and tech stack decisions.
 
 ---
 
@@ -106,6 +185,45 @@ state management, and storage — these apply to every React Native app.
 | Haptics | **expo-haptics** | Cross-platform haptic feedback |
 | Icons | **expo-symbols** (iOS) + **Material Icons** | Platform-native icon sets |
 | Forms | **React Hook Form + Zod** | Performant, type-safe validation |
+| iOS 26 materials | **@callstack/liquid-glass** | Liquid Glass blur/refraction with Android fallback |
+| Blur / vibrancy | **expo-blur** | Native blur on iOS, semi-transparent fallback on Android |
+| Design tokens | **@shopify/restyle** *(optional)* | Type-enforced theming, Shopify-scale proven |
+
+### iOS 26 Liquid Glass
+
+Apple's Liquid Glass is the most significant visual shift since iOS 7 — a
+translucent, refractive material that makes UI elements feel like physical
+glass. Apps that adopt it look contemporary on iOS 26+.
+
+**When to use:** Tab bars, navigation headers, floating action buttons,
+cards that overlay scrollable content. Reserve for key UI chrome — not
+every surface.
+
+**Implementation:** `@callstack/liquid-glass` provides `LiquidGlassView`
+and `LiquidGlassContainerView`. Use `isLiquidGlassSupported` to detect
+capability and fall back to `expo-blur` BlurView or semi-transparent
+backgrounds on older iOS / Android.
+
+```tsx
+import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
+
+<LiquidGlassView
+  style={[
+    styles.header,
+    !isLiquidGlassSupported && { backgroundColor: theme.colors.surface },
+  ]}
+  effect="regular"
+>
+  {/* Navigation content */}
+</LiquidGlassView>
+```
+
+**Performance:** GPU-accelerated but expensive if overused. Don't stack
+multiple glass views or animate them aggressively. Test on older devices.
+
+**Android:** Falls back to opaque/semi-transparent views. Don't fake the
+effect — Android has its own Material You dynamic theming. Respect each
+platform's design language.
 
 ---
 
@@ -115,7 +233,8 @@ state management, and storage — these apply to every React Native app.
 
 1. **Springs over easing.** Use `withSpring()` for interactive animations,
    never `withTiming()` with easing curves for things the user touches.
-   Springs have natural deceleration; easing curves feel artificial.
+   Springs have natural deceleration; easing curves feel artificial. Use
+   the app's chosen spring personality (snappy/bouncy/smooth) consistently.
 
 2. **FlashList always.** Never use `FlatList` or `ScrollView` for lists
    with more than ~20 items. FlashList recycles views, uses fraction of
@@ -134,9 +253,10 @@ state management, and storage — these apply to every React Native app.
    (`impactMedium`), selection change (`selectionChanged`).
 
 6. **Platform-specific conventions.** iOS gets SF Symbols, large titles,
-   swipe-back navigation, sheets. Android gets Material Icons, top app bar,
-   predictive back gesture, bottom sheets. Use `.ios.tsx` / `.android.tsx`
-   when conventions diverge significantly.
+   swipe-back navigation, sheets, Liquid Glass (iOS 26+). Android gets
+   Material Icons, top app bar, predictive back gesture, bottom sheets,
+   Material You theming. Use `.ios.tsx` / `.android.tsx` when conventions
+   diverge significantly.
 
 7. **Safe areas everywhere.** Use `useSafeAreaInsets()` from
    `react-native-safe-area-context`. Never hardcode status bar heights.
@@ -144,7 +264,9 @@ state management, and storage — these apply to every React Native app.
 
 8. **Dark mode from day one.** Use semantic color tokens that respond to
    `useColorScheme()`. Never hardcode colors. Define a theme object with
-   `light` and `dark` variants.
+   `light` and `dark` variants. In dark mode: use near-black with a
+   color tint (not pure `#000`), reduce shadow opacity, and adjust
+   primary color saturation for dark backgrounds.
 
 9. **Keyboard-aware forms.** Use `KeyboardAvoidingView` (with
    `behavior="padding"` on iOS, `behavior="height"` on Android) or
@@ -163,11 +285,65 @@ state management, and storage — these apply to every React Native app.
     until fonts, initial data, and auth state are loaded. No layout flash,
     no loading spinners on app open.
 
+### Spring Personality Presets
+
+Define the app's animation personality once and import everywhere. Don't
+mix presets — consistency creates coherence.
+
+```typescript
+// src/lib/springs.ts
+export const springs = {
+  // Snappy: Things 3, Apple apps — precise, responsive
+  snappy: { damping: 20, stiffness: 300 },
+  // Bouncy: Duolingo, playful apps — energetic, overshoots
+  bouncy: { damping: 12, stiffness: 180 },
+  // Smooth: Spotify, Calm — gentle, flowing
+  smooth: { damping: 20, stiffness: 120 },
+} as const;
+
+// Pick your app's personality
+export const appSpring = springs.snappy;
+
+// Interaction-specific variants
+export const microSpring = { damping: 18, stiffness: 400 }; // Button press
+export const sheetSpring = { damping: 25, stiffness: 200 }; // Bottom sheet
+```
+
+**Staggered reveals** for lists and screen entrances:
+```typescript
+withDelay(index * 80, withSpring(1, appSpring))
+```
+
+**Button press** — compression + spring recovery:
+```typescript
+withSequence(
+  withTiming(0.95, { duration: 80 }),  // Quick compress
+  withSpring(1, appSpring)              // Spring back
+)
+```
+
+### Mobile Anti-Slop — What Generic Apps Look Like
+
+Every design decision should be intentional. These patterns signal generic,
+unconsidered output — the mobile equivalent of "purple gradient on white":
+
+| Category | Generic Pattern | Intentional Alternative |
+|---|---|---|
+| Color | Blue-500 primary, gray-200 surfaces | Primary that reflects brand: coral for warmth, teal for trust, amber for energy |
+| Color | Pure `#000` / `#fff` | Near-black with tint (`#0f0f14`) / warm white (`#fafaf8`) |
+| Typography | Inter for everything | System font for body (readability + Dynamic Type); distinctive font for headings |
+| Layout | Every screen is a FlatList with cards | Mix layouts: hero sections, inline actions, sectioned lists, full-bleed media |
+| Animation | No animations, or `withTiming(300)` everywhere | Spring personality applied consistently; staggered reveals on key screens |
+| Haptics | None | Haptic feedback on every meaningful state change |
+| Tab bar | Default unstyled Expo tab bar | iOS: translucent blur background; Android: Material 3 indicator pill |
+| Dark mode | Inverted colors or skipped | Semantic tokens, tinted near-black, adjusted primary saturation |
+| Onboarding | Three static images with dots | Animated introduction that teaches gesture patterns |
+
 ### Anti-Patterns — What NOT to Do
 
 | Anti-Pattern | Why It Fails | Do This Instead |
 |---|---|---|
-| `withTiming` for interactive elements | Feels robotic, no natural deceleration | `withSpring({ damping: 15, stiffness: 150 })` |
+| `withTiming` for interactive elements | Feels robotic, no natural deceleration | `withSpring(target, appSpring)` |
 | FlatList for long lists | No view recycling, memory grows linearly | FlashList with `estimatedItemSize` |
 | AsyncStorage | Async, slow, JSON serialization overhead | MMKV for key-value, expo-sqlite for structured |
 | Animating `width`/`height` | Triggers layout on every frame, drops to 30fps | Transform: `scale`, `translateX/Y` |
@@ -179,6 +355,7 @@ state management, and storage — these apply to every React Native app.
 | Fixed font sizes | Breaks for users with accessibility scaling | Use relative sizes, respect Dynamic Type |
 | Synchronous heavy computation | Blocks JS thread, gestures freeze | Move to worklet or background thread |
 | `useEffect` for data fetching | No cache, no background refresh, waterfall loads | TanStack Query with `useQuery` |
+| Mixed spring configs across app | Incoherent motion, app feels scattered | Define `appSpring` once, import everywhere |
 
 ---
 
@@ -196,6 +373,8 @@ state management, and storage — these apply to every React Native app.
 - [ ] **Safe areas**: Content respects notch, Dynamic Island, home indicator
 - [ ] **Keyboard**: Forms remain visible and usable with keyboard open
 - [ ] **Splash screen**: No layout flash or loading spinner on app launch
+- [ ] **Animation coherence**: All springs use the app's chosen personality consistently
+- [ ] **Design intention**: No generic blue/gray/Inter defaults unless explicitly chosen
 
 ### Standard Checks (from engineering-discipline)
 
@@ -221,10 +400,13 @@ state management, and storage — these apply to every React Native app.
 
 | Need | Skill |
 |------|-------|
+| Full design direction (6-axis matrix, creative seed, color system) | `frontend-design` Phase 2 — translate outputs to mobile tokens |
+| Web companion with consistent design | `frontend-design` — share design tokens across platforms |
 | Creative direction brainstorming | `brainstorming` |
 | Implementation planning | `writing-plans` |
 | Testing strategy | `test-driven-development` |
 | Debugging issues | `systematic-debugging` |
+| WebView-based immersive sections | `immersive-frontend` (rare — only for WebGL content in WebViews) |
 
 ---
 
@@ -232,9 +414,11 @@ state management, and storage — these apply to every React Native app.
 
 This skill produces:
 
-1. **Architecture decisions** in `discovery.md` — tier selection, tech stack,
-   platform strategy, performance budget
+1. **Design direction** in `discovery.md` — app personality (animation feel,
+   color temperature, density, typography), tier selection, tech stack,
+   platform strategy
 2. **Working code** — TypeScript React Native components with Expo, Reanimated,
-   Gesture Handler, proper platform conventions
+   Gesture Handler, proper platform conventions, consistent spring personality
 3. **Verification results** in masterPlan step Results — fps confirmed,
-   accessibility tested, dark mode verified, haptics working
+   accessibility tested, dark mode verified, haptics working, animation
+   coherence confirmed

@@ -14,6 +14,13 @@ Single Claude Code plugin: `look-before-you-leap`. Enforces structured explorati
 - SKILL.md files use YAML frontmatter — keep the `description` field accurate when changing behavior.
 - Test hooks with `bash -n` after editing. Test Python sections by running the hook and checking JSON output.
 
+## Package & README Sync
+
+- When a skill starts recommending a new npm package, add it to `look-before-you-leap/PACKAGES.md`.
+- When a package is removed from skill guidance, remove it from PACKAGES.md.
+- When adding new skills, reference files, or hooks, update the Repo Structure tree in `README.md`.
+- Keep PACKAGES.md and README.md accurate — they are user-facing docs that must reflect the current state.
+
 ## Plan Mode
 
 All tasks use persistent plans in `.temp/plan-mode/`. This is the default operating mode — not optional.

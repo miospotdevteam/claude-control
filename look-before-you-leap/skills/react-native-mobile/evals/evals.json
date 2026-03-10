@@ -1,0 +1,52 @@
+{
+  "skill_name": "react-native-mobile",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to build a meditation and breathwork app in React Native. Think Calm meets Headspace but more personal — warm, organic feel, not clinical. It needs a timer screen with animated breathing circle, a library of sessions you can browse, and a progress/stats dashboard. Expo is fine. I care a lot about how it feels — the animations, the transitions, the whole vibe. Make it feel like a luxury product, not a generic health app.",
+      "expected_output": "Should assess app personality (smooth animation feel, warm color temperature, spacious density, display font with character), choose a warm non-blue primary color, define spring presets, recommend specific Reanimated spring config for the breathing animation, use semantic dark mode tokens, and produce code that feels intentional rather than generic blue/gray/Inter.",
+      "files": [],
+      "assertions": [
+        "Announces it is using the react-native-mobile skill",
+        "Assesses animation personality and explicitly chooses smooth or similar (not snappy)",
+        "Chooses a warm primary color — NOT blue-500 or any generic blue",
+        "Recommends or uses a display font that is NOT Inter (e.g., Figtree, DM Sans, or another warm/approachable option)",
+        "Defines spring config values with specific damping/stiffness numbers for the breathing animation",
+        "Uses semantic color tokens for dark mode (not hardcoded hex in components)",
+        "Does NOT use pure #000000 as dark mode background",
+        "Includes haptic feedback guidance for meaningful interactions (timer completion, session selection)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Build me a task management app for iOS and Android using React Native + Expo. I want it to feel super modern on iOS — like it belongs on iOS 26. Think Things 3 level of polish. Needs: task list with swipe actions, a quick-add sheet that slides up, drag to reorder tasks, and proper dark mode. Should feel snappy and precise, not bouncy.",
+      "expected_output": "Should recommend Liquid Glass for iOS 26 tab bar/headers with Android fallback, choose snappy spring personality, suggest platform-specific components (.ios/.android), include gesture handler patterns for swipe and drag, and produce code with iOS 26 materials awareness.",
+      "files": [],
+      "assertions": [
+        "Announces it is using the react-native-mobile skill",
+        "Mentions iOS 26 Liquid Glass or @callstack/liquid-glass for modern iOS material",
+        "Provides Android fallback strategy (not just iOS-only implementation)",
+        "Chooses snappy animation personality with specific spring config values",
+        "Recommends Gesture Handler for swipe actions and drag-to-reorder",
+        "Includes platform-specific conventions (iOS sheets vs Android bottom sheets, or .ios/.android files)",
+        "Addresses dark mode with semantic tokens and near-black backgrounds",
+        "References Things 3 level of polish through specific implementation choices, not just aspirationally"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We're building a social fitness app — React Native, Expo. It has a feed of workout posts, a workout tracker with real-time animations, user profiles, and a leaderboard. The brand is energetic and bold — think Nike Run Club energy. We also have a marketing website that needs to share the same design language. I want the whole thing to feel premium and distinctive. Where do we start?",
+      "expected_output": "Should route to frontend-design for the full aesthetic treatment (6-axis matrix, creative seed, color system) since there's a web companion and the user wants serious design work. Should define bouncy/energetic spring personality. Should mention coordinating design tokens across mobile and web.",
+      "files": [],
+      "assertions": [
+        "Announces it is using the react-native-mobile skill",
+        "Routes to or mentions frontend-design for full design direction (6-axis matrix, creative seed) since user wants premium + has web companion",
+        "Mentions coordinating design tokens between mobile app and marketing website",
+        "Chooses bouncy or energetic animation personality (not smooth or snappy) matching 'Nike Run Club energy'",
+        "Recommends FlashList for the workout feed",
+        "Suggests bold, non-blue primary color appropriate for an energetic fitness brand",
+        "Addresses the real-time animation needs for the workout tracker with Reanimated"
+      ]
+    }
+  ]
+}

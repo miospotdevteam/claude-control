@@ -494,7 +494,252 @@ const merged = mergeGeometries(geometries);
 
 ---
 
-## 9. Complete Application Skeleton
+## 9. SEO for Canvas-Heavy Sites
+
+Canvas content is invisible to crawlers. Ensure discoverability:
+
+**Content in the DOM, not only on canvas:**
+- All text content must exist as real HTML elements (even if visually
+  hidden or overlaid on the canvas)
+- Use semantic elements: `<h1>`, `<p>`, `<article>`, `<nav>`
+- `<canvas>` gets `aria-hidden="true"` — it's decorative to crawlers
+
+**Meta and structured data:**
+```html
+<head>
+  <title>Descriptive Page Title — Brand</title>
+  <meta name="description" content="Concrete description of the page content">
+  <link rel="canonical" href="https://example.com/page">
+  <!-- Open Graph for social sharing (canvas won't auto-generate previews) -->
+  <meta property="og:image" content="/static/og-image.jpg">
+  <meta property="og:title" content="Page Title">
+</head>
+```
+
+**Noscript fallback:**
+```html
+<noscript>
+  <div class="noscript-content">
+    <h1>Page Title</h1>
+    <p>Full text content accessible without JavaScript.</p>
+    <img src="/static/hero-fallback.jpg" alt="Description">
+  </div>
+</noscript>
+```
+
+**Performance for crawlers:**
+- Server-side render the HTML shell (Next.js SSR, static HTML)
+- Lazy-load WebGL assets — don't block initial render
+- Keep LCP under 2.5s (the text content should paint before WebGL loads)
+
+---
+
+## 10. Performance Profiling Workflow
+
+Step-by-step workflow for identifying and fixing performance issues:
+
+### Step 1: Record a baseline
+1. Open Chrome DevTools → **Performance** tab
+2. Set CPU throttling to 4x slowdown (simulates mid-range mobile)
+3. Click Record, scroll through the full experience, stop
+4. Look for: red frame markers (dropped frames), long tasks (>50ms),
+   yellow blocks (JS) vs green blocks (paint/composite)
+
+### Step 2: Identify the bottleneck type
+- **GPU-bound** (fill rate): Reduce canvas resolution by 50%
+  (`renderer.setSize(w/2, h/2)`). If FPS doubles, you're fill-rate bound.
+  Fix: lower DPR, simplify shaders, reduce post-processing passes.
+- **CPU-bound** (JS): Comment out the `renderer.render()` call. If the
+  ticker callback time drops, the CPU work is in Three.js scene updates.
+  Fix: reduce object count, use InstancedMesh, simplify per-frame logic.
+- **Draw-call bound**: Check `renderer.info.render.calls`. Over budget?
+  Fix: merge geometries, use InstancedMesh, reduce material count.
+
+### Step 3: Check specific panels
+- **Rendering** panel → enable "Paint flashing" (green = DOM repaint) and
+  "Layout shift regions" (blue = CLS). DOM elements should NOT repaint
+  during WebGL-only scenes.
+- **Layers** panel → check for unexpected compositing layers. Each layer
+  uses GPU memory.
+- **Performance monitor** (⋮ → More tools) → live JS heap, DOM nodes,
+  layout/style recalcs per second.
+
+### Step 4: Log renderer stats
+```javascript
+// Add to your development build
+setInterval(() => {
+  const info = renderer.info;
+  console.table({
+    'Draw calls': info.render.calls,
+    'Triangles': info.render.triangles,
+    'Textures': info.memory.textures,
+    'Geometries': info.memory.geometries,
+  });
+  info.reset();
+}, 3000);
+```
+
+### Step 5: Test on real devices
+- Use Chrome's Remote Debugging to profile on an actual Android phone
+- Test on Safari (WebKit has different WebGL behavior than Chromium)
+- Verify the mobile quality tier kicks in (reduced particles, no shadows)
+
+---
+
+## 11. Accessibility Implementation Patterns
+
+### Reduced-motion fallback architecture
+
+```javascript
+class App {
+  constructor() {
+    this.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    this.reducedMotion.addEventListener('change', () => this.applyMotionPreference());
+    this.applyMotionPreference();
+  }
+
+  applyMotionPreference() {
+    if (this.reducedMotion.matches) {
+      // Stop scroll-driven animations
+      ScrollTrigger.getAll().forEach(st => st.kill());
+      // Set camera to final/default position
+      camera.position.set(0, 0, 5);
+      camera.lookAt(0, 0, 0);
+      // Render one frame (static scene)
+      renderer.render(scene, camera);
+      // Remove Lenis — use native scroll
+      lenis?.destroy();
+      // Show all content immediately (no staggered reveals)
+      gsap.set('[data-animate]', { opacity: 1, y: 0 });
+    } else {
+      this.initFullExperience();
+    }
+  }
+}
+```
+
+### Motion toggle UI
+
+Provide an in-page toggle independent of OS settings:
+
+```html
+<button id="motion-toggle" aria-pressed="false" aria-label="Reduce motion">
+  Reduce motion
+</button>
+```
+
+```javascript
+const toggle = document.getElementById('motion-toggle');
+toggle.addEventListener('click', () => {
+  const reduced = toggle.getAttribute('aria-pressed') === 'true';
+  toggle.setAttribute('aria-pressed', String(!reduced));
+  document.documentElement.classList.toggle('reduce-motion', !reduced);
+  // Re-apply motion preference
+  app.applyMotionPreference();
+});
+```
+
+### Seizure-safe particle effects
+
+```javascript
+// Cap flash frequency: never change brightness > 3x per second
+let lastBrightnessFlip = 0;
+function safeFlash(time) {
+  if (time - lastBrightnessFlip < 333) return; // 3Hz limit
+  lastBrightnessFlip = time;
+  // ... flash effect
+}
+```
+
+---
+
+## 12. Hybrid Integration Pattern
+
+For embedding immersive sections within standard UI sites:
+
+### Scoped canvas setup
+
+```html
+<!-- The immersive section lives inside a regular page -->
+<section id="immersive-section" style="position: relative; height: 300vh;">
+  <canvas id="scoped-canvas" style="position: sticky; top: 0; width: 100%; height: 100vh;"></canvas>
+  <div class="scroll-spacer" style="position: relative; z-index: 1; pointer-events: none;">
+    <!-- Overlay content that scrolls over the canvas -->
+    <div style="height: 100vh; display: flex; align-items: center; justify-content: center;">
+      <h2 style="pointer-events: auto;">Section Title</h2>
+    </div>
+  </div>
+</section>
+```
+
+### Lifecycle management
+
+```javascript
+// Initialize only when section is near viewport
+const observer = new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting) {
+    initImmersiveSection();
+    observer.disconnect();
+  }
+}, { rootMargin: '200px' });
+observer.observe(document.querySelector('#immersive-section'));
+
+// ScrollTrigger scoped to the section
+ScrollTrigger.create({
+  trigger: '#immersive-section',
+  start: 'top top',
+  end: 'bottom bottom',
+  scrub: 1,
+  onUpdate: (self) => {
+    material.uniforms.uProgress.value = self.progress;
+    renderer.render(scene, camera);
+  },
+  onLeave: () => { /* Optionally pause rendering */ },
+  onEnterBack: () => { /* Resume rendering */ },
+});
+```
+
+### Renderer scoping
+
+```javascript
+// Size to the section, not the viewport
+const section = document.querySelector('#immersive-section');
+const canvas = document.querySelector('#scoped-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
+
+function onResize() {
+  const rect = section.getBoundingClientRect();
+  const w = rect.width;
+  const h = window.innerHeight; // Sticky canvas = viewport height
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+```
+
+---
+
+## 13. CDN Reference
+
+Copy-paste `<script>` tags for single-file HTML builds. **Check npm for
+latest stable versions before using — these may be outdated:**
+
+```html
+<!-- Three.js (https://www.npmjs.com/package/three) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
+
+<!-- GSAP + Plugins (https://www.npmjs.com/package/gsap) -->
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/ScrollTrigger.min.js"></script>
+
+<!-- Lenis Smooth Scroll (https://www.npmjs.com/package/lenis) -->
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.2.3/dist/lenis.min.js"></script>
+```
+
+---
+
+## 14. Complete Application Skeleton
 
 ```
 src/

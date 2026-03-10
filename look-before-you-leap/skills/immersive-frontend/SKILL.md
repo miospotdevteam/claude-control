@@ -1,6 +1,6 @@
 ---
 name: immersive-frontend
-description: "Build award-winning immersive web experiences with WebGL, Three.js, R3F, GSAP ScrollTrigger, custom GLSL shaders, and scroll-driven 3D choreography. Use this skill whenever the user asks for: immersive websites, WebGL experiences, 3D web, creative dev, scroll-driven animations, cinematic scroll, Three.js sites, GSAP + Three.js, motion-driven sites, award-winning website design, Awwwards-quality sites, full-canvas experiences, particle systems, shader effects, smooth scroll with WebGL, preloader animations, image distortion effects, parallax depth, magnetic cursors, text reveal animations, infinite marquees, or any request that goes beyond standard UI into experiential, motion-first, canvas-driven territory. Also use when the user references studios like Active Theory, Lusion, Immersive Garden, or sites from Awwwards/Codrops. Do NOT use for: standard UI components, form-heavy pages, admin dashboards, or layout-focused work without WebGL or advanced motion — use frontend-design instead."
+description: "Build award-winning immersive web experiences with WebGL, Three.js, R3F, GSAP ScrollTrigger, custom GLSL shaders, and scroll-driven 3D choreography. Make sure to use this skill whenever the user asks for: immersive websites, WebGL experiences, 3D web, creative dev, scroll-driven animations, cinematic scroll, Three.js scenes, GSAP + Three.js, motion-driven sites, award-winning website design, Awwwards-quality sites, full-canvas experiences, particle systems, shader effects, smooth scroll with WebGL, preloader animations, image distortion effects, parallax depth, magnetic cursors, text reveal animations, infinite marquees, camera flythrough, noise displacement, fresnel glow, chromatic aberration, post-processing bloom, film grain, or any request that goes beyond standard UI into experiential, motion-first, canvas-driven territory. Also trigger when the user references studios like Active Theory, Lusion, Immersive Garden, or sites from Awwwards/Codrops, or uses words like 'cinematic', 'theatrical', or 'dark theme with neon'. Do NOT use for: standard UI components, form-heavy pages, admin dashboards, simple CSS hover states, or basic Framer Motion page transitions — use frontend-design instead."
 ---
 
 # Immersive Frontend
@@ -24,11 +24,63 @@ This skill operates within the conductor's Step 1-3:
 - **Phase 4** (Verification) runs after implementation.
 
 If `brainstorming` ran first and produced visual direction: use those
-decisions and skip to Phase 2.
+decisions. If `frontend-design` Phase 2 ran first: use its design direction
+(axes, creative seed, typography, color). In both cases, skip to Phase 2.
 
 ---
 
 ## Phase 1: Assessment — What Are We Building?
+
+### Design Direction
+
+An immersive site still needs intentional design — typography, color, spacing,
+and creative direction. Before diving into technical architecture:
+
+**If `frontend-design` Phase 2 ran first** (it produced a Design Handoff
+document with axis scores, creative seed, typography, color system, motion
+tier, and scope): read that document from `discovery.md` or `design.md`.
+Those decisions inform background colors, text overlays, particle palettes,
+UI chrome, and overall mood. If the handoff specifies a hybrid scope,
+follow the Hybrid Projects pattern above. Skip to the Decision Tree below.
+
+**If `brainstorming` ran first** and produced visual direction in `design.md`:
+use those decisions. Skip to the Decision Tree below.
+
+**If neither ran**: invoke `frontend-design` Phase 2 (Greenfield — Decision
+Matrix) to establish the aesthetic direction. The 6-axis scores, creative
+seed, typography pairing, and color system apply to immersive sites just as
+much as standard ones. Once the user approves the direction, return here
+for the technical architecture.
+
+Do NOT skip design direction because the work is "technical." An immersive
+experience with default colors and Inter is a tech demo, not a designed
+experience.
+
+### Creative Palette Libraries
+
+For scene colors (particles, mesh materials, canvas backgrounds), use
+curated creative palette libraries instead of picking colors by hand:
+
+| Library | Best for | Install |
+|---|---|---|
+| **chromotome** | Artistic scenes — 200+ palettes with designated background + stroke colors | `npm i chromotome` |
+| **nice-color-palettes** | Random harmonious palettes (1000 × 5 colors) for generative work | `npm i nice-color-palettes` |
+| **riso-colors** | Retro/print aesthetic with flat, textured tones | `npm i riso-colors` |
+
+```javascript
+// Example: chromotome palette → Three.js materials
+import { getRandom } from 'chromotome';
+const palette = getRandom();
+const bgColor = new THREE.Color(palette.background);
+const meshColors = palette.colors.map(c => new THREE.Color(c));
+scene.background = bgColor;
+```
+
+UI chrome (nav, text overlays, buttons) should still use the design tokens
+from `frontend-design` — creative palettes are for the visual/artistic
+layer only.
+
+See `PACKAGES.md` in the plugin root for the full list.
 
 ### Decision Tree
 
@@ -55,6 +107,41 @@ pattern and smooth scroll setup — these apply to every immersive site.
 | **Motion-Enhanced** | Smooth scroll, text reveals, parallax, marquees. No WebGL. | GSAP + Lenis | gsap-scroll-patterns, effects-cookbook |
 | **WebGL-Lite** | Canvas background (particles, blobs), DOM content on top. | Three.js + GSAP + Lenis | All except shader-recipes |
 | **Full Immersive** | Scroll-driven 3D scenes, custom shaders, preloader, page transitions. | Three.js + GSAP + Lenis + GLSL | All reference files |
+
+### Hybrid Projects (Immersive Sections in Standard UI)
+
+When adding immersive sections to an existing UI site (not a full-canvas
+experience):
+
+1. **Scope partition:** Identify which sections are immersive (this skill)
+   vs standard UI (`frontend-design`). Document the boundary explicitly.
+2. **Canvas containment:** Use a scoped `<canvas>` inside a section, not
+   `position: fixed` full-page. The canvas lives inside the immersive
+   section's DOM element and resizes with it.
+3. **Lazy loading:** Don't block the rest of the site. Load Three.js and
+   scene assets only when the immersive section enters the viewport (use
+   `IntersectionObserver` or dynamic `import()`).
+4. **Scroll handoff:** The page uses native or standard smooth scrolling.
+   The immersive section pins and scrubs its content within its scroll
+   range. After the section ends, normal scrolling resumes.
+5. **Design continuity:** The immersive section's typography, colors, and
+   spacing should match the rest of the site (consume the same design
+   tokens). The transition into and out of the immersive section should
+   feel seamless.
+
+```javascript
+// Lazy-load the 3D section
+const observer = new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting) {
+    import('./ImmersiveSection.js').then(m => m.init(sectionEl));
+    observer.disconnect();
+  }
+}, { rootMargin: '200px' }); // Start loading 200px before visible
+observer.observe(document.querySelector('#immersive-section'));
+```
+
+See `references/architecture.md` § Hybrid Integration Pattern for the
+scoped canvas setup.
 
 ---
 
@@ -119,17 +206,18 @@ gsap.ticker.lagSmoothing(0); // Prevent desync after lag spikes
 
 ### CDN Links (for single-file HTML)
 
-```html
-<!-- Three.js -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
+Pin specific versions for production. **Before using the versions below,
+check npm for the latest stable release** — these are reference versions
+that may be outdated:
 
-<!-- GSAP + Plugins -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+| Library | npm page | Reference version |
+|---|---|---|
+| Three.js | `npmjs.com/package/three` | 0.170.0 |
+| GSAP | `npmjs.com/package/gsap` | 3.12.7 |
+| Lenis | `npmjs.com/package/lenis` | 1.2.3 |
 
-<!-- Lenis Smooth Scroll -->
-<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.min.js"></script>
-```
+See `references/architecture.md` § CDN Reference for copy-paste `<script>`
+tags with the latest known versions.
 
 ---
 
@@ -166,6 +254,53 @@ gsap.ticker.lagSmoothing(0); // Prevent desync after lag spikes
 
 10. **Mobile fallback.** Detect via `matchMedia` and serve reduced
     particle counts, no shadows, simpler shaders, lower DPR.
+
+### Accessibility for Immersive Experiences
+
+Immersive sites must be usable by everyone. These aren't optional — they're
+requirements.
+
+**Vestibular / motion sensitivity:**
+- Detect `prefers-reduced-motion: reduce` and provide a meaningful static
+  fallback — not a blank page, but a simplified version with no parallax,
+  no scroll-driven camera movement, and no auto-playing animation
+- Offer a visible "Reduce motion" toggle in the UI (don't rely solely on
+  OS setting)
+- Avoid large-area motion (full-viewport transforms) that triggers
+  vestibular responses
+
+**Seizure / photosensitivity (WCAG 2.3.1):**
+- No content flashes more than 3 times per second
+- No sudden high-contrast transitions (dark↔light full-screen)
+- Avoid strobing particle effects or rapid color cycling
+
+**Cognitive overload:**
+- Don't fire all effects simultaneously — stagger reveals so the user
+  processes one thing at a time
+- Provide visual anchors (stable text, fixed nav) alongside moving elements
+- Keep the scroll-to-effect ratio predictable — erratic speeds disorient
+
+**Implementation pattern:**
+```javascript
+const prefersReduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+if (prefersReduced) {
+  // Static scene: set final camera position, skip scroll animation
+  camera.position.set(0, 0, 5);
+  // Show content immediately, no preloader animation
+  gsap.set('#preloader', { autoAlpha: 0 });
+  // Disable Lenis smooth scroll — use native
+  // Don't start the render loop ticker for scroll-driven updates
+} else {
+  // Full immersive experience
+  initLenis();
+  initScrollTriggers();
+  startRenderLoop();
+}
+```
+
+See `references/architecture.md` § Accessibility Implementation Patterns
+for complete patterns.
 
 ### Anti-Patterns — What NOT to Do
 
@@ -250,6 +385,24 @@ window.addEventListener('resize', onResize);
 - [ ] **Draw calls**: Within budget (check `renderer.info.render.calls`)
 - [ ] **Scroll feels right**: `scrub` has smoothing value, not raw `true`
 
+### Performance Profiling Workflow
+
+When verifying performance, follow this sequence (see
+`references/architecture.md` § Performance Profiling Workflow for detailed
+steps):
+
+1. **Chrome DevTools Performance tab** — record a scroll through the full
+   experience, look for long frames (>16ms) and jank
+2. **Rendering panel** — enable "Paint flashing" and "Layout shift regions"
+   to catch DOM-triggered repaints
+3. **`renderer.info`** — log draw calls, triangles, texture/geometry counts
+   against the performance budgets
+4. **GPU bottleneck test** — reduce canvas size by 50%; if FPS improves
+   significantly, you're fill-rate bound (reduce shader complexity, lower
+   DPR)
+5. **CPU bottleneck test** — simplify JS logic; if FPS improves, optimize
+   the ticker callback or reduce object count
+
 ### Standard Checks (from engineering-discipline)
 
 - [ ] Type checker passes
@@ -273,7 +426,8 @@ window.addEventListener('resize', onResize);
 
 | Need | Skill |
 |------|-------|
-| Standard UI/UX design decisions | `frontend-design` |
+| Design direction (typography, color, axes, creative seed) | `frontend-design` Phase 2 |
+| Standard DOM-based UI (no WebGL/canvas) | `frontend-design` Phase 3 |
 | Creative direction brainstorming | `brainstorming` |
 | Implementation planning | `writing-plans` |
 | Testing strategy | `test-driven-development` |

@@ -1,0 +1,41 @@
+[
+  {
+    "query": "Build an immersive WebGL portfolio site with scroll-driven 3D scenes and particle effects. It needs to be accessible — some visitors may have vestibular disorders or photosensitive epilepsy. Make sure it works for everyone.",
+    "should_trigger": true,
+    "assertions": [
+      "Announces it is using the immersive-frontend skill",
+      "Addresses vestibular/motion sensitivity with specific mitigation strategies",
+      "Addresses seizure/photosensitivity risks (flash frequency limits, contrast thresholds)",
+      "Provides a prefers-reduced-motion implementation that goes beyond just disabling animations",
+      "Specifies a meaningful static fallback for users with reduced-motion enabled",
+      "Mentions cognitive overload considerations (not overwhelming with simultaneous effects)",
+      "Provides concrete code patterns for the accessibility implementations, not just guidelines"
+    ]
+  },
+  {
+    "query": "I have an existing Next.js e-commerce site built with shadcn/ui. I want to add an immersive 3D product showcase section — scroll-driven with the product rotating and exploding into parts. But the rest of the site stays as standard UI. How do I scope this?",
+    "should_trigger": true,
+    "assertions": [
+      "Announces it is using the immersive-frontend skill",
+      "Recognizes this as a hybrid project (immersive section within standard UI)",
+      "Provides scope partitioning guidance — which parts use immersive-frontend vs frontend-design",
+      "Addresses canvas containment (scoped canvas within a section, not full-page)",
+      "Covers the intersection of shadcn/ui components with the WebGL section",
+      "Provides guidance on loading strategy (lazy-load the 3D section to avoid blocking the UI)",
+      "Addresses scroll behavior handoff between standard DOM scrolling and the immersive section"
+    ]
+  },
+  {
+    "query": "Build a canvas-heavy agency landing page with WebGL background effects and custom shaders. It needs to rank well on Google (SEO matters) and I need to verify it runs at 60fps on mid-range devices. How do I profile and optimize?",
+    "should_trigger": true,
+    "assertions": [
+      "Announces it is using the immersive-frontend skill",
+      "Provides SEO guidance specific to canvas-heavy sites (semantic HTML beneath canvas, meta tags, structured data)",
+      "Addresses crawlability — ensuring content is in the DOM, not only rendered on canvas",
+      "Provides a concrete performance profiling workflow using Chrome DevTools",
+      "Mentions specific DevTools panels/tabs to use (Performance, Layers, Rendering)",
+      "Provides guidance on identifying GPU bottlenecks vs CPU bottlenecks",
+      "References the performance budgets from the skill (draw calls, triangle count, texture memory)"
+    ]
+  }
+]
