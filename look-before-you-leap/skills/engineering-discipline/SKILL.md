@@ -136,6 +136,24 @@ A single version bump can cascade through the entire project. Check lock
 files, peer dependencies, and framework compatibility before committing
 to the bump.
 
+### Refactoring tasks require the refactoring skill
+
+If the task involves renaming across files, moving files/modules, extracting
+code into new modules, splitting files, restructuring directories, or
+changing naming conventions across the codebase — **invoke
+`look-before-you-leap:refactoring`**. Its contract-based approach
+systematically catalogs every target, consumer, and test before changes
+begin, catching the missed consumers and dead code that make incomplete
+refactoring Claude's #1 failure mode.
+
+The refactoring skill applies when changes cross file boundaries. Single-file
+cleanup (renaming a variable within one function, simplifying conditionals)
+is handled by engineering-discipline directly — no skill invocation needed.
+
+If dep maps are configured, the refactoring skill uses `deps-query.py` to
+find all consumers instantly. After the refactoring, it regenerates stale
+dep maps so future queries reflect the new structure.
+
 ### Install before import
 
 If you add a new import, verify the package exists in the project:
@@ -313,3 +331,5 @@ If you catch yourself doing any of these, stop and reconsider:
 | Inventing creative workarounds for hook blocks (python3 -c, node -e) | The hook blocked you for a reason. Follow the process, not your creativity |
 | Marking a plan step done without verifying the work | Verify first, then mark complete — done means verified, not "I wrote some code" |
 | Moving a plan to completed/ before all steps are done | Finish the work or flag what's remaining to the user |
+| Renaming/moving/extracting across 3+ files without a contract | Invoke `look-before-you-leap:refactoring` first — build the contract |
+| Refactoring without running deps-query.py first (when dep maps exist) | Run deps-query.py on every target to get complete consumer lists |

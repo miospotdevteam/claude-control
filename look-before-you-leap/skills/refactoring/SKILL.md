@@ -1,6 +1,6 @@
 ---
 name: refactoring
-description: "Use when refactoring, restructuring, extracting, reorganizing, renaming across files, or moving files. Two modes: Full Mode (4-phase refactoring with pre/post contract that catches missed consumers, stale imports, and dead code) and Quick Mode (post-execution simplification pass dispatched after plan steps with `Simplify: true`). Full Mode for intentional refactoring tasks; Quick Mode replaces standalone code-simplifier. Addresses Claude's #1 refactoring failure: incomplete refactoring where consumers, imports, or dead code are left behind. Do NOT use for: single-variable renames within one function, formatting-only changes, changes that don't cross file boundaries (use engineering-discipline directly), or adding new features disguised as refactoring."
+description: "Use when refactoring, restructuring, extracting, reorganizing, renaming across files, or moving files. Make sure to use this skill whenever the user asks to: rename a function, class, or type across multiple files; move files or modules to new locations; extract code into new modules, hooks, or utilities; split large files into smaller ones; restructure directory layouts; consolidate duplicate logic into shared abstractions; change naming conventions across the codebase; or clean up messy code by extracting common parts. Uses dep maps (deps-query.py) for instant consumer discovery before changes and regenerates stale maps after. Two modes: Full Mode (contract-based 4-phase refactoring) and Quick Mode (post-step simplification). Do NOT use for: single-variable renames within one function, formatting-only changes, changes within a single file, adding new features, bug fixes, or writing tests."
 ---
 
 # Refactoring
@@ -70,6 +70,18 @@ Create `refactoring-contract.md` in the active plan directory:
 - `oldName` → `newName` everywhere (0 remaining references to `oldName`)
 - `Widget` moved to `src/components/Widget.ts` (0 imports from old path)
 ```
+
+**Dep map integration (TypeScript projects):**
+
+Before building the contract, check if dep maps are configured (look for
+`dep_maps` in `.claude/look-before-you-leap.local.md` YAML frontmatter).
+If configured, run `deps-query.py` on EVERY target file FIRST — this gives
+you instant, complete consumer lists across all modules. Dep maps catch
+cross-module consumers that grep often misses. If dep maps are NOT
+configured, suggest `/generate-deps` to the user before proceeding.
+
+After the refactoring is complete, regenerate stale dep maps (see Phase 4).
+File moves, renames, and extractions invalidate existing maps.
 
 **How to build it:**
 
@@ -162,7 +174,14 @@ After all changes are applied:
 5. **Run type checker** — catches stale type references that grep might miss
 6. **Run linter** — catches unused imports, unused variables from incomplete
    cleanup
-7. **Final contract status** — update `refactoring-contract.md` with results:
+7. **Regenerate dep maps** (if configured) — file moves, renames, and
+   extractions make existing dep maps stale. Run:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-generate.py <project_root> --stale-only
+   ```
+   This ensures consumers of the refactored code are correctly mapped for
+   future queries. If many modules were affected, run with `--all` instead.
+8. **Final contract status** — update `refactoring-contract.md` with results:
    ```
    ## Verification
    - Stale references: 0 (grepped for `oldName`, `old/path`)
@@ -223,8 +242,9 @@ Expand your scope iteratively from the modified files outward.
 involved" field. These are your primary targets.
 
 **Ring 1: Direct imports and consumers** — For each modified file: read its
-imports (what does it depend on?), grep for consumers (who imports this
-file?), read each direct neighbor.
+imports (what does it depend on?), find consumers (use `deps-query.py` if
+dep maps are configured, otherwise grep — who imports this file?), read
+each direct neighbor.
 
 **Ring N: Propagation** — If a simplification in Ring 0 or 1 propagates
 (e.g., renaming an export requires updating consumers), follow that file's

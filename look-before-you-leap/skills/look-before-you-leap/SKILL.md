@@ -99,6 +99,19 @@ Dep maps make consumer finding and blast-radius analysis instant and complete.
 For complex or unfamiliar codebases, also read
 `references/exploration-guide.md`.
 
+### Refactoring tasks
+
+If the task is a refactoring (rename across files, move files, extract
+modules, restructure directories, split files, change naming conventions),
+invoke `look-before-you-leap:refactoring` to structure the exploration.
+Its Phase 1 (Inventory) replaces generic exploration with a **refactoring
+contract** that catalogs every target, export, consumer, and test. This
+contract becomes the verification checklist for the plan.
+
+If dep maps are configured, the refactoring skill uses `deps-query.py` to
+find consumers instantly. After the refactoring, it regenerates stale dep
+maps so future queries reflect the new structure.
+
 ### Persist your findings
 
 If the task requires exploration (anything beyond a trivial single-file
@@ -162,6 +175,12 @@ obvious single-line change.
 Follow **persistent-plans Phase 2** (Execute the Plan) for the execution
 loop, checkpointing, and result tracking. Follow **engineering-discipline
 Phase 2** (Make Changes Carefully) for the rules applied during execution.
+
+For refactoring tasks, also follow the execution order from
+`look-before-you-leap:refactoring` Phase 3 — it minimizes broken
+intermediate states (e.g., create at new location first, then update
+consumers, then delete old location). After all changes, its Phase 4
+verifies against the contract and regenerates stale dep maps.
 
 The sections below cover behavior that is unique to the conductor and not
 covered in the companion skills.
