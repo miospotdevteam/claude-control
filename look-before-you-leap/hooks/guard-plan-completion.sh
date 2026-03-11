@@ -102,6 +102,60 @@ if os.path.isfile(plan_json):
     active = counts.get("in_progress", 0)
     blocked = counts.get("blocked", 0)
     done = counts.get("done", 0)
+
+    # Even if all steps are "done", check result quality
+    if pending == 0 and active == 0 and blocked == 0 and done > 0:
+        # Check for steps marked done but missing results or with incomplete progress
+        null_result_steps = []
+        incomplete_progress_steps = []
+        for step in plan.get("steps", []):
+            if step["status"] != "done":
+                continue
+            sid = step["id"]
+            # Check result field
+            result = step.get("result")
+            if not result or (isinstance(result, str) and not result.strip()):
+                null_result_steps.append(sid)
+            # Check progress items
+            for p in step.get("progress", []):
+                if p.get("status") != "done":
+                    incomplete_progress_steps.append(sid)
+                    break
+
+        if null_result_steps or incomplete_progress_steps:
+            problems = []
+            if null_result_steps:
+                ids = ", ".join(str(s) for s in null_result_steps)
+                problems.append(
+                    f"Steps with empty/null result: {ids}\n"
+                    "  Every done step MUST have a result describing what was implemented."
+                )
+            if incomplete_progress_steps:
+                ids = ", ".join(str(s) for s in incomplete_progress_steps)
+                problems.append(
+                    f"Steps with incomplete progress items: {ids}\n"
+                    "  All progress items must be 'done' before the step is complete."
+                )
+            detail = "\n".join(problems)
+            output = {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        f"Cannot move plan to completed/ — steps are marked done but "
+                        f"work is not fully verified:\n\n{detail}\n\n"
+                        f"Plan: {plan_json}\n\n"
+                        "Fix: fill in result fields (via plan_utils.py or Edit) and "
+                        "mark all progress items done before moving."
+                    )
+                }
+            }
+            json.dump(output, sys.stdout)
+            sys.exit(0)
+
+        # All checks pass — allow
+        sys.exit(0)
+
 elif os.path.isfile(plan_path):
     # Legacy: grep masterPlan.md
     import re

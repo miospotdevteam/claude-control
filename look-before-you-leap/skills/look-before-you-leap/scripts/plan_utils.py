@@ -81,12 +81,42 @@ def is_complete(plan):
 
 
 def update_step_status(plan_path, step_id, new_status):
-    """Update a step's status and write back to disk."""
+    """Update a step's status and write back to disk.
+
+    When setting to 'done', warns if progress items are incomplete or
+    result field is empty. These are soft warnings — the guard hook
+    (guard-plan-completion.sh) is the hard gate that blocks mv.
+    """
     plan = read_plan(plan_path)
     step = get_step(plan, step_id)
     if step is None:
         print(f"Error: step {step_id} not found", file=sys.stderr)
         return False
+
+    if new_status == "done":
+        # Warn about incomplete progress items
+        incomplete = [
+            p["task"] for p in step.get("progress", [])
+            if p.get("status") != "done"
+        ]
+        if incomplete:
+            print(
+                f"Warning: step {step_id} marked done but has "
+                f"{len(incomplete)} incomplete progress item(s): "
+                f"{', '.join(incomplete[:3])}"
+                f"{'...' if len(incomplete) > 3 else ''}",
+                file=sys.stderr,
+            )
+
+        # Warn about missing result
+        result = step.get("result")
+        if not result or (isinstance(result, str) and not result.strip()):
+            print(
+                f"Warning: step {step_id} marked done with no result. "
+                f"Fill in the result field describing what was implemented.",
+                file=sys.stderr,
+            )
+
     step["status"] = new_status
     write_plan(plan_path, plan)
     return True

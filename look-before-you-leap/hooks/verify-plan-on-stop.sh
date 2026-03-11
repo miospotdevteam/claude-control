@@ -75,6 +75,30 @@ blocked = counts.get("blocked", 0)
 
 remaining = pending + active
 if remaining == 0:
+    # All steps done — but check for steps with null/empty results
+    null_result_steps = []
+    for step in plan.get("steps", []):
+        if step.get("status") == "done":
+            result = step.get("result")
+            if not result or (isinstance(result, str) and not result.strip()):
+                null_result_steps.append(step["id"])
+
+    if null_result_steps:
+        ids = ", ".join(str(s) for s in null_result_steps)
+        reason_parts = [
+            f"Active plan '{plan_name}' has steps marked done with no result:",
+            f"  - Steps missing results: {ids}",
+            "",
+            f"Plan file: {plan_json}",
+            "",
+            "Before stopping, fill in the result field for each done step.",
+            "The result should describe what was implemented, files changed,",
+            "and decisions made. Use plan_utils.py or Edit to update plan.json.",
+        ]
+        output = {"decision": "block", "reason": "\n".join(reason_parts)}
+        json.dump(output, sys.stdout)
+        sys.exit(0)
+
     sys.exit(0)
 
 reason_parts = [f"Active plan '{plan_name}' has unfinished work:"]
