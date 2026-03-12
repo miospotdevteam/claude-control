@@ -58,22 +58,44 @@ the implementation doesn't exist yet.
 - Write tests that couple to implementation details (mock every dependency,
   test private methods)
 
-### Phase 2: Green (Minimal Implementation)
+### Phase 2: Green (Deliberately Minimal Implementation)
 
-Write the minimum code to make the failing tests pass. Nothing more.
+Write the **dumbest possible code** that makes the failing tests pass. This
+is the hardest phase for Claude — your instinct is to write correct, general
+code. Fight that instinct. The goal is to let tests drive generalization,
+not to anticipate it.
 
 1. **Create or open the implementation file**
 2. **Write only enough code** to satisfy the current test cases
 3. **Run the tests** — they must all pass
 4. If tests still fail, fix the implementation until green
 
+**The Minimality Test:** After writing your GREEN code, ask: "Would this
+implementation also pass tests I haven't written yet?" If yes, you're being
+too general. Scale back. Use hardcoded values, if/else chains, early
+returns — anything that handles only the tested cases. Generalization
+happens in REFACTOR or when the next RED cycle's tests demand it.
+
 **Rules:**
+- **Hardcode first, generalize later.** If the test expects `[{status: "todo", tasks: [task1]}]`,
+  return exactly that structure with a hardcoded key — don't write a generic
+  loop that handles all statuses. The loop comes when the next test demands it.
+- **If/else before data structures.** If two tests check two transitions,
+  write two `if` checks — don't create a transition map. The map comes
+  in REFACTOR after all transitions are tested.
 - Resist the urge to over-engineer. If a test expects `return true`, write
   `return true` — you can generalize when more tests demand it.
 - Do not add error handling, validation, or features that no test requires.
 - Do not add types or interfaces beyond what the tests exercise.
 - If the minimal implementation feels wrong, that's a signal to write more
   tests in the next Red phase — not to preemptively build more now.
+
+**Why this matters:** If your Cycle 1 GREEN is already general enough to
+pass Cycle 2 and Cycle 3 tests, then those later cycles are hollow — they
+confirm existing behavior rather than driving new implementation. The
+feedback loop that makes TDD valuable (test reveals a gap → implementation
+fills the gap → next test reveals the next gap) only works when each GREEN
+is deliberately constrained to the current tests.
 
 ### Phase 3: Refactor (Clean Up)
 
@@ -130,24 +152,42 @@ teaches you what matters.
 
 1. **Red**: Write 1-3 tests for the **simplest** behavior (e.g., basic
    percentage discount on a $100 order)
-2. **Green**: Implement the minimum to pass (maybe just multiply and subtract)
+2. **Green**: Implement the minimum to pass — **deliberately narrowly**.
+   Maybe just `return price * 0.9` (hardcoded 10% discount). Don't write
+   a generic `applyDiscount(type, amount)` yet.
 3. **Run tests** — confirm green
 4. **Red**: Add 1-3 tests for the **next** behavior (e.g., fixed dollar
-   discounts). The previous implementation might need extending.
-5. **Green**: Extend the implementation to handle both types
+   discounts). These MUST fail — if they pass, your previous GREEN was
+   too general.
+5. **Green**: Extend the implementation to handle both types — maybe add
+   an if/else, not a polymorphic strategy pattern.
 6. **Run tests** — confirm all green (old AND new)
 7. **Red**: Add tests for **edge cases and interactions** (e.g., discount
-   exceeding price, minimum thresholds). Now you understand the
-   implementation well enough to know what actually breaks.
-8. **Green**: Handle the edge cases
-9. **Refactor**: Clean up the accumulated implementation
+   exceeding price, minimum thresholds). Again, these SHOULD fail.
+8. **Green**: Handle the edge cases with targeted code
+9. **Refactor**: NOW generalize. Replace the if/else chain with a clean
+   abstraction. The accumulated implementation tells you what the right
+   abstraction is — you couldn't have guessed it in Cycle 1.
+
+**Cycle quality check:** After each RED phase, before moving to GREEN,
+verify: "Did at least one new test fail?" If all new tests passed
+immediately, pause and consider:
+- Your previous GREEN was too general — note this and commit to being
+  more constrained in future GREEN phases
+- OR the tests aren't testing genuinely new behavior — reconsider what
+  would actually break and write tests for that instead
+
+A cycle where tests pass immediately with zero implementation changes is
+a wasted cycle — it confirms existing behavior rather than driving design.
+Two consecutive hollow cycles means you've lost the TDD feedback loop.
 
 **Why this matters:** Each green phase teaches you something about the
 implementation that makes the next red phase's tests better. Writing all
 29 tests upfront means you're guessing about boundary conditions before
 you've written a single line of implementation. The first few cycles are
 easy to predict, but by cycle 3-4 you'll discover edge cases you never
-would have thought of from the outside.
+would have thought of from the outside. But this only works if each GREEN
+is constrained enough that the next RED actually breaks something.
 
 **Plan integration:** When the writing-plans skill creates steps with TDD,
 the progress items encode these cycles explicitly (Cycle 1 RED, Cycle 1
@@ -189,6 +229,7 @@ proptest, etc.) if available.
 |---|---|---|
 | Write implementation + tests together | Tests validate existing code, don't drive design | Separate Red and Green into distinct phases |
 | Write all tests upfront in one batch | Speculative — you'll guess wrong about edge cases, and you lose the feedback loop that makes TDD valuable | Iterate: 1-3 tests per cycle, implement, repeat for at least 3 cycles |
+| Over-general GREEN implementation | Later cycles pass immediately with zero code changes — the feedback loop is hollow, tests confirm existing behavior instead of driving design | Hardcode first, use if/else chains, constrain to tested cases. Generalize in REFACTOR, not GREEN |
 | Test implementation details | Brittle — breaks on any refactor | Test behavior (inputs -> outputs) |
 | Skip the Red phase verification | You don't know if the test actually tests anything | Always run and confirm failure first |
 | Skip the Refactor phase | Technical debt accumulates silently | Always refactor after Green |
