@@ -570,6 +570,7 @@ This skill produces:
 | Adding font/animation dependencies | `references/dependency-checklist.md` |
 | User input rendered in UI | `references/security-checklist.md` |
 | Testing UI components | `references/testing-checklist.md` |
+| Design calls for SVG illustrations, patterns, or textures | Invoke `svg-art` — pass design direction (palette, temperature) |
 | Motion tier is Enhanced or Immersive | Invoke `immersive-frontend` — pass design direction |
 
 For the full font sourcing protocol, aesthetic axis deep-dives, animation

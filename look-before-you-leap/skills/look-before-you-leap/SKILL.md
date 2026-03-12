@@ -35,6 +35,7 @@ Look for installed skills that match these needs:
 | Writing implementation plans | **Always** use `look-before-you-leap:writing-plans` — never another plugin's writing-plans skill |
 | Test strategy, TDD | **Always** use `look-before-you-leap:test-driven-development` — never another plugin's TDD skill |
 | Frontend UI design, standard web interfaces | **Always** use `look-before-you-leap:frontend-design` — never another plugin's frontend-design skill |
+| SVG art, illustrations, patterns, textures, generative art | **Always** use `look-before-you-leap:svg-art` — never another plugin's SVG skill |
 | Immersive web, WebGL, 3D, scroll-driven creative dev | **Always** use `look-before-you-leap:immersive-frontend` — never another plugin's immersive-frontend skill |
 | React Native, mobile apps, Expo, native feel | **Always** use `look-before-you-leap:react-native-mobile` — never another plugin's mobile skill |
 | Security review | "security", "authentication", "auth" |
@@ -186,7 +187,8 @@ compaction recovery depends on them. Do NOT invent your own schema:
 - Do NOT use `name` on steps — use `title`
 - Do NOT invent skill values like `"code-editing"` or `"verification"` —
   valid values are ONLY: `"none"`, `"look-before-you-leap:test-driven-development"`,
-  `"look-before-you-leap:frontend-design"`, `"look-before-you-leap:immersive-frontend"`,
+  `"look-before-you-leap:frontend-design"`, `"look-before-you-leap:svg-art"`,
+  `"look-before-you-leap:immersive-frontend"`,
   `"look-before-you-leap:react-native-mobile"`, `"look-before-you-leap:systematic-debugging"`,
   `"look-before-you-leap:refactoring"`. If no skill applies, use `"none"`.
 - Do NOT omit `title`, `context`, or `status` at the top level — even for
@@ -251,6 +253,7 @@ provides the execution guidance — follow its phases mechanically.
 |---|---|
 | `look-before-you-leap:test-driven-development` | Follow red-green-refactor cycles. Each progress item is one phase (RED/GREEN/REFACTOR). Write tests before implementation — no exceptions. |
 | `look-before-you-leap:frontend-design` | Follow the design system, component patterns, and accessibility checklist from the skill. |
+| `look-before-you-leap:svg-art` | Follow the composition principles, decision tree, and reference file routing from the skill. |
 | `look-before-you-leap:immersive-frontend` | Follow the WebGL/GSAP/scroll-driven execution guidance from the skill. |
 | `look-before-you-leap:react-native-mobile` | Follow the native-feel, gesture, and haptic patterns from the skill. |
 | `look-before-you-leap:systematic-debugging` | Follow the four-phase investigation. No fixes without root cause confirmed. |
