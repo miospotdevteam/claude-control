@@ -1,6 +1,6 @@
 ---
 name: look-before-you-leap
-description: "Unified engineering discipline for ALL coding tasks. Three layers: this file (the conductor), quick-reference checklists, and deep guides. Enforces structured exploration before planning, persistent plans that survive compaction, TDD red-green-refactor cycles that prevent implementation-first coding, disciplined execution with blast radius tracking and type safety, and multi-discipline coverage (testing, UI consistency, security, git, linting, dependencies). Use for every task that touches source files — no exceptions, no shortcuts. Do NOT use when: answering questions about code without changing it, pure research or documentation queries, conversations with no file edits, or running commands that don't modify the codebase."
+description: "Unified engineering discipline for ALL coding tasks. Conductor that orchestrates: explore codebase before editing, write persistent plans to disk (plan.json survives compaction), route to specialized skills (TDD, brainstorming, refactoring, frontend-design, debugging), enforce definitions-before-consumers ordering, track blast radius via dep maps, and verify with type checker/linter/tests after every change. Use for every task that writes, edits, fixes, refactors, ports, migrates, or debugs code — no exceptions, no shortcuts. Do NOT use when: answering questions about code without changing it, pure research or documentation queries, conversations with no file edits, or running commands that don't modify the codebase."
 ---
 
 # Software Discipline
@@ -69,14 +69,18 @@ already exists), no onboarding is injected — proceed normally.
 Shallow exploration is the #1 cause of failed plans — every minute exploring
 saves five minutes fixing.
 
-### Creative tasks: brainstorm first
+### Decision: brainstorm or explore directly?
 
-If the task is a **new feature, new component, or behavior change** where
-the design isn't obvious, invoke `look-before-you-leap:brainstorming`
-before deep exploration. The brainstorming skill includes its own
-exploration (engineering-discipline Phase 1) and produces a `design.md`
-that feeds into Step 2 (planning). After brainstorming completes, return
-here for any remaining exploration gaps.
+Before exploring, classify the task:
+
+- **Brainstorm first** if the task adds new user-facing behavior, introduces
+  a new abstraction, or has more than one reasonable design approach. Invoke
+  `look-before-you-leap:brainstorming` — it produces a `design.md` that
+  feeds into Step 2. Examples: "add priority to tasks", "build a dashboard",
+  "add team permissions". If in doubt, brainstorm — it's cheap.
+- **Explore directly** if the task is a bug fix, a rename/refactor, a
+  config change, or the implementation path is unambiguous (e.g., "add
+  field X to existing type Y and propagate").
 
 ### Exploration protocol
 
@@ -89,23 +93,25 @@ exploring.
 ### Minimum exploration actions
 
 <!-- deps-exploration-start -->
-**If dep maps are configured** (check the project profile for the resolved
-command): run `deps-query.py` on every file in scope BEFORE the steps below.
-The output reveals consumers, cross-module dependencies, and blast radius
-upfront — it shapes the entire exploration. For audits/reviews, run on key
-entry points per module. If dep maps are NOT configured, skip this preamble.
+**Dep maps are the primary tool for finding consumers and blast radius.**
+Check the project profile for a `dep_maps` section. If configured, run
+`deps-query.py` on every file in scope BEFORE the steps below — its
+output reveals consumers, cross-module dependencies, and blast radius
+instantly. This is more thorough and reliable than grep. A hook blocks
+import-pattern grep when dep maps exist — use deps-query instead.
+
+If dep maps are NOT configured and this is a TypeScript project, suggest
+`/generate-deps` to the user before continuing.
 <!-- deps-exploration-end -->
 
-If dep maps are NOT configured and this is a TypeScript project (check the
-project profile), suggest `/generate-deps` to the user before continuing.
-Dep maps make consumer finding and blast-radius analysis instant and complete.
-
-1. Read the files in scope AND their imports
-2. Find consumers of files in scope — use deps-query output if available,
-   otherwise `Grep` for import statements
-3. Read 2-3 sibling files to learn patterns
-4. Check CLAUDE.md/README for project conventions
-5. Search for existing solutions before implementing from scratch
+1. **Run deps-query** on files in scope (if dep maps configured) — record
+   all consumers and blast radius counts
+2. Read the files in scope AND their imports
+3. Find consumers — use deps-query output (preferred) or `Grep` for import
+   statements (fallback only when dep maps are not configured)
+4. Read 2-3 sibling files to learn patterns
+5. Check CLAUDE.md/README for project conventions
+6. Search for existing solutions before implementing from scratch
 
 For complex or unfamiliar codebases, also read
 `references/exploration-guide.md`.
@@ -160,6 +166,35 @@ Initialize the plan directory if needed:
 bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 ```
 
+### Mandatory plan.json fields
+
+Every plan.json MUST include these fields — hooks parse them, and
+compaction recovery depends on them. Do NOT invent your own schema:
+
+- **Top level**: `name`, `title`, `context`, `status`, `discovery`, `steps`,
+  `completedSummary`
+- **`discovery` object** (required, not a separate file): `scope`,
+  `entryPoints`, `consumers`, `blastRadius`, `confidence`. Your exploration
+  findings go HERE, not just in discovery.md.
+- **Each step**: `id`, `title`, `status`, `skill`, `files`, `description`,
+  `acceptanceCriteria`, `progress`, `result`
+- **Each progress item**: `task`, `status`, `files` — all three fields,
+  no exceptions. Progress arrays go INSIDE each step, never at the top level.
+
+**Common mistakes to avoid:**
+- Do NOT put a `progress` array at the top level — it belongs inside EACH step
+- Do NOT use `name` on steps — use `title`
+- Do NOT invent skill values like `"code-editing"` or `"verification"` —
+  valid values are ONLY: `"none"`, `"look-before-you-leap:test-driven-development"`,
+  `"look-before-you-leap:frontend-design"`, `"look-before-you-leap:immersive-frontend"`,
+  `"look-before-you-leap:react-native-mobile"`, `"look-before-you-leap:systematic-debugging"`,
+  `"look-before-you-leap:refactoring"`. If no skill applies, use `"none"`.
+- Do NOT omit `title`, `context`, or `status` at the top level — even for
+  lightweight bug-fix plans
+
+See `references/plan-schema.md` for the complete schema with all optional
+fields. But the fields above are non-negotiable.
+
 ### Plan review via Orbit
 
 After writing the plan, present masterPlan.md to the user for review
@@ -186,6 +221,25 @@ obvious single-line change.
 Follow **persistent-plans Phase 2** (Execute the Plan) for the execution
 loop, checkpointing, and result tracking. Follow **engineering-discipline
 Phase 2** (Make Changes Carefully) for the rules applied during execution.
+
+### Execution ordering: definitions before consumers
+
+When a change touches both a definition (type, enum, interface, export)
+and its consumers, follow this strict order to avoid intermediate type
+errors:
+
+1. **Update the definition** (add the enum value, change the type, rename
+   the export) in the source file
+2. **Verify it compiles** — run `tsc --noEmit` on the defining package
+3. **Then update consumers** one by one, verifying after each batch
+
+Never update consumers before the definition exists — this creates broken
+intermediate states with errors like "Property 'X' does not exist on type."
+These errors are easily avoidable and must not happen.
+
+For renames: add the new name first (keeping the old one temporarily),
+update all consumers, then remove the old name. This ensures the codebase
+compiles at every step.
 
 ### Skill dispatch during execution
 
@@ -323,56 +377,23 @@ bash .temp/plan-mode/scripts/resume.sh         # find what to pick up
 
 ## Enforcement Hooks
 
-This plugin enforces discipline through hooks, not just instructions:
+Hooks enforce this discipline automatically. Key behaviors to know:
 
-- **SessionStart**: Injects the full conductor, engineering-discipline, and
-  persistent-plans skills into every session. Detects active plans (via
-  plan.json) and shows resumption instructions. Discovers other installed
-  plugins. On first run, auto-detects the project stack and creates the
-  local config.
-- **UserPromptSubmit**: On first run (when `.claude/.onboarding-pending`
-  marker exists), injects onboarding instructions to walk the user through
-  setup: stack summary, config enrichment, CLAUDE.md creation, plugin
-  suggestions. Fires once, then removes the marker.
-- **PreToolUse(Edit|Write)**: Blocks code edits if no active plan exists
-  in `.temp/plan-mode/active/` (checks plan.json, falls back to
-  masterPlan.md). Allows edits to `.temp/` (plan files). Bypass for
-  trivial changes: `echo $PPID > .temp/plan-mode/.no-plan`.
-- **PreToolUse(Edit|Write)**: **Hard deny** when `.handoff-pending` marker
-  exists and plan is still fresh. Blocks all code edits until Orbit review
-  + plan mode handoff is complete. Includes ToolSearch guidance for
-  orbit_await_review. Bypass: `rm .temp/plan-mode/.handoff-pending`.
-- **PreToolUse(Edit|Write)**: Soft warning when editing API boundary files.
-  Reminds Claude to check for shared types and schemas.
-- **PreToolUse(Bash)**: Blocks Bash file-writing commands when no active
-  plan exists. Also blocks `mv` of plan directories from `active/` to
-  `completed/` if the plan has unfinished steps (checked via plan.json).
-- **PreToolUse(Grep)**: **Hard deny** when grepping for import/consumer
-  patterns and dep maps are configured. Forces use of `deps-query.py`.
-- **PostToolUse(Edit|Write)**: Counts code file edits. After 5 edits
-  without updating plan files, injects a checkpoint reminder. Resets when
-  any plan file (plan.json or masterPlan.md) is edited.
-- **PostToolUse(Edit|Write)**: When plan.json or masterPlan.md is edited,
-  migrates any fallback discovery file and checks if all steps are done
-  (via plan.json). If all complete, injects a reminder to verify and
-  finalize before moving to `completed/`.
-- **PostToolUse(Edit|Write)**: When a fresh plan is written (all steps
-  pending in plan.json), creates `.handoff-pending` marker and injects
-  directive for Orbit review + plan mode handoff.
-- **PostToolUse(Edit|Write)**: When a step transitions to done, creates
-  `.verify-pending-N` marker and injects directive to dispatch a
-  verification sub-agent. Code edits are blocked until verification passes.
-- **PostToolUse(Edit|Write)**: When `.ts`/`.tsx` files are edited, marks
-  the corresponding dep map module as stale. Silent — no output.
-- **PreToolUse(Task)**: Automatically injects engineering discipline into
-  every sub-agent prompt.
-- **Stop**: Blocks Claude from stopping if the active plan has unfinished
-  steps (checked via plan.json). Forces explicit completion or status update.
+- **Blocked edits**: Code edits are blocked when no active plan exists,
+  when `.handoff-pending` marker is set (Orbit review needed), or when
+  `.verify-pending-N` marker is set (verification needed). Follow the
+  process the hook describes — do not work around it.
+- **Blocked grep**: When dep maps are configured, grepping for
+  import/consumer patterns is blocked. Use `deps-query.py` instead.
+- **Checkpoint reminder**: After 5 code edits without updating plan.json,
+  a reminder fires. Update the plan immediately.
+- **Plan completion guard**: Cannot move a plan to `completed/` if steps
+  remain unfinished. Cannot stop if the active plan has unfinished steps.
+- **Sub-agent injection**: Engineering discipline is automatically injected
+  into every sub-agent prompt.
 
 **NEVER bypass hooks.** If a hook blocks an action, follow the process it
-describes. Do not use alternative tools to work around it. Do not call it
-a "false positive." The hooks exist to enforce the discipline that makes
-your work survive compaction and remain correct.
+describes. Do not use alternative tools to work around it.
 
 ---
 
@@ -380,40 +401,23 @@ your work survive compaction and remain correct.
 
 All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 
-### Process & Templates
-- `references/exploration-protocol.md` — 8-question exploration checklist
-- `references/exploration-guide.md` — deep exploration techniques
-- `references/plan-schema.md` — plan.json schema (execution source of truth)
-- `references/master-plan-format.md` — masterPlan.md template (user-facing proposal)
-- `references/claude-md-snippet.md` — recommended CLAUDE.md addition
+**Read during exploration:**
+- `references/exploration-protocol.md` — 8-question checklist (answer ALL before planning)
+- `references/plan-schema.md` — full plan.json schema (read when writing a plan)
 
-### Discipline Checklists (Layer 2)
-- `references/testing-checklist.md` — before/during/after testing
-- `references/ui-consistency-checklist.md` — design tokens, components, visual consistency
-- `references/frontend-design-checklist.md` — accessibility, responsive, performance, coherence for frontend design
-- `references/security-checklist.md` — auth, input validation, secrets
-- `references/git-checklist.md` — commits, branches, messages
-- `references/linting-checklist.md` — linter and formatter discipline
-- `references/dependency-checklist.md` — package management and verification
-- `references/api-contracts-checklist.md` — API boundary discipline
+**Read when a step involves that discipline:**
+- `references/testing-checklist.md`, `references/security-checklist.md`,
+  `references/api-contracts-checklist.md`, `references/linting-checklist.md`,
+  `references/dependency-checklist.md`, `references/git-checklist.md`
+- `references/ui-consistency-checklist.md`, `references/frontend-design-checklist.md`
 
-### Deep Guides (Layer 3)
-- `references/testing-strategy.md` — TDD-lite, test pyramid, edge cases, test theater
-- `references/ui-consistency-guide.md` — design tokens, component discipline, drift detection
-- `references/frontend-design-guide.md` — aesthetic axes, font sourcing, animation, color, anti-slop blacklist
-- `references/security-guide.md` — OWASP Top 10, S.E.C.U.R.E. framework, slopsquatting
-- `references/api-contracts-guide.md` — API boundary discipline, shared schema enforcement
-- `references/debugging-root-cause-tracing.md` — trace bugs backward through call stack to source
-- `references/debugging-defense-in-depth.md` — multi-layer validation after fixing root cause
-- `references/debugging-condition-based-waiting.md` — replace arbitrary timeouts with condition polling
-- `references/dependency-mapping.md` — dep map configuration, module setup, query usage
+**Deep guides (read when you need deeper understanding):**
+- `references/testing-strategy.md`, `references/security-guide.md`,
+  `references/api-contracts-guide.md`, `references/dependency-mapping.md`
+- `references/debugging-root-cause-tracing.md`, `references/debugging-defense-in-depth.md`
 
-### Operational
-- `references/verification-commands.md` — type checker/linter/test commands by ecosystem
-- `references/recommended-plugins.md` — suggested official plugins for onboarding
-- `scripts/init-plan-dir.sh` — initialize `.temp/plan-mode/` directory
-- `scripts/plan-status.sh` — show status of all active plans
-- `scripts/resume.sh` — find what to resume after compaction
+**Scripts:**
+- `scripts/init-plan-dir.sh` — initialize `.temp/plan-mode/`
 - `scripts/plan_utils.py` — read/update plan.json (used by hooks and Claude)
-- `scripts/deps-query.py` — query dependency maps for consumers and dependencies
-- `scripts/deps-generate.py` — generate or regenerate dependency maps
+- `scripts/deps-query.py` — query dep maps for consumers and blast radius
+- `scripts/deps-generate.py` — generate or regenerate dep maps
