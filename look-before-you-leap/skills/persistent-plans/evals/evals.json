@@ -1,0 +1,57 @@
+{
+  "skill_name": "persistent-plans",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add a `comments` feature to TaskForge. I need a `Comment` type and schema in the shared package, a `getCommentsForTask` filtering function in business-logic, and `addComment`/`getComments` method pair in api-client. Write tests for each package's new code.",
+      "expected_output": "Claude creates plan.json and masterPlan.md before editing any code files. The plan has properly sized steps (one per package). Progress items are updated after file edits. All requested features are implemented with tests.",
+      "files": [],
+      "expectations": [
+        "A plan.json file exists in .temp/plan-mode/active/ before any source code is edited",
+        "A masterPlan.md file exists alongside plan.json",
+        "plan.json contains at least 3 steps (shared types, business-logic, api-client)",
+        "Each step in plan.json has a progress array with specific sub-tasks",
+        "plan.json is updated at least once during execution (progress items marked done)",
+        "The Comment type is added to packages/shared/src/types.ts",
+        "A Zod schema for Comment is added to packages/shared/src/schemas.ts",
+        "A getCommentsForTask function exists in packages/business-logic/",
+        "addComment and getComments methods exist in packages/api-client/src/client.ts",
+        "Tests are written for the new business-logic and api-client code"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Add an `archivedAt: string | null` field to every entity type in TaskForge (Task, User, Project). Update all types, Zod schemas, validators, filtering logic, API client methods, and tests across the whole monorepo. Nothing should break after the change.",
+      "expected_output": "Claude creates a plan with inline sub-plans (groups) because the task touches >10 files and uses sweep language. The sub-plan groups files logically (e.g., by package or by entity). All entity types, schemas, and consumers are updated.",
+      "files": [],
+      "expectations": [
+        "A plan.json file exists in .temp/plan-mode/active/ before any source code is edited",
+        "At least one step in plan.json contains a subPlan field with groups",
+        "The subPlan groups organize files logically (by package, entity, or concern)",
+        "plan.json is updated multiple times during execution as groups complete",
+        "The archivedAt field is added to the Task interface in shared/src/types.ts",
+        "The archivedAt field is added to the User interface in shared/src/types.ts",
+        "The archivedAt field is added to the Project interface in shared/src/types.ts",
+        "All three Zod schemas (taskSchema, userSchema, projectSchema) include archivedAt validation",
+        "Filtering logic in business-logic is updated to handle the archivedAt field",
+        "Claude runs typecheck or tests after making changes"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "continue",
+      "expected_output": "Claude detects the existing partial plan.json on disk, reads it completely, identifies that steps 1-2 are done and step 3 is in_progress with 2/4 progress items done. Claude states where it's resuming from and continues from the correct point (updating the return type in client.ts) rather than starting over.",
+      "files": ["evals/files/partial-plan.json"],
+      "expectations": [
+        "Claude reads the existing plan.json from .temp/plan-mode/active/ before taking any action",
+        "Claude identifies that steps 1 and 2 are already done",
+        "Claude identifies that step 3 is in_progress with specific progress items done",
+        "Claude states to the user where it is resuming from (step 3, progress item 3 or 4)",
+        "Claude does NOT recreate the plan from scratch or overwrite the existing plan",
+        "Claude continues working on step 3's remaining progress items (return type + tests)",
+        "Claude updates plan.json progress items as it completes remaining work",
+        "After completing step 3, Claude moves to step 4 (verification)"
+      ]
+    }
+  ]
+}

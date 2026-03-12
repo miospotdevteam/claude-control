@@ -160,16 +160,113 @@ When the user gives you a task:
 1. **Do NOT start editing code.** Resist the urge.
 2. **Explore** using engineering-discipline Phase 1 (read imports, consumers,
    sibling files, project conventions). Gather all the context you need.
-3. **Write both files** to disk at
+3. **Use dep maps to size the blast radius** (see below).
+4. **Write both files** to disk at
    `.temp/plan-mode/active/<plan-name>/`:
-   - `plan.json` — structured execution plan (see
-     `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/plan-schema.md`)
+   - `plan.json` — structured execution plan using the **exact schema below**.
+     Your exploration findings go into the `discovery` object. Every progress
+     item gets `task`, `status`, AND `files` fields. No exceptions.
    - `masterPlan.md` — user-facing proposal for Orbit review (write-once,
      frozen after approval)
 
-The plan.json schema is documented in
+### Use dependency maps during planning
+
+If dep maps are configured (check `.claude/look-before-you-leap.local.md`
+for a `dep_maps` section), run `deps-query.py` on every file you plan to
+modify BEFORE writing the plan. This tells you:
+
+- How many consumers each file has (blast radius)
+- Which modules will be affected
+- Whether a step needs a sub-plan
+
+```bash
+# Query blast radius for a file
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py . <file_path>
+
+# JSON output for programmatic use
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py . <file_path> --json
+```
+
+Feed the dep-map output directly into your plan: use the DEPENDENTS list
+to populate each step's `files` array, and use the BLAST RADIUS count
+to decide whether a step needs a sub-plan. This replaces manual grep
+for consumer discovery during planning and catches cross-module consumers
+that grep would miss.
+
+### plan.json — the exact schema you MUST use
+
+Do NOT invent your own plan format. Every plan.json must follow this
+structure exactly. Hooks parse this schema — deviations break tooling.
+
+```json
+{
+  "name": "plan-name-kebab-case",
+  "title": "Descriptive Title",
+  "context": "What the user asked for — enough for a fresh context to understand.",
+  "status": "active",
+  "requiredSkills": [],
+  "disciplines": ["testing-checklist.md"],
+  "discovery": {
+    "scope": "Files/directories in scope",
+    "entryPoints": "Primary files to modify",
+    "consumers": "Who imports the files you're changing (from dep maps or grep)",
+    "existingPatterns": "How similar problems are already solved",
+    "testInfrastructure": "Test framework, where tests live, how to run them",
+    "conventions": "Project-specific conventions",
+    "blastRadius": "What could break — dep-map consumer counts go here",
+    "confidence": "high"
+  },
+  "steps": [
+    {
+      "id": 1,
+      "title": "Step title",
+      "status": "pending",
+      "skill": "none",
+      "simplify": false,
+      "files": ["src/foo.ts", "src/bar.ts"],
+      "description": "What needs to happen. Self-contained for a fresh context.",
+      "acceptanceCriteria": "Concrete conditions (e.g., 'tsc --noEmit passes').",
+      "progress": [
+        {"task": "Add FooType to types.ts", "status": "pending", "files": ["src/foo.ts"]},
+        {"task": "Update bar to use FooType", "status": "pending", "files": ["src/bar.ts"]}
+      ],
+      "subPlan": null,
+      "result": null
+    }
+  ],
+  "blocked": [],
+  "completedSummary": [],
+  "deviations": []
+}
+```
+
+**Every step MUST have a `progress` array** — even simple steps get at
+least 2 items. Progress items are your compaction insurance: if context
+is lost mid-step, the done/pending items tell your next self exactly
+where to resume. A step without progress items is a step that cannot be
+resumed.
+
+**Each progress item has exactly three required fields:**
+- `task` — what to do (human-readable description)
+- `status` — `"pending"`, `"in_progress"`, or `"done"`
+- `files` — which files this sub-task touches (array of paths)
+
+The `files` field is what makes resumption work — without it, your
+compacted self has to re-discover which files to check. Do not replace
+`files` with `result` or any other field. The step-level `result` field
+is for the step's final summary; the progress-level `files` field is for
+per-sub-task file tracking. They serve different purposes.
+
+**The `discovery` object is required, not optional.** Your exploration
+findings (blast radius, consumers, entry points, patterns) must be
+captured in plan.json's `discovery` object — not just in your context
+memory. After compaction, context is gone; the discovery object is how
+your next self knows what you learned about the codebase. Write it when
+you create the plan, even for small tasks. A plan without discovery is a
+plan that forces re-exploration after compaction.
+
+For full field reference, see
 `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/plan-schema.md`.
-Read that file for the exact format.
 
 ### Sizing steps
 
@@ -179,36 +276,59 @@ heuristics:
 | Complexity | Characteristics | Sub-plan? |
 |---|---|---|
 | Small | 1-3 files, straightforward change | No |
-| Medium | 4-10 files, some complexity | No, but use progress items |
+| Medium | 4-5 files, some complexity | No, but use progress items |
 | Large | Triggers any sub-plan criteria below | Yes (inline in plan.json) |
 
 ### When to create sub-plans
 
-A step MUST get an inline sub-plan (in the `subPlan` field) when ANY of
-these are true:
+A step MUST get an inline sub-plan (in the step's `subPlan` field) when
+ANY of these are true:
 
-- It touches **more than 10 files**
+- Dep maps show the step touches **more than 5 files** (direct +
+  consumers). This is the primary trigger — dep maps give you exact file
+  counts, so use them.
+- It touches **more than 10 files** (when dep maps aren't available)
 - It involves a **repetitive sweep** across many files
 - It has **more than 5 internal sub-tasks** that are independently
   completable
-- It requires **reading more than 8 files** just to understand what to
-  change
 - The step description contains words like **"all", "every", "sweep",
   "migrate all", "across the codebase"**
 
-Sub-plans are **inline in plan.json** — not separate files. The `subPlan`
-field contains groups directly:
+Sub-plans live **inside a step's `subPlan` field** — not at the top level,
+not as separate files. Each group clusters related files:
 
 ```json
 {
+  "id": 2,
+  "title": "Add archivedAt to all entity types and schemas",
+  "status": "pending",
+  "skill": "none",
+  "simplify": false,
+  "files": ["types.ts", "schemas.ts", "filtering.ts", "client.ts", "seed.ts"],
+  "description": "Sweep archivedAt across shared, business-logic, api-client, api.",
+  "acceptanceCriteria": "All types have archivedAt, schemas validate it, tests pass.",
+  "progress": [
+    {"task": "Group 1: Core types and schemas", "status": "pending", "files": ["types.ts", "schemas.ts"]},
+    {"task": "Group 2: Business logic filtering", "status": "pending", "files": ["filtering.ts"]},
+    {"task": "Group 3: API client methods", "status": "pending", "files": ["client.ts"]},
+    {"task": "Group 4: API seed data and routes", "status": "pending", "files": ["seed.ts"]}
+  ],
   "subPlan": {
     "groups": [
-      {"name": "Dashboard pages", "files": ["a.tsx", "b.tsx"], "status": "pending", "notes": null},
-      {"name": "Modal components", "files": ["c.tsx", "d.tsx"], "status": "pending", "notes": null}
+      {"name": "Core types and schemas", "files": ["types.ts", "schemas.ts"], "status": "pending", "notes": null},
+      {"name": "Business logic filtering", "files": ["filtering.ts"], "status": "pending", "notes": null},
+      {"name": "API client methods", "files": ["client.ts"], "status": "pending", "notes": null},
+      {"name": "API seed data and routes", "files": ["seed.ts"], "status": "pending", "notes": null}
     ]
-  }
+  },
+  "result": null
 }
 ```
+
+Note how `progress` items mirror the `subPlan.groups` — both exist because
+they serve different purposes. Progress items are the checkpoint mechanism
+(updated via `plan_utils.py`). Groups are the organizational structure
+(what files belong together and why).
 
 ---
 
@@ -418,6 +538,7 @@ engineering-discipline ensures the work is done correctly.
 | New task from user | Explore -> write plan.json + masterPlan.md in active/ -> execute |
 | Every 2-3 file edits | Checkpoint via plan_utils.py |
 | Step completed | update-step done + add-summary immediately |
+| Dep maps show >5 files for a step | Use inline subPlan with groups |
 | Step touches >10 files or is a sweep | Use inline subPlan with groups |
 | After any compaction | Read plan.json IMMEDIATELY -> state where you are -> continue |
 | User says "continue" | Read plan.json -> find next step -> execute |

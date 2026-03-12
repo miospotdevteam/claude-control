@@ -1,6 +1,6 @@
 ---
 name: engineering-discipline
-description: "Engineering discipline and verification layer for ALL coding tasks. This skill takes priority over speed — never skip these steps to save time. Enforces 'measure twice, cut once' behavior: explore before editing, track blast radius of shared changes, never use type-safety shortcuts (any, as any), verify work by running type checkers/linters/tests, never silently drop scope, and never stop mid-plan. Use this skill whenever the user asks you to write, edit, fix, refactor, port, migrate, review, or debug code — regardless of language, framework, or project size. This includes bug fixes, feature additions, refactors, migrations, dependency updates, config changes, environment setup, and any task that touches source files. If you are about to edit a file, this skill applies. Even 'simple' one-file fixes benefit from the verification step. When in doubt, use it. There is no task too small for verification. Do NOT use when: the task is pure research, documentation-only queries, or conversation with no code changes — this skill is for tasks that touch source files."
+description: "Use for every task that writes, edits, fixes, refactors, ports, migrates, or debugs code — any language, any framework, any project size. This skill enforces the habits that prevent broken builds, missed consumers, and silent scope cuts: read imports and consumers before editing, track blast radius on shared types and utilities, never use `any`/`as any` type shortcuts, run type checkers/linters/tests after every change, and explicitly flag anything you skip. Applies to bug fixes, feature additions, refactors, dependency bumps, config changes, CI fixes, webhook handlers, form validation, migration scripts, and environment setup. Even one-file fixes get the verification step. Do NOT use for pure questions, explanations, research, documentation, code reading, PR reviews, or conversations that don't modify source files."
 ---
 
 # Engineering Discipline
@@ -33,9 +33,16 @@ When you open a file to change it, also read:
 - **Its imports** — what does it depend on? Are there shared utilities,
   types, or constants you should know about?
 <!-- deps-consumer-read-start -->
-- **Its consumers** — who imports THIS file? Use `deps-query.py` for
-  consumer analysis (a hook enforces this when dep maps are configured).
-  If you change an export, every consumer is affected.
+- **Its consumers** — who imports THIS file? If you change an export,
+  every consumer is affected. Find them **before** editing:
+  ```bash
+  # Primary method (TypeScript projects with dep maps configured):
+  python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> <file_path>
+  # Fallback (no dep maps, or non-TypeScript):
+  # Grep for import statements referencing this file
+  ```
+  A hook enforces deps-query.py when dep maps are configured — if you
+  grep for imports and get blocked, use deps-query.py instead.
 <!-- deps-consumer-read-end -->
 - **Sibling files** — how do adjacent files in the same directory solve
   similar problems? If there's already a pattern (naming, error handling,
@@ -122,8 +129,12 @@ When you modify any of these, you MUST check all consumers:
 The check process:
 
 <!-- deps-consumer-blast-start -->
-1. Find all consumers: use `deps-query.py` when dep maps are configured
-   (a hook enforces this), otherwise grep for import statements.
+1. Find all consumers using dep maps (primary) or grep (fallback):
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> <file_path>
+   ```
+   This shows every file that imports the one you're changing, across
+   all modules. A hook enforces this when dep maps are configured.
 <!-- deps-consumer-blast-end -->
 2. Open every file that references it
 3. Verify each reference still works with your change
@@ -212,6 +223,27 @@ unwanted destructive change.
 
 ## Phase 3: Verify Before Declaring Done
 
+### Re-verify consumers after changes
+
+If you modified shared code (types, utilities, API signatures), re-check
+consumers AFTER your changes are complete — not just before. The pre-change
+check in Phase 1 tells you who to update; this post-change check confirms
+you didn't break them.
+
+```bash
+# Re-run deps-query on every file you modified that has downstream consumers:
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> <modified_file>
+```
+
+For each consumer found, verify it still compiles and behaves correctly
+with your changes. If you added a new export (e.g., a new error class),
+confirm it's exported from the package's index file so consumers can
+actually import it.
+
+This step catches the most common class of post-change breakage: you
+updated the source file but missed a consumer, or you added something
+consumers need but forgot to export it.
+
 ### Run verification commands
 
 After making changes, run the project's verification tools. Check
@@ -223,6 +255,8 @@ for framework-specific commands, but the general approach is:
 3. **Tests** — run at minimum the tests related to files you changed
 4. **Build** — if you changed config or dependencies, verify the project
    still builds
+5. **Consumer tests** — if you changed shared code, also run tests in
+   consumer packages to catch integration breakage
 
 **How to find the right commands**: Check `package.json` scripts,
 `Makefile`, `Cargo.toml`, `pyproject.toml`, or `CLAUDE.md` / `README.md`
@@ -262,7 +296,8 @@ Before saying a task is done:
 3. For each requirement: confirm it's implemented AND working
 4. For each plan step: confirm it's marked done
 5. Verification commands pass (types, lint, tests)
-6. No pending items remain in the plan
+6. Consumers of any modified shared code re-verified (deps-query.py)
+7. No pending items remain in the plan
 
 If ANY requirement is unaddressed or ANY plan step is incomplete, you are
 NOT done. Go finish it, or explicitly flag what's remaining and why.
@@ -275,6 +310,7 @@ Before declaring a task done, every item must be checked:
 - [ ] Every requirement implemented AND verified working
 - [ ] Plan steps all marked done (if a plan exists)
 - [ ] Verification commands pass (types, lint, tests)
+- [ ] Consumers of modified shared code re-verified after changes
 - [ ] No pending plan items remain
 - [ ] Gaps, risks, and skipped items communicated explicitly
 
@@ -338,6 +374,7 @@ If you catch yourself doing any of these, stop and reconsider:
 | Declaring "done" without running checks | Run tsc/lint/tests first |
 | Using a package without checking package.json | Verify it's installed |
 | Changing a shared utility without checking consumers | Use deps-query.py (enforced by hook) or grep for consumer analysis |
+| Checking consumers before changes but not after | Re-run deps-query.py on modified shared files AFTER changes to verify nothing broke |
 | Grepping for import/from/require when dep maps are configured | A hook blocks this — use deps-query.py instead |
 | Summarizing without mentioning what you skipped | List gaps explicitly |
 | Fixing one bug instance without checking for more | Self-audit for the pattern |
