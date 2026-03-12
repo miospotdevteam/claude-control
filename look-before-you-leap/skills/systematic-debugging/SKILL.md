@@ -126,6 +126,10 @@ tracing technique.
 
 ## Phase 2: Pattern Analysis
 
+**Phase gate:** You cannot start Phase 2 until you have read the error
+site AND its surrounding code (imports, types, consumers). If you have
+not opened at least 2 files, go back to Phase 1.
+
 ### 1. Find working examples
 
 Locate similar working code in the same codebase. What works that's
@@ -157,6 +161,10 @@ If dep maps are not configured and this is a TypeScript project, suggest
 
 ## Phase 3: Hypothesis and Testing
 
+**Phase gate:** You cannot start Phase 3 until you have compared working
+vs broken code and understand the dependency chain. If you skipped
+Phase 2, go back.
+
 ### 1. Form a single hypothesis
 
 State clearly: "I think X is the root cause because Y." Be specific, not
@@ -182,16 +190,24 @@ or add more instrumentation.
 
 ## Phase 4: Implementation
 
-### 1. Create a failing test
+**Phase gate:** You cannot start Phase 4 until you have a written
+hypothesis from Phase 3. If you cannot state "X is the root cause
+because Y" with specific file paths and line numbers, go back.
 
-Write the simplest possible test that reproduces the bug. **Invoke
-`look-before-you-leap:test-driven-development`** and follow its Red
-phase to write a failing test that captures the bug. The TDD skill
-ensures proper test structure (Arrange-Act-Assert) and prevents
-implementation-first shortcuts.
+### 1. Create a failing test FIRST
 
-A test proves the bug exists, proves the fix works, and prevents
-regression. Never fix bugs without a test.
+Write the test BEFORE touching any production code. This is the most
+commonly skipped step — and skipping it is always a mistake. The natural
+impulse is "I know the fix, let me just apply it and add the test after."
+Resist this. The test-first order matters because:
+
+- It proves the bug actually exists (not just your theory of it)
+- It gives you a green/red signal that the fix worked
+- It prevents you from accidentally "fixing" something that wasn't broken
+
+**Sequence:** write test → run it → confirm it FAILS → then (and only
+then) move to step 2. If the test passes immediately, your hypothesis
+about the bug is wrong — go back to Phase 3.
 
 ### 2. Implement a single fix
 
