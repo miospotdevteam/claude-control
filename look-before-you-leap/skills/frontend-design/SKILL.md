@@ -120,37 +120,84 @@ Energetic (5), Spacious (2), Contemporary (4), Warm (5) — narrows to:
 rounded display font, bright primary palette, generous whitespace, bouncy
 animations, organic shapes.
 
+**Example:** A creative design agency — General (4), Casual (4),
+Moderate (3), Spacious (2), Contemporary (4), Warm (2) — narrows to:
+light cream/warm background (warm + casual = light, NOT dark), editorial
+display font paired with clean body sans, warm accent color (burnt orange,
+terracotta, coral), generous whitespace, grain/noise texture for craft
+feel, asymmetric layouts that showcase creative confidence.
+
+#### Light vs dark mode selection
+
+Before choosing colors, decide the base theme. This is not a stylistic
+preference — it's a brand decision driven by the axes:
+
+| Choose light when | Choose dark when |
+|---|---|
+| Temperature 1-3 (warm) | Temperature 4-5 (cool) AND Audience 1-2 (technical) |
+| Formality 3-5 (casual to corporate) | The product is a dev tool, dashboard, or code-adjacent |
+| The brand is warm, friendly, creative, or approachable | The user explicitly requests dark mode |
+| It's a creative agency, portfolio, lifestyle, food, fashion, education | It's a terminal, IDE, analytics tool, or night-use app |
+
+**Dark mode is not "more premium."** A creative agency on a dark background
+looks like a developer tool. A warm brand on dark looks cold. Match the
+theme to what the brand actually *is*, not to what feels technically
+impressive. When in doubt, choose light — it's harder to make dark feel
+warm and inviting, and getting it wrong alienates the audience.
+
+If the user asks for dark mode support (toggle), still choose the *default*
+theme based on the brand, and make dark mode the alternative.
+
 #### Creative seed protocol
 
 After scoring the axes, pick ONE unexpected element to anchor the design.
 This prevents convergence — it's the memorable thing that makes this design
 THIS design, not a generic template.
 
-Good creative seeds:
-- An unusual color as the primary (not blue, not purple)
-- A distinctive display font that sets the tone
-- An unconventional layout technique (asymmetric grid, overlapping elements)
-- A signature animation moment (page load choreography, scroll reveal)
-- A textural element (noise, grain, mesh gradient, pattern)
+**The seed must serve the brand, not just surprise.** A chartreuse accent
+on a dark background is unexpected, but if the brand is a warm creative
+agency, it's the wrong kind of unexpected — it makes the brand feel
+technical and cold. Ask: "Would the brand's target audience find this
+element delightful or alienating?"
 
-Bad creative seeds (overused, will produce generic results):
+Good creative seeds (matched to context):
+- **Warm/creative brands**: a distinctive warm accent (terracotta, coral,
+  golden amber), grain/noise texture, hand-drawn-feeling illustration
+  style, editorial oversized typography, organic asymmetric layouts
+- **Technical/cool brands**: a sharp accent color on dark neutrals,
+  monospace typography accents, data-visualization-inspired elements,
+  precise geometric patterns, topographic or grid textures
+- **Any brand**: a distinctive display font that sets the tone, an
+  unconventional layout technique (asymmetric grid, bento, overlapping
+  elements), a signature animation moment (page load choreography)
+
+Bad creative seeds (overused or context-blind):
 - Purple-to-blue gradient on white
 - Card grid with rounded corners and subtle shadows
 - Fade-in-up animations on scroll
 - Inter or Space Grotesk as the display font
+- Dark theme + neon/fluorescent accent on a warm brand (looks like a
+  developer tool, not the brand it's supposed to represent)
 
 #### Concrete choices
 
-With the axes scored and creative seed chosen, select:
+With the axes scored, theme selected, and creative seed chosen, select:
 
 1. **Typography**: Display font + body font (consult
    `references/frontend-design-guide.md` for sourcing)
-2. **Color**: Primary + secondary + accent + neutrals (specific values).
-   **Prefer a pre-built palette library** when possible (see
-   `references/frontend-design-guide.md` § Pre-built Palette Libraries):
-   - **Radix Colors** — best for dark mode, 12-step functional scales
-   - **Open Color** — simple, balanced, good for quick starts
-   - **Palx** — expand a brand hex into a full-spectrum palette
+2. **Color**: Start from a curated palette, not from scratch.
+   Read `references/color-palettes.md` and pick the palette that matches
+   your Temperature axis and brand context:
+   - **Warm Cream** (Temperature 1-3) — cream backgrounds, warm neutrals
+   - **Cool Slate** (Temperature 4-5) — blue-gray base, sharp accents
+   - **Dark Gallery** (editorial/photography) — warm-tinted near-blacks
+   - **Neutral Minimal** (content-focused) — clean zinc grays
+   Copy the CSS variables, then swap the primary/accent hue to match the
+   brand (keep the lightness relationships — they're tuned for contrast).
+   For npm-based projects, also consider **Radix Colors**
+   (`@radix-ui/colors`), **Open Color** (`open-color`), or **Palx**
+   (`palx`) — all installed globally. See
+   `references/frontend-design-guide.md` § Pre-built Palette Libraries.
    If generating manually, use HSL shift, OKLCH, or complementary methods
    (see § Palette Generation Methods). State which source/method you used.
 3. **Motion**: Animation philosophy + key moments (load, hover, transitions)
@@ -249,9 +296,63 @@ unconsidered output — avoid them:
 | Layout | Symmetric 3-card grid with identical shadows | Bento, masonry, asymmetric splits, varied card sizes |
 | Animation | Fade-in-up on every scroll section | Animate 2-3 key moments; leave the rest static |
 | Patterns | Glassmorphism with no purpose | Solid surfaces with texture (grain, noise) or accent borders |
+| Theme | Dark bg for warm/creative/casual brands | Light theme for warm brands; dark only for tech/dev/night-use |
+| Theme | Neon/fluorescent accent on non-tech brand | Accent color that matches the brand's warmth and personality |
 
 The full blacklist is in `references/frontend-design-guide.md` § Anti-Slop
 Blacklist.
+
+### Content separation: whitespace over containers
+
+The default instinct is to wrap every content group in a bordered,
+shadowed, background-colored card. Resist it. Most content groups don't
+need a container — they need whitespace, typography hierarchy, and
+subtle dividers to establish visual separation.
+
+**When a container IS warranted:**
+- Interactive cards (clickable, hoverable — the container signals affordance)
+- Data that needs grouping (pricing tiers, stat cards, testimonials)
+- Content that needs visual distinction from its surroundings (callouts,
+  alerts, featured items)
+
+**When a container is NOT needed:**
+- Feature descriptions — use a heading + paragraph with generous spacing
+- Section content — use section padding and `<hr>` or subtle borders
+- Lists of items — use whitespace between items, not boxes around each one
+- Informational text blocks — let typography do the work
+
+**Alternatives to containers:**
+- **Whitespace** — generous padding between groups creates clear separation
+  without visual noise
+- **Typography weight/size shifts** — a bold heading + lighter body text
+  creates hierarchy without boxing
+- **Subtle horizontal rules** — a thin `1px` border or `<hr>` between
+  groups is cleaner than wrapping each in a card
+- **Background color bands** — alternate section backgrounds (e.g.,
+  `--surface-0` and `--surface-1`) to group content without borders
+- **Indent or margin shifts** — a left border accent or left margin
+  change signals grouping without full enclosure
+
+When you do use containers, vary them: not every card needs the same
+border, shadow, and padding. Feature the important one, mute the rest.
+
+### Whitespace quality
+
+Whitespace is not just "empty space" — it's a design tool. Bad whitespace
+is wasted space that makes a page feel unfinished. Good whitespace creates
+rhythm, directs attention, and makes content breathe.
+
+- **Fill the viewport width intentionally** — content should feel like it
+  belongs on the page, not floating in a void. If there are large empty
+  margins on desktop, the content area or layout should expand to use them
+- **Grid items should fill their cells** — portfolio grids, feature grids,
+  and card layouts should feel complete and balanced, not sparse
+- **Section spacing should create rhythm** — consistent vertical rhythm
+  between sections (e.g., 6rem/8rem between major sections) is good. Random
+  amounts of empty space between sections is not
+- **Edge-to-edge on mobile** — on small viewports, eliminate unnecessary
+  horizontal padding. Content should feel full-width, not squeezed into a
+  narrow column with huge side margins
 
 ### Vanilla HTML/CSS
 
@@ -464,6 +565,7 @@ This skill produces:
 
 | Situation | Read / Invoke |
 |---|---|
+| Choosing a color palette | `references/color-palettes.md` — curated CSS variable sets |
 | Working within existing design system | `references/ui-consistency-checklist.md` + `references/ui-consistency-guide.md` |
 | Adding font/animation dependencies | `references/dependency-checklist.md` |
 | User input rendered in UI | `references/security-checklist.md` |
