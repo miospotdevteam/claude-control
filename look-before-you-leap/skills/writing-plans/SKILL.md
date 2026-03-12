@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: "Use after discovery to write implementation plans with TDD-granularity steps. Produces both plan.json (execution source of truth) and masterPlan.md (user-facing proposal for Orbit review). Every step is one component/feature; TDD rhythm (test, verify fail, implement, verify pass, commit) lives in its progress items. Consumes discovery.md from exploration phase. Invoke explicitly at Step 2 of the conductor. Do NOT use when: the user explicitly says 'just do it' or 'no plan', resuming an existing plan (use persistent-plans resumption protocol), executing a plan that already exists on disk, or doing pure research/exploration without code changes."
+description: "Use after discovery to write implementation plans with TDD-granularity steps. Produces both plan.json (execution source of truth) and masterPlan.md (user-facing proposal for Orbit review). Every step is one component/feature; TDD rhythm (test, verify fail, implement, verify pass, commit) lives in its progress items. Consumes discovery.md from exploration phase. Make sure to use this skill whenever the user says discovery is done, exploration is finished, discovery.md is ready, or asks to write/create/draft the implementation plan — even if they don't mention plan.json or masterPlan.md by name. Also use when the user references completed exploration findings, blast radius analysis, or consumer mappings and wants them converted into actionable steps. Do NOT use when: the user says 'just do it' or 'no plan', resuming or executing an existing plan, during exploration or brainstorming (discovery not yet complete), debugging, or code review."
 ---
 
 # Writing Plans
@@ -15,7 +15,10 @@ the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
 implementation plan."
 
 **Prerequisite:** Discovery must be complete. If no `discovery.md` exists
-in the plan directory, go back to Step 1 (Explore) first.
+in the plan directory, go back to Step 1 (Explore) first. If discovery.md
+exists but is thin (missing blast radius counts, no consumer lists, vague
+scope), warn the user that the plan quality will suffer and recommend going
+back to enrich the discovery before continuing.
 
 ---
 
@@ -37,9 +40,13 @@ Read discovery.md and extract what you need into plan.json's `discovery`
 object. masterPlan.md's Discovery Summary is a human rendering of the same
 data — both are written once during planning, then frozen.
 
-If dep maps are configured, the discovery MUST include `deps-query.py` output
+If dep maps are configured (check `.claude/look-before-you-leap.local.md`
+for a `dep_maps` section), the discovery MUST include `deps-query.py` output
 for every file in scope. If the discovery lacks deps-query output for a
 TypeScript project, go back to Step 1 (Explore) and run it before planning.
+Dep maps are your most powerful planning tool — they give exact consumer
+counts per file, which directly determines blast radius, step sizing, and
+sub-plan needs. Never plan without them in a TypeScript project.
 
 **design.md**: If the brainstorming skill produced a `design.md` in the same
 plan directory, read it — it contains approved design decisions that must
@@ -80,6 +87,17 @@ read and what Claude updates during execution. Include:
 - Inline sub-plans for large steps (see Step 4 below)
 - Exact skill identifiers in `skill` fields
 
+**Use dep maps to populate step `files` arrays.** If dep maps are
+configured, run `deps-query.py` on each file you plan to modify. The
+DEPENDENTS list tells you exactly which consumer files must be in the
+step's `files` array — and which files to list in the blast radius
+section of discovery. Without dep maps, you're guessing at consumers;
+with them, you have the complete picture.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> <file_path>
+```
+
 #### masterPlan.md — user-facing proposal (write-once)
 
 This is the document the user reviews via Orbit. It communicates **intent**,
@@ -117,7 +135,7 @@ specific behavior, then implements just enough to pass.
     {"task": "Cycle 2 GREEN: add rejection logic", "status": "pending", "files": ["src/lib/validate-email.ts"]},
     {"task": "Cycle 3 RED: tests for missing domain and edge cases", "status": "pending", "files": ["tests/lib/validate-email.test.ts"]},
     {"task": "Cycle 3 GREEN: handle remaining cases", "status": "pending", "files": ["src/lib/validate-email.ts"]},
-    {"task": "Refactor and final verification", "status": "pending"}
+    {"task": "Refactor and final verification", "status": "pending", "files": ["src/lib/validate-email.ts", "tests/lib/validate-email.test.ts"]}
   ],
   "subPlan": null,
   "result": null
@@ -128,6 +146,13 @@ Each progress item is one action (2-5 minutes). Notice the pattern:
 alternating RED/GREEN items, each covering a slice of behavior. The
 simplest case comes first. Aim for **3-5 cycles per step** — enough to
 prove incrementalism without being tedious.
+
+**Every progress item MUST have a `files` array — no exceptions.** Even
+verification steps ("Run tsc --noEmit") and commit steps need `files`
+listing the files being verified or committed. Use `[]` only if truly no
+files are involved. This field is what makes resumption work after
+compaction — without it, your next self has to re-discover which files
+to check.
 
 **Anti-pattern to avoid:** A single "Write all tests" item followed by a
 single "Implement everything" item. That's test-first waterfall, not TDD.
@@ -187,10 +212,14 @@ Default to `false` for simple steps.
 
 **Before saving the plan, evaluate EVERY step against these criteria:**
 
-For each step, count the files in its `files` array. If ANY of these are
-true, the step MUST have an inline `subPlan` with groups:
+For each step, count the files in its `files` array. If dep maps are
+configured, also count the DEPENDENTS from `deps-query.py` — a file with
+6 direct dependents means the step actually touches 7 files, not 1. This
+is the primary input for sub-plan decisions.
 
-1. **More than 10 files** in the `files` array
+If ANY of these are true, the step MUST have an inline `subPlan` with groups:
+
+1. **More than 10 files** in the `files` array (including consumers from dep maps)
 2. **Repetitive sweep** — the description contains words like "all", "every",
    "sweep", "migrate all", "across the codebase"
 3. **More than 5 progress items** that are independently completable
@@ -258,6 +287,20 @@ This gives the user the built-in **"autoaccept edits and clear context?"**
 prompt. If they accept, context clears and the persistent-plans resumption
 protocol picks up the plan.json automatically — execution follows the
 conductor's Step 3 with engineering-discipline.
+
+---
+
+## Updating an existing plan
+
+If the user changes requirements during planning (before Orbit approval),
+update BOTH plan.json and masterPlan.md to reflect the new scope. If the
+user changes requirements AFTER Orbit approval (during execution), update
+only plan.json — masterPlan.md is frozen. Record the deviation in
+plan.json's `deviations` array so the change is visible after compaction.
+
+If a plan already exists in the target directory and you're asked to
+rewrite it, read the existing plan first to understand what changed. Do
+not silently overwrite — confirm with the user what should change.
 
 ---
 
