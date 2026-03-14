@@ -1,12 +1,24 @@
 # Recommended Packages
 
-Packages that the plugin's skills recommend installing in user projects.
-These are **not** dependencies of the plugin itself (which is pure
-markdown + shell) — they are libraries Claude will suggest when following
-skill guidance.
+Packages that the plugin's skills recommend installing in user projects,
+plus the plugin's own tool dependencies.
 
 Install globally to have them available in any project, or per-project as
 needed.
+
+---
+
+## Plugin Tool Dependencies
+
+These are tools the plugin itself needs to function. They are **not**
+project-level npm packages — install them globally.
+
+| Tool | What it does | Install | Required? |
+|---|---|---|---|
+| `python3` | Core scripting for all hooks and scripts | Pre-installed on macOS/Linux | Yes |
+| `git` | Project root detection, version control | Pre-installed on macOS/Linux | Yes |
+| `madge` | TypeScript dependency graph analysis | `npm i -g madge` | Only if using dep maps |
+| `orbit-mcp` | Plan review and approval via VS Code | `npm i -g orbit-mcp` | Yes (for Orbit review flow) |
 
 ---
 
@@ -47,22 +59,75 @@ needed.
 
 ---
 
-## Other Recommended Packages
-
-### Immersive / WebGL (referenced by `immersive-frontend` skill)
+## Immersive / WebGL (referenced by `immersive-frontend` skill)
 
 | Package | What it does | Install |
 |---|---|---|
 | `three` | 3D rendering (WebGL) | `npm i three` |
-| `gsap` | Animation and scroll-driven effects | `npm i gsap` |
-| `lenis` | Smooth scroll synced with rAF | `npm i lenis` |
+| `@react-three/fiber` | React declarative 3D renderer | `npm i @react-three/fiber` |
+| `@react-three/drei` | R3F helpers (Environment, Float, Text, Html, etc.) | `npm i @react-three/drei` |
+| `@react-three/postprocessing` | Post-processing effects (Bloom, Vignette, etc.) | `npm i @react-three/postprocessing` |
 | `@types/three` | TypeScript types for Three.js | `npm i -D @types/three` |
+| `gsap` | Animation and scroll-driven effects | `npm i gsap` |
+| `@gsap/react` | GSAP React hooks | `npm i @gsap/react` |
+| `lenis` | Smooth scroll synced with rAF | `npm i lenis` |
+| `barba.js` | Page transitions for MPA | `npm i @barba/core` |
 
-### Frontend UI (referenced by `frontend-design` skill)
+---
+
+## Frontend UI (referenced by `frontend-design` skill)
 
 | Package | What it does | Install |
 |---|---|---|
 | `motion` | React animation (framer-motion successor) | `npm i motion` |
+| `@fontsource/*` | Self-hosted fonts for React/Next.js/Vite | `npm i @fontsource/<font-name>` |
+| `@axe-core/cli` | Accessibility auditing CLI | `npm i -D @axe-core/cli` |
+
+---
+
+## React Native / Mobile (referenced by `react-native-mobile` skill)
+
+### Core Framework
+
+| Package | What it does | Install |
+|---|---|---|
+| `expo` | Expo SDK 52+ framework | `npx create-expo-app` |
+| `expo-router` | File-based routing (v4) | `npx expo install expo-router` |
+
+### Animation & Gestures
+
+| Package | What it does | Install |
+|---|---|---|
+| `react-native-reanimated` | Worklet-based animations (v4) | `npx expo install react-native-reanimated` |
+| `moti` | Declarative Reanimated wrapper | `npm i moti` |
+| `react-native-gesture-handler` | Native gesture recognition (v2) | `npx expo install react-native-gesture-handler` |
+
+### Data & State
+
+| Package | What it does | Install |
+|---|---|---|
+| `zustand` | Client state management | `npm i zustand` |
+| `@tanstack/react-query` | Server state / data fetching (v5) | `npm i @tanstack/react-query` |
+| `react-native-mmkv` | Fast key-value storage | `npm i react-native-mmkv` |
+| `expo-sqlite` | Structured SQL database | `npx expo install expo-sqlite` |
+
+### UI & Platform
+
+| Package | What it does | Install |
+|---|---|---|
+| `@shopify/flash-list` | Recycled high-performance list | `npm i @shopify/flash-list` |
+| `expo-haptics` | Cross-platform haptic feedback | `npx expo install expo-haptics` |
+| `expo-symbols` | iOS platform-native icon set | `npx expo install expo-symbols` |
+| `expo-blur` | Native blur/vibrancy effects | `npx expo install expo-blur` |
+| `@callstack/liquid-glass` | iOS 26 Liquid Glass material | `npm i @callstack/liquid-glass` |
+| `@shopify/restyle` | Type-enforced theming (optional) | `npm i @shopify/restyle` |
+
+### Forms & Validation
+
+| Package | What it does | Install |
+|---|---|---|
+| `react-hook-form` | Performant form handling | `npm i react-hook-form` |
+| `zod` | Type-safe validation | `npm i zod` |
 
 ---
 
