@@ -447,6 +447,29 @@ parts = [
 if project_profile:
     parts.extend(["", "---", "", project_profile])
 
+# Dep maps awareness — explicit callout when configured
+if dep_maps.get("modules"):
+    module_list = ", ".join(dep_maps["modules"])
+    deps_cmd = f"python3 {scripts_dir}/deps-query.py {project_root} <file_path>"
+    gen_cmd = f"python3 {scripts_dir}/deps-generate.py {project_root} --stale-only"
+    dep_maps_notice = (
+        "**Dependency Maps Available**\n\n"
+        f"This project has dep maps configured for {len(dep_maps['modules'])} module(s): {module_list}\n\n"
+        "Dep maps give you instant, complete consumer and dependency analysis for any file. "
+        "They are MORE RELIABLE than grepping for imports — they catch re-exports, barrel files, "
+        "and cross-module consumers that grep misses.\n\n"
+        "**When to use dep maps (MANDATORY):**\n"
+        "- Before editing any shared/exported code — find all consumers first\n"
+        "- During exploration — understand the dependency graph of files in scope\n"
+        "- For blast radius analysis — know exactly what breaks if you change something\n"
+        "- When planning — identify all files that need updating\n\n"
+        f"**Query command:** `{deps_cmd}`\n"
+        f"**Refresh stale maps:** `{gen_cmd}`\n\n"
+        "Dep maps are auto-refreshed at session end. If you see a stale warning in query output, "
+        "run the refresh command."
+    )
+    parts.extend(["", "---", "", dep_maps_notice])
+
 if active_summary:
     parts.extend(["", "---", "", active_summary])
 

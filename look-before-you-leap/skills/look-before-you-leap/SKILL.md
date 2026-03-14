@@ -394,6 +394,9 @@ Hooks enforce this discipline automatically. Key behaviors to know:
   remain unfinished. Cannot stop if the active plan has unfinished steps.
 - **Sub-agent injection**: Engineering discipline is automatically injected
   into every sub-agent prompt.
+- **PostCompact resumption**: After context compaction, a dedicated hook
+  detects the active plan and injects resumption context. Do NOT re-plan
+  or re-explore — just read the plan and continue.
 
 **NEVER bypass hooks.** If a hook blocks an action, follow the process it
 describes. Do not use alternative tools to work around it.
