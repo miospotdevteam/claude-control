@@ -92,6 +92,12 @@ Standard POSIX tools (`find`, `grep`, `sed`, `awk`, `stat`, `sort`, `head`, `cut
 | `madge` | Dependency graph analysis for blast-radius tracking. Only needed if you configure `dep_maps` in `.claude/look-before-you-leap.local.md` | `npm install -g madge` or use on-demand via `npx` (no install needed) |
 | Node.js | Required only if using `madge` | [nodejs.org](https://nodejs.org) |
 
+### Recommended
+
+| Dependency | Why | Install |
+|---|---|---|
+| `typescript-language-server` | TypeScript/JavaScript LSP for editor intelligence. Useful if your projects use TypeScript | `npm install -g typescript typescript-language-server` |
+
 ### Recommended Packages
 
 The plugin's skills (frontend-design, immersive-frontend) reference specific
