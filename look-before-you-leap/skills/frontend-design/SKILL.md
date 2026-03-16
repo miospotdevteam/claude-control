@@ -32,7 +32,10 @@ This skill operates within the conductor's Step 1-3:
 **After brainstorming:** If `brainstorming` ran first and produced a
 `design.md` with visual direction (typography, colors, layout choices):
 **skip Phases 1-2 entirely**. Use the approved design and proceed to
-Phase 3.
+Phase 3. If the design includes a **Creative Brief**, its Visual
+Direction informs the Decision Matrix scores if Phase 2 still runs, and
+its Copy Voice section guides all text content decisions (headlines,
+CTAs, microcopy, empty states, error messages) during implementation.
 
 **After immersive-frontend request:** If `immersive-frontend` invoked
 this skill for design direction only, run Phase 2 (Design Direction) and
@@ -205,9 +208,11 @@ With the axes scored, theme selected, and creative seed chosen, select:
 5. **Texture**: Backgrounds, borders, shadows, depth treatment
 
 **Present all choices to the user before proceeding.** Walk through the axis
-scores, creative seed, and concrete selections. Do NOT proceed to Phase 3
-until the user approves the direction. If the user disagrees, iterate on
-the specific choices they reject.
+scores, creative seed, and concrete selections. When offering alternatives
+or asking the user to choose between options, use the `AskUserQuestion`
+tool for a structured selection UI rather than listing choices in plain text.
+Do NOT proceed to Phase 3 until the user approves the direction. If the
+user disagrees, iterate on the specific choices they reject.
 
 Document all approved choices in the masterPlan before writing code.
 

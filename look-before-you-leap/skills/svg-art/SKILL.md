@@ -31,6 +31,10 @@ palette, temperature, creative seed). The SVG art should reinforce
 the page's aesthetic, not compete with it.
 
 If `brainstorming` ran first: use its visual direction from `design.md`.
+If the design includes a **Creative Brief**, read its Intent and Visual
+Direction sections before the decision tree below. Let the brief's mood,
+conceptual thread, and craftsmanship standard guide which techniques you
+choose — don't pick techniques first and retrofit intent afterward.
 
 ---
 

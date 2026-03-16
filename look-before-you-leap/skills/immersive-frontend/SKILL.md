@@ -44,7 +44,11 @@ UI chrome, and overall mood. If the handoff specifies a hybrid scope,
 follow the Hybrid Projects pattern above. Skip to the Decision Tree below.
 
 **If `brainstorming` ran first** and produced visual direction in `design.md`:
-use those decisions. Skip to the Decision Tree below.
+use those decisions. Skip to the Decision Tree below. If the design
+includes a **Creative Brief**, its Intent and Visual Direction directly
+inform scene mood, color choices, and motion personality — replacing
+the need to invoke `frontend-design` Phase 2 for aesthetic direction.
+The Copy Voice section guides any DOM text overlays or UI chrome copy.
 
 **If neither ran**: invoke `frontend-design` Phase 2 (Greenfield — Decision
 Matrix) to establish the aesthetic direction. The 6-axis scores, creative

@@ -38,7 +38,11 @@ decisions and skip the Design Direction assessment in Phase 1.
 
 **After brainstorming:** If `brainstorming` produced a `design.md` with
 visual direction (colors, typography, animation feel): skip the Design
-Direction assessment. Use the approved choices directly.
+Direction assessment. Use the approved choices directly. If the design
+includes a **Creative Brief**, its Visual Direction maps to the App
+Personality questions (animation feel, color temperature, visual
+density), and its Copy Voice section guides all in-app text — from
+onboarding copy to empty states to error messages.
 
 **Full design treatment:** For apps that need serious aesthetic work
 (consumer-facing, brand-driven), invoke `frontend-design` Phase 2 for

@@ -11,6 +11,7 @@ CLI usage:
     python3 plan-utils.py next-step <plan.json>
     python3 plan-utils.py update-step <plan.json> <step_id> <new_status>
     python3 plan-utils.py update-progress <plan.json> <step_id> <progress_index> <new_status>
+    python3 plan-utils.py set-result <plan.json> <step_id> <result_text>
     python3 plan-utils.py add-summary <plan.json> <summary_text>
     python3 plan-utils.py add-deviation <plan.json> <deviation_text>
     python3 plan-utils.py is-fresh <plan.json>
@@ -134,6 +135,18 @@ def update_progress_item(plan_path, step_id, progress_index, new_status):
         print(f"Error: progress index {progress_index} out of range", file=sys.stderr)
         return False
     progress[progress_index]["status"] = new_status
+    write_plan(plan_path, plan)
+    return True
+
+
+def set_result(plan_path, step_id, result_text):
+    """Set the result field on a step."""
+    plan = read_plan(plan_path)
+    step = get_step(plan, step_id)
+    if step is None:
+        print(f"Error: step {step_id} not found", file=sys.stderr)
+        return False
+    step["result"] = result_text
     write_plan(plan_path, plan)
     return True
 
@@ -262,6 +275,15 @@ def main():
         progress_index = int(sys.argv[4])
         new_status = sys.argv[5]
         if not update_progress_item(plan_path, step_id, progress_index, new_status):
+            sys.exit(1)
+
+    elif command == "set-result":
+        if len(sys.argv) < 5:
+            print("Usage: plan-utils.py set-result <plan.json> <step_id> <result_text>", file=sys.stderr)
+            sys.exit(1)
+        step_id = int(sys.argv[3])
+        result_text = sys.argv[4]
+        if not set_result(plan_path, step_id, result_text):
             sys.exit(1)
 
     elif command == "add-summary":

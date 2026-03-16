@@ -141,6 +141,9 @@ python3 "$PLAN_UTILS" update-progress "$PLAN_JSON" 3 0 done
 # Mark step 3 as done
 python3 "$PLAN_UTILS" update-step "$PLAN_JSON" 3 done
 
+# Set the result field on step 3
+python3 "$PLAN_UTILS" set-result "$PLAN_JSON" 3 "Migrated all hooks to new format"
+
 # Add to completed summary
 python3 "$PLAN_UTILS" add-summary "$PLAN_JSON" "Step 3: Migrated all hooks"
 

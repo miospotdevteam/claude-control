@@ -58,10 +58,33 @@ it, the core problem is X. The simplest thing that solves X is Y. The
 other parts you mentioned (A, B, C) could come later. Does that match
 your thinking?"
 
+#### Classify: is this a creative task?
+
+While challenging the framing, also determine whether the task is
+**creative** — meaning its output has visual, tonal, or experiential
+qualities that matter beyond functional correctness.
+
+Signals that a task is creative:
+- UI design, illustration, animation, generative art
+- Copy-heavy flows (onboarding, marketing, landing pages)
+- Branding, visual identity, style direction
+- Multi-step experiences where emotional arc matters
+- The user used words like "beautiful", "premium", "feels like", "mood",
+  "vibe", "tone", "polished", "distinctive"
+
+If creative: your dialogue in Step 3 should explore intent, feeling,
+references, and tone — not just architecture and data flow. And Step 7
+will include a Creative Brief in `design.md`.
+
+If not creative: proceed normally. A refactor, API integration, or data
+pipeline doesn't need a creative brief.
+
 ### 3. Ask questions — one at a time
 
-Explore the idea through conversation. One question per message. Prefer
-multiple choice when the options are clear, open-ended when they're not.
+Explore the idea through conversation. One question per message. When
+presenting options or multiple-choice questions, use the `AskUserQuestion`
+tool — it gives the user a structured selection UI instead of plain text.
+Use open-ended text only when the question has no clear set of choices.
 
 Go beyond surface-level requirements. The most valuable questions are the
 ones the user hasn't thought about yet:
@@ -76,6 +99,29 @@ ones the user hasn't thought about yet:
   constraints the user knows but hasn't articulated.
 
 Keep going until you could explain the feature to another engineer.
+
+**For creative tasks** (identified in Step 2), also explore these
+dimensions. These questions surface the intent and soul that downstream
+skills (svg-art, frontend-design, immersive-frontend, react-native-mobile)
+need to produce work with genuine creative direction rather than
+defaulting to generic patterns:
+
+- **What should this feel like?** Not what it should do — what feeling
+  should someone have when they experience it? "Calm and trustworthy"
+  produces very different work than "energetic and playful."
+- **Is there a reference, metaphor, or story?** A pricing page inspired
+  by "a curated gallery" will look nothing like one inspired by "a
+  transparent handshake." The conceptual thread doesn't need to be
+  obvious to the end user — it guides decisions invisibly.
+- **What's the voice?** If this page/app/experience could talk, how would
+  it speak? Formal and precise? Warm and conversational? Witty and
+  concise? This applies to all copy — headlines, CTAs, microcopy, error
+  messages, empty states.
+- **What would make someone pause and think this was made with care?**
+  This is the craftsmanship question. The answer is always specific to the
+  piece — for a landing page it might be "the typography rhythm between
+  sections", for an illustration it might be "the way shapes overlap with
+  purpose, not just decoration."
 
 If the user **can't answer** a question (doesn't know constraints yet,
 hasn't decided), propose reasonable defaults and flag them explicitly as
@@ -192,6 +238,49 @@ Important design choices with rationale. Format as a table:
 Items flagged during brainstorming where the user deferred to your
 judgment. Each should be specific enough to validate or invalidate
 later.
+
+## Creative Brief
+**Include this section only for creative tasks** (identified in Step 2).
+Omit entirely for non-creative work. Each subsection should be written
+expressively — this is where you prime downstream skills to treat the
+work as craft, not just code. Research the direction fresh for each
+task; never fall back on generic presets.
+
+### Intent
+What this piece is *about* — the feeling, the meaning, the story it
+tells. Not what it does functionally, but what it communicates
+emotionally. Write this section as if you're briefing a designer who
+needs to understand the soul of the project before touching a single
+pixel or choosing a single word.
+
+### Conceptual Thread
+The subtle reference, metaphor, or narrative woven into the work.
+Someone familiar with the reference should feel it intuitively; everyone
+else simply experiences quality. Can be "none" for purely functional
+creative work, but consider it for anything with visual or emotional
+ambition.
+
+### Visual Direction
+Mood, texture, composition approach, color temperature, density, rhythm.
+Not specific hex codes or font names — those come later in
+frontend-design's Decision Matrix or the implementing skill's own
+process. This is the *why* behind those choices. Think in terms of
+feeling, not specification.
+
+### Copy Voice
+Tone (authoritative? playful? intimate?), vocabulary level (technical?
+conversational? poetic?), emotional register (calm? urgent? warm?),
+sentence rhythm (short punchy? flowing? varied?). This applies to
+every piece of text in the experience — headlines, CTAs, microcopy,
+empty states, error messages, onboarding steps.
+
+### Craftsmanship Standard
+What "done well" looks like for this specific piece. What details would
+make someone pause and think "this was made with care"? Be concrete —
+not "high quality" but "the way the illustration's negative space
+mirrors the content hierarchy" or "the microcopy that acknowledges the
+user's context instead of being generic." This section primes
+implementation toward mastery-level output.
 ```
 
 ---
