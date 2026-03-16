@@ -92,12 +92,35 @@ stale modules before returning results.
 
 ---
 
+## Dynamic Import Support
+
+After madge generates the static import graph, a second pass scans all
+source files for `import()` expressions with string literals. This catches
+components loaded via:
+
+- `import('./path')` — bare dynamic imports
+- `React.lazy(() => import('./Component'))` — React lazy loading
+- `dynamic(() => import('./Component'))` — Next.js dynamic
+- `defineAsyncComponent(() => import('./Component'))` — Vue async components
+- Any wrapper that uses `import('...')` with a string literal
+
+Resolved paths use the same logic as static imports: relative paths,
+tsconfig `paths` aliases, and `baseUrl`. Extension probing tries `.ts`,
+`.tsx`, `.js`, `.jsx`, and `/index.*` variants.
+
+**Still not tracked**: `import(variable)`, template literal imports
+(`` import(`./path/${name}`) ``), and string-based references that don't
+use `import()`.
+
+---
+
 ## Limitations
 
 - **TypeScript only**: madge parses TS/TSX imports. Other file types need
   manual grep.
-- **Static analysis**: madge follows import statements, not dynamic
-  imports (`import()`) or string-based references.
+- **Dynamic imports with variables**: `import(variable)` and template
+  literal imports cannot be resolved at static analysis time. Only
+  `import('string-literal')` patterns are tracked.
 - **Re-exports**: madge follows re-exports through barrel files (index.ts),
   but the dep map shows the barrel as the consumer, not the final consumer.
   For deep analysis of barrel file consumers, query the barrel file itself.

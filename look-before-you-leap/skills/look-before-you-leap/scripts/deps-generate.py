@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate normalized dependency maps via madge.
+"""Generate normalized dependency maps via madge + dynamic import scanning.
 
 Usage:
     python3 deps-generate.py <project_root> --module apps/api
@@ -7,12 +7,14 @@ Usage:
     python3 deps-generate.py <project_root> --stale-only
 
 Reads dep_maps config from .claude/look-before-you-leap.local.md.
-Runs madge per module, normalizes paths to repo-relative,
-writes to .claude/deps/deps-{slug}.json.
+Runs madge per module for static imports, then scans for dynamic imports
+(import(), React.lazy, next/dynamic, etc.), normalizes all paths to
+repo-relative, writes to .claude/deps/deps-{slug}.json.
 """
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -176,6 +178,224 @@ def normalize_paths(raw_deps, project_root, module_path):
     return normalized
 
 
+def read_tsconfig_paths(project_root, module_path):
+    """Read compilerOptions.paths and baseUrl from tsconfig.json.
+
+    Returns (paths_dict, base_url) where paths_dict maps alias patterns
+    to lists of target patterns, e.g. {"@/*": ["./src/*"]}.
+    Follows a single level of 'extends' for monorepo base configs.
+    """
+    module_abs = os.path.join(project_root, module_path)
+    tsconfig_path = os.path.join(module_abs, "tsconfig.json")
+    if not os.path.exists(tsconfig_path):
+        return {}, None
+
+    try:
+        with open(tsconfig_path) as f:
+            # Strip JS-style comments (// and /* */) before parsing
+            content = f.read()
+            content = re.sub(r'//.*?$', '', content, flags=re.MULTILINE)
+            content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+            tsconfig = json.loads(content)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return {}, None
+
+    compiler_opts = tsconfig.get("compilerOptions", {})
+    paths = compiler_opts.get("paths", {})
+    base_url = compiler_opts.get("baseUrl")
+
+    # Follow one level of extends to pick up paths from a base tsconfig
+    if not paths and "extends" in tsconfig:
+        extends_path = tsconfig["extends"]
+        if not os.path.isabs(extends_path):
+            extends_path = os.path.normpath(os.path.join(module_abs, extends_path))
+        # Handle extensionless references (e.g., "./tsconfig.base")
+        if not extends_path.endswith(".json"):
+            extends_path += ".json"
+        if os.path.exists(extends_path):
+            try:
+                with open(extends_path) as f:
+                    content = f.read()
+                    content = re.sub(r'//.*?$', '', content, flags=re.MULTILINE)
+                    content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+                    base = json.loads(content)
+                base_opts = base.get("compilerOptions", {})
+                paths = paths or base_opts.get("paths", {})
+                base_url = base_url or base_opts.get("baseUrl")
+            except (json.JSONDecodeError, FileNotFoundError):
+                pass
+
+    return paths, base_url
+
+
+# Extensions to probe when resolving dynamic import specifiers
+_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"]
+_INDEX_FILES = ["/index.ts", "/index.tsx", "/index.js", "/index.jsx"]
+
+
+def resolve_import_path(specifier, importing_file, project_root, module_path,
+                        tsconfig_paths, base_url):
+    """Resolve a dynamic import specifier to a repo-relative path.
+
+    Returns the resolved repo-relative path, or None if unresolvable.
+    """
+    module_abs = os.path.join(project_root, module_path)
+
+    # Determine the base directory for relative resolution
+    importing_abs = os.path.join(project_root, importing_file)
+    importing_dir = os.path.dirname(importing_abs)
+
+    resolved_abs = None
+
+    if specifier.startswith("."):
+        # Relative import: resolve against importing file's directory
+        resolved_abs = _probe_path(os.path.join(importing_dir, specifier))
+
+    elif tsconfig_paths:
+        # Try tsconfig path aliases
+        resolved_abs = _resolve_alias(specifier, tsconfig_paths, module_abs,
+                                      base_url, project_root)
+
+    elif base_url:
+        # No paths but baseUrl set: resolve relative to baseUrl
+        base_abs = os.path.normpath(os.path.join(module_abs, base_url))
+        resolved_abs = _probe_path(os.path.join(base_abs, specifier))
+
+    if resolved_abs is None:
+        return None
+
+    repo_rel = os.path.relpath(resolved_abs, project_root)
+    if repo_rel.startswith(".."):
+        return None  # Outside the repo
+    return repo_rel
+
+
+def _probe_path(candidate):
+    """Try a candidate path with common extensions. Return absolute path or None."""
+    candidate = os.path.normpath(candidate)
+
+    # Exact match (already has extension)
+    if os.path.isfile(candidate):
+        return candidate
+
+    # Try adding extensions
+    for ext in _EXTENSIONS:
+        p = candidate + ext
+        if os.path.isfile(p):
+            return p
+
+    # Try as directory with index file
+    for idx in _INDEX_FILES:
+        p = candidate + idx
+        if os.path.isfile(p):
+            return p
+
+    return None
+
+
+def _resolve_alias(specifier, tsconfig_paths, module_abs, base_url, project_root):
+    """Resolve a specifier against tsconfig paths aliases.
+
+    Handles patterns like {"@/*": ["./src/*"], "@components/*": ["./src/components/*"]}.
+    """
+    base_dir = module_abs
+    if base_url:
+        base_dir = os.path.normpath(os.path.join(module_abs, base_url))
+
+    for pattern, targets in tsconfig_paths.items():
+        if not isinstance(targets, list) or not targets:
+            continue
+
+        if pattern.endswith("/*"):
+            prefix = pattern[:-2]  # "@" or "@components"
+            if specifier.startswith(prefix + "/"):
+                rest = specifier[len(prefix) + 1:]
+                for target in targets:
+                    if target.endswith("/*"):
+                        target_base = target[:-2]  # "./src" or "./src/components"
+                        abs_target = os.path.normpath(os.path.join(base_dir, target_base, rest))
+                        result = _probe_path(abs_target)
+                        if result:
+                            return result
+        elif pattern == specifier:
+            # Exact alias match (no wildcard)
+            for target in targets:
+                abs_target = os.path.normpath(os.path.join(base_dir, target))
+                result = _probe_path(abs_target)
+                if result:
+                    return result
+
+    return None
+
+
+# Regex for dynamic imports: import('path') or import("path")
+# Matches inside React.lazy(), next/dynamic(), defineAsyncComponent(), or bare
+_DYNAMIC_IMPORT_RE = re.compile(r'''import\s*\(\s*['"]([^'"]+)['"]\s*\)''')
+
+
+def scan_dynamic_imports(project_root, module_path, existing_deps):
+    """Scan source files for dynamic import() patterns.
+
+    Walks .ts/.tsx files in the module, finds import('...') patterns via regex,
+    resolves paths, and returns additional dependency edges not already in
+    existing_deps (the madge output).
+
+    Returns dict: {repo_relative_file: [repo_relative_dep, ...]}
+    """
+    module_abs = os.path.join(project_root, module_path)
+    src_dir = os.path.join(module_abs, "src")
+    if not os.path.isdir(src_dir):
+        src_dir = module_abs
+
+    tsconfig_paths, base_url = read_tsconfig_paths(project_root, module_path)
+
+    additional = {}
+    dynamic_count = 0
+
+    for root, _dirs, files in os.walk(src_dir):
+        if "node_modules" in root:
+            continue
+        for fname in files:
+            if not fname.endswith((".ts", ".tsx")):
+                continue
+            if fname.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")):
+                continue
+
+            fpath = os.path.join(root, fname)
+            repo_rel = os.path.relpath(fpath, project_root)
+
+            try:
+                with open(fpath) as f:
+                    content = f.read()
+            except (FileNotFoundError, PermissionError, UnicodeDecodeError):
+                continue
+
+            matches = _DYNAMIC_IMPORT_RE.findall(content)
+            if not matches:
+                continue
+
+            existing_for_file = set(existing_deps.get(repo_rel, []))
+            new_deps = []
+
+            for specifier in matches:
+                resolved = resolve_import_path(
+                    specifier, repo_rel, project_root, module_path,
+                    tsconfig_paths, base_url,
+                )
+                if resolved and resolved != repo_rel and resolved not in existing_for_file:
+                    new_deps.append(resolved)
+                    existing_for_file.add(resolved)
+
+            if new_deps:
+                additional[repo_rel] = new_deps
+                dynamic_count += len(new_deps)
+
+    if dynamic_count:
+        print(f"  dynamic imports: found {dynamic_count} additional edge(s)", file=sys.stderr)
+
+    return additional
+
+
 def generate_module(project_root, module_path, config):
     """Generate dep map for a single module."""
     dep_maps = config.get("dep_maps", {})
@@ -192,6 +412,16 @@ def generate_module(project_root, module_path, config):
         return False
 
     normalized = normalize_paths(raw, project_root, module_path)
+
+    # Scan for dynamic imports and merge additional edges
+    dynamic_edges = scan_dynamic_imports(project_root, module_path, normalized)
+    for file_key, new_deps in dynamic_edges.items():
+        if file_key in normalized:
+            existing = set(normalized[file_key])
+            normalized[file_key] = sorted(existing | set(new_deps))
+        else:
+            normalized[file_key] = sorted(new_deps)
+
     out_path = os.path.join(deps_dir, f"deps-{slug}.json")
     with open(out_path, "w") as f:
         json.dump(normalized, f, indent=2, sort_keys=True)
