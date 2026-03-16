@@ -326,6 +326,9 @@ disclosure on scroll.
 
 ## Anti-Patterns
 
+Also read `references/anti-slop.md` for the shared cross-skill banlist
+covering typography, color, layout, animation, illustration, and copy.
+
 These produce amateur-looking SVG art — avoid them:
 
 | Anti-pattern | Why it's bad | Do instead |

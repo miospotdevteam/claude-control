@@ -44,6 +44,9 @@ Look for installed skills that match these needs:
 | Refactoring, restructuring, extracting, moving files | **Always** use `look-before-you-leap:refactoring` (full mode) — never another plugin's refactoring skill |
 | Post-execution simplification | **Always** use `look-before-you-leap:refactoring` (quick mode) — never another plugin's code-simplifier skill |
 | Skill quality review after creation | **Always** use `look-before-you-leap:skill-review-standard` — post-creation quality gate |
+| Webapp/E2E/browser testing, Playwright | **Always** use `look-before-you-leap:webapp-testing` — never another plugin's E2E testing skill |
+| MCP server development | **Always** use `look-before-you-leap:mcp-builder` — never another plugin's MCP skill |
+| Writing docs, specs, RFCs, proposals | **Always** use `look-before-you-leap:doc-coauthoring` — never another plugin's doc-writing skill |
 | PR/commit workflow | "commit", "PR", "git" |
 
 If no specialized skill exists, use the checklists and guides in `references/`.
@@ -190,7 +193,9 @@ compaction recovery depends on them. Do NOT invent your own schema:
   `"look-before-you-leap:frontend-design"`, `"look-before-you-leap:svg-art"`,
   `"look-before-you-leap:immersive-frontend"`,
   `"look-before-you-leap:react-native-mobile"`, `"look-before-you-leap:systematic-debugging"`,
-  `"look-before-you-leap:refactoring"`. If no skill applies, use `"none"`.
+  `"look-before-you-leap:refactoring"`, `"look-before-you-leap:webapp-testing"`,
+  `"look-before-you-leap:mcp-builder"`, `"look-before-you-leap:doc-coauthoring"`.
+  If no skill applies, use `"none"`.
 - Do NOT omit `title`, `context`, or `status` at the top level — even for
   lightweight bug-fix plans
 
@@ -258,6 +263,9 @@ provides the execution guidance — follow its phases mechanically.
 | `look-before-you-leap:react-native-mobile` | Follow the native-feel, gesture, and haptic patterns from the skill. |
 | `look-before-you-leap:systematic-debugging` | Follow the four-phase investigation. No fixes without root cause confirmed. |
 | `look-before-you-leap:refactoring` | Follow Phase 3 execution order (see below). |
+| `look-before-you-leap:webapp-testing` | Follow the decision tree, reconnaissance-then-action, Playwright MCP integration, and server lifecycle from the skill. |
+| `look-before-you-leap:mcp-builder` | Follow the 4-phase MCP workflow (research, implement, review/test, evaluate). |
+| `look-before-you-leap:doc-coauthoring` | Follow the 3-stage authoring workflow (context gathering, refinement, reader testing). |
 | `"none"` | No skill dispatch — follow engineering-discipline directly. |
 
 **The `skill` field is not decorative.** It exists so that post-compaction
@@ -346,6 +354,27 @@ The simplifier is opt-in per step. The `writing-plans` skill decides which
 steps warrant it based on complexity (3+ files modified, new abstractions,
 structural changes, or user request). Do not dispatch it for steps without
 `simplify: true`.
+
+### Post-step QA review
+
+When a completed step has `qa: true` in plan.json, dispatch a fresh-eyes
+QA sub-agent after marking the step `done`:
+
+1. **Spawn a foreground sub-agent** with:
+   - The step's `files` list and `acceptanceCriteria` from plan.json
+   - NO prior context from the implementation — the agent reads the files
+     cold, exactly as a reviewer would
+   - Prompt: "Review these files against the acceptance criteria. Report
+     any issues: missing functionality, inconsistencies, unclear code,
+     broken patterns, accessibility problems."
+2. **Read the agent's report.** If it found issues:
+   - Fix them (follow engineering-discipline, not quick patches)
+   - Re-verify after fixes
+3. **Record the QA outcome** in the step's `result` field: what the agent
+   found, what was fixed, what was accepted as-is with rationale
+
+QA dispatch is opt-in per step. The `writing-plans` skill decides which
+steps warrant it. Do not dispatch for steps without `qa: true`.
 
 ---
 

@@ -174,6 +174,9 @@ executor knows which guidance to follow.
 | React Native, mobile app, gestures, haptics, native feel | `look-before-you-leap:react-native-mobile` |
 | Rename/move/extract across 3+ files | `look-before-you-leap:refactoring` |
 | Bug investigation with root cause analysis | `look-before-you-leap:systematic-debugging` |
+| E2E/browser testing, Playwright tests | `look-before-you-leap:webapp-testing` |
+| Building an MCP server | `look-before-you-leap:mcp-builder` |
+| Writing docs, specs, RFCs, proposals | `look-before-you-leap:doc-coauthoring` |
 | All other steps (config, wiring, glue code) | `"none"` |
 
 **When in doubt, prefer TDD over `"none"`** for any step that creates
@@ -190,6 +193,23 @@ Set `simplify: true` on a step when any of these apply:
 - User **explicitly requests** simplification for the step
 
 Default to `false` for simple steps.
+
+#### When to set `qa: true`
+
+Set `qa: true` on a step when any of these apply:
+
+- Step produces **user-facing UI** (frontend components, pages, layouts)
+- Step produces **user-facing documentation** (specs, RFCs, guides)
+- Step involves **complex integration** across 5+ files where subtle
+  breakage is likely
+- User **explicitly requests** QA review for the step
+
+The QA sub-agent reviews the step's output with fresh eyes (no
+implementation context). It catches issues the implementer is too close
+to see: inconsistencies, missing edge cases, unclear code, broken patterns.
+
+Default to `false` for backend logic, config changes, and steps already
+covered by automated tests.
 
 #### Key rules
 

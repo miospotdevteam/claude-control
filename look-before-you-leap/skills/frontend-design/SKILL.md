@@ -305,7 +305,8 @@ unconsidered output — avoid them:
 | Theme | Neon/fluorescent accent on non-tech brand | Accent color that matches the brand's warmth and personality |
 
 The full blacklist is in `references/frontend-design-guide.md` § Anti-Slop
-Blacklist.
+Blacklist. Also read `references/anti-slop.md` for the shared cross-skill
+banlist covering typography, color, layout, animation, illustration, and copy.
 
 ### Content separation: whitespace over containers
 

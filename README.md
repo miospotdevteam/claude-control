@@ -165,7 +165,8 @@ look-before-you-leap/
     │   │   ├── debugging-root-cause-tracing.md      # Layer 3: Trace bugs to source
     │   │   ├── debugging-defense-in-depth.md        # Layer 3: Multi-layer validation
     │   │   ├── debugging-condition-based-waiting.md  # Layer 3: Replace timeouts with polling
-    │   │   └── verification-commands.md # tsc/lint/test commands by ecosystem
+    │   │   ├── verification-commands.md # tsc/lint/test commands by ecosystem
+    │   │   └── anti-slop.md             # Shared anti-AI-slop banlist for creative skills
     │   └── scripts/
     │       ├── init-plan-dir.sh         # Sets up .temp/plan-mode/
     │       ├── plan-status.sh           # Shows all plan statuses
@@ -201,8 +202,32 @@ look-before-you-leap/
     │       └── gsap-common-mistakes.md  # Gotchas, debugging, FOUC prevention
     ├── refactoring/
     │   └── SKILL.md                     # Post-execution code simplification
-    └── systematic-debugging/
-        └── SKILL.md                     # Root cause investigation before fixes
+    ├── systematic-debugging/
+    │   └── SKILL.md                     # Root cause investigation before fixes
+    ├── skill-review-standard/
+    │   ├── SKILL.md                     # Post-creation quality gate
+    │   └── scripts/
+    │       ├── validate-structure.sh    # Structural validation
+    │       ├── utils.py                 # Skill frontmatter parser
+    │       ├── run_eval.py              # Trigger skill evaluation runs
+    │       ├── aggregate_benchmark.py   # Stats from grading results
+    │       ├── improve_description.py   # LLM-based description optimizer
+    │       └── generate_report.py       # HTML report with pass/fail
+    ├── webapp-testing/
+    │   ├── SKILL.md                     # E2E/browser testing with Playwright
+    │   ├── scripts/
+    │   │   └── with_server.py           # Dev server lifecycle for E2E tests
+    │   └── references/
+    │       ├── playwright-patterns.md   # Selectors, assertions, waits, POM
+    │       └── server-recipes.md        # Dev server configs by framework
+    ├── mcp-builder/
+    │   ├── SKILL.md                     # 4-phase MCP server development
+    │   └── references/
+    │       ├── mcp-best-practices.md    # Tool design, responses, security
+    │       ├── mcp-typescript.md        # McpServer, Zod, transports
+    │       └── mcp-python.md            # FastMCP, Pydantic, async
+    └── doc-coauthoring/
+        └── SKILL.md                     # 3-stage document co-authoring
 ```
 
 ## Origin Story

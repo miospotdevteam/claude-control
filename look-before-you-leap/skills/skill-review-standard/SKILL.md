@@ -158,6 +158,71 @@ Checked against <N> installed skills.
 
 ---
 
+## Phase 4: Quantitative Evaluation
+
+After the verdict is determined, optionally run quantitative benchmarks to
+measure skill performance with statistical rigor. This phase is recommended
+for skills that will be used frequently or where trigger precision matters.
+
+### 4.1 Run evaluation
+
+Use the eval scripts in `scripts/`:
+
+```bash
+SCRIPTS="${CLAUDE_PLUGIN_ROOT}/skills/skill-review-standard/scripts"
+
+# Run 3 evaluation rounds with the test prompt from Phase 2
+python3 "$SCRIPTS/run_eval.py" \
+  --skill-dir <skill-directory> \
+  --prompt "<test prompt from Phase 2>" \
+  --output-dir .temp/eval-results/ \
+  --runs 3
+```
+
+This runs the skill against the prompt multiple times and grades each run
+on structure (1-5), completeness (1-5), and quality (1-5).
+
+### 4.2 Aggregate results
+
+```bash
+python3 "$SCRIPTS/aggregate_benchmark.py" \
+  --results-dir .temp/eval-results/ \
+  --output .temp/eval-results/aggregate.json
+```
+
+Reports mean, stddev, min, max per dimension. **Pass threshold: overall
+mean >= 3.5.** High variance (stddev > 1.0) signals inconsistent skill
+behavior — investigate before shipping.
+
+### 4.3 Improve description (optional)
+
+If trigger precision is a concern (overlaps found in Phase 3, or the skill
+fires on prompts it shouldn't):
+
+```bash
+python3 "$SCRIPTS/improve_description.py" \
+  --skill-dir <skill-directory> \
+  --dry-run
+```
+
+Reviews the description against all installed skills and suggests
+improvements for better trigger accuracy. Remove `--dry-run` to apply.
+
+### 4.4 Generate report
+
+```bash
+python3 "$SCRIPTS/generate_report.py" \
+  --results-dir .temp/eval-results/ \
+  --skill-name <skill-name> \
+  --output .temp/eval-results/report.html
+```
+
+Produces a self-contained HTML report with pass/fail indicators, per-run
+scores, and the overall verdict. Share with the team or attach to the
+skill's PR.
+
+---
+
 ## Boundaries
 
 This skill must NOT:

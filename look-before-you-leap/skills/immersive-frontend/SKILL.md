@@ -336,6 +336,9 @@ for complete patterns.
 
 ### Anti-Patterns — What NOT to Do
 
+Also read `references/anti-slop.md` for the shared cross-skill banlist
+covering typography, color, layout, animation, illustration, and copy.
+
 | Anti-Pattern | Why It Fails | Do This Instead |
 |---|---|---|
 | Separate rAF for Lenis and Three.js | Frame desync, tearing between DOM and canvas | Single gsap.ticker drives everything |

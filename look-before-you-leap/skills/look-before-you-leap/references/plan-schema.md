@@ -102,6 +102,7 @@ human-facing presentation document — it does NOT contain execution state.
 | `status` | string | yes | One of: `pending`, `in_progress`, `done`, `blocked` |
 | `skill` | string | yes | Skill to invoke, or `"none"` |
 | `simplify` | boolean | yes | Whether to run simplification after step |
+| `qa` | boolean | no | Whether to run fresh-eyes QA sub-agent after step (default false) |
 | `files` | string[] | yes | Files involved in this step |
 | `description` | string | yes | What to do — self-contained for fresh context |
 | `acceptanceCriteria` | string | yes | How to know the step is done |

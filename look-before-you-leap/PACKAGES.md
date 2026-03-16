@@ -131,6 +131,14 @@ project-level npm packages — install them globally.
 
 ---
 
+## Testing (referenced by `webapp-testing` skill)
+
+| Package | What it does | Install |
+|---|---|---|
+| `@playwright/test` | Browser automation and E2E testing framework | `npm i -D @playwright/test` |
+
+---
+
 ## Keeping This File Updated
 
 When a skill recommends a new package, add it here. When a package is
