@@ -3,7 +3,7 @@
 #
 # Allows:
 #   - Edits to .temp/ (plan files themselves)
-#   - Edits when .temp/plan-mode/.no-plan exists (explicit bypass)
+#   - Edits when .temp/plan-mode/.no-plan exists (counter-based bypass, max N edits)
 #   - Edits when an active plan.json exists
 #
 # Denies:
@@ -38,15 +38,30 @@ print(data.get('cwd', ''))
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 
-# Check for explicit bypass (session-scoped: contains PID of creating session)
+# Check for explicit bypass (counter-based: contains PID:remaining_edits)
 NO_PLAN_FILE="$PROJECT_ROOT/.temp/plan-mode/.no-plan"
 if [ -f "$NO_PLAN_FILE" ]; then
-  bypass_pid=$(cat "$NO_PLAN_FILE" 2>/dev/null) || true
-  if [ -n "$bypass_pid" ] && kill -0 "$bypass_pid" 2>/dev/null; then
-    # Creating session is still alive — allow
+  bypass_content=$(cat "$NO_PLAN_FILE" 2>/dev/null) || true
+  if [[ "$bypass_content" == *:* ]]; then
+    bypass_pid="${bypass_content%%:*}"
+    bypass_count="${bypass_content##*:}"
+  else
+    # Legacy format (just PID, no counter) — remove stale bypass
+    rm -f "$NO_PLAN_FILE"
+    bypass_pid=""
+    bypass_count=""
+  fi
+  if [ -n "$bypass_pid" ] && [ -n "$bypass_count" ] && kill -0 "$bypass_pid" 2>/dev/null; then
+    # Decrement counter
+    new_count=$((bypass_count - 1))
+    if [ "$new_count" -le 0 ]; then
+      rm -f "$NO_PLAN_FILE"
+    else
+      echo "${bypass_pid}:${new_count}" > "$NO_PLAN_FILE"
+    fi
     exit 0
   else
-    # Session ended or file has no PID — stale bypass, remove it
+    # Session ended or invalid format — stale bypass, remove it
     rm -f "$NO_PLAN_FILE"
     # Fall through to deny
   fi
@@ -209,7 +224,7 @@ output = {
             "1. Explore the codebase (read files, grep consumers)\n"
             "2. Write plan.json + masterPlan.md to .temp/plan-mode/active/<plan-name>/\n"
             "3. Then proceed with edits\n\n"
-            "To bypass for trivial changes: echo $PPID > .temp/plan-mode/.no-plan"
+            "To bypass for trivial changes (max 3 edits): echo \\\"$PPID:3\\\" > .temp/plan-mode/.no-plan"
         )
     }
 }
