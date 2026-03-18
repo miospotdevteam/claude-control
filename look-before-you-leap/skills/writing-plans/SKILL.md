@@ -295,16 +295,15 @@ interactive review using the Orbit MCP:
 
 After the plan is approved via Orbit:
 
-1. **Remove the handoff marker**: `rm .temp/plan-mode/.handoff-pending`
-   This MUST happen before `EnterPlanMode` — the marker blocks all
-   non-`.temp/` writes, including the plan mode scratch pad write.
-2. **If not already in plan mode**, call `EnterPlanMode` to enter it.
-3. Read the plan.json you just wrote from disk.
-4. Write a summary to the **plan mode scratch pad** (the file path is
+1. **If not already in plan mode**, call `EnterPlanMode` to enter it.
+   The handoff marker (`.handoff-pending`) is auto-cleared by a hook when
+   `EnterPlanMode` is called or when `orbit_await_review` returns approved.
+2. Read the plan.json you just wrote from disk.
+3. Write a summary to the **plan mode scratch pad** (the file path is
    specified in the plan mode system message — it is NOT masterPlan.md and
    NOT plan.json). Include: the key steps, files involved, and acceptance
    criteria — enough for the user to approve or reject.
-5. Call `ExitPlanMode` to present the plan to the user.
+4. Call `ExitPlanMode` to present the plan to the user.
 
 This gives the user the built-in **"autoaccept edits and clear context?"**
 prompt. If they accept, context clears and the persistent-plans resumption

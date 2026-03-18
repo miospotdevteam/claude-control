@@ -132,12 +132,11 @@ output = {
             "- changes_requested → update plan, re-submit\n"
             "- timeout → ask user to review when ready\n\n"
             "## Step 4: Plan mode handoff\n\n"
-            f"1. **Remove the handoff marker**: `rm {marker}`\n"
-            "   This MUST happen before EnterPlanMode — the marker blocks "
-            "writes needed for the plan mode scratch pad.\n"
-            "2. Call EnterPlanMode\n"
-            "3. Write a summary to the scratch pad\n"
-            "4. Call ExitPlanMode\n\n"
+            "The handoff marker is auto-cleared by a hook when you call "
+            "EnterPlanMode (or when orbit_await_review returns approved).\n\n"
+            "1. Call EnterPlanMode\n"
+            "2. Write a summary to the scratch pad\n"
+            "3. Call ExitPlanMode\n\n"
             f"To bypass (if Orbit unavailable): rm {marker}"
         )
     }

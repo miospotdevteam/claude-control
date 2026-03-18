@@ -127,6 +127,16 @@
         ]
       },
       {
+        "matcher": "orbit_await_review|EnterPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/clear-handoff-on-approval.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           {
