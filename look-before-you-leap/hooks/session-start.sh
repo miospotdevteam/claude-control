@@ -393,6 +393,44 @@ try:
             )
         )
 
+    # --- Resolve plan_utils.py path in persistent-plans skill ---
+    # Replace the marker block with a resolved absolute path so Claude never
+    # depends on CLAUDE_PLUGIN_ROOT (which can become stale after cache
+    # invalidation or compaction).
+    plan_utils_path = os.path.join(scripts_dir, "plan_utils.py")
+    plans_content = replace_between_markers(
+        plans_content,
+        "<!-- plan-utils-cmd-start -->",
+        "<!-- plan-utils-cmd-end -->",
+        (
+            "```bash\n"
+            f"PLAN_UTILS=\"{plan_utils_path}\"\n"
+            "PLAN_JSON=\".temp/plan-mode/active/<plan-name>/plan.json\"\n"
+            "\n"
+            "# Mark step 3 as in_progress\n"
+            "python3 \"$PLAN_UTILS\" update-step \"$PLAN_JSON\" 3 in_progress\n"
+            "\n"
+            "# Mark progress item 0 of step 3 as done\n"
+            "python3 \"$PLAN_UTILS\" update-progress \"$PLAN_JSON\" 3 0 done\n"
+            "\n"
+            "# Mark step 3 as done\n"
+            "python3 \"$PLAN_UTILS\" update-step \"$PLAN_JSON\" 3 done\n"
+            "\n"
+            "# Set the result field on step 3\n"
+            "python3 \"$PLAN_UTILS\" set-result \"$PLAN_JSON\" 3 \"Migrated all hooks to new format\"\n"
+            "\n"
+            "# Add to completed summary\n"
+            "python3 \"$PLAN_UTILS\" add-summary \"$PLAN_JSON\" \"Step 3: Migrated all hooks\"\n"
+            "\n"
+            "# Get status overview\n"
+            "python3 \"$PLAN_UTILS\" status \"$PLAN_JSON\"\n"
+            "\n"
+            "# Get next step\n"
+            "python3 \"$PLAN_UTILS\" next-step \"$PLAN_JSON\"\n"
+            "```"
+        )
+    )
+
     # Build project profile from config
     if stack:
         profile_parts = []

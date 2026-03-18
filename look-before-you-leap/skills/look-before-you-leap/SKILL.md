@@ -212,8 +212,12 @@ the flow is:
 2. Call `orbit_await_review` on the masterPlan.md — opens in VS Code and
    blocks until the user approves or requests changes
 3. Handle the response (approved → proceed, changes_requested → iterate)
-4. Once approved — proceed with plan mode handoff (EnterPlanMode →
-   summarize → ExitPlanMode) for context clearing
+4. Once approved — **remove the handoff marker**:
+   `rm .temp/plan-mode/.handoff-pending`
+   This MUST happen before `EnterPlanMode` — the marker blocks writes
+   needed for the plan mode scratch pad.
+5. Proceed with plan mode handoff (EnterPlanMode → summarize →
+   ExitPlanMode) for context clearing
 
 The plan mode handoff happens **after** Orbit approval, not before. This
 ensures the user has reviewed and approved the plan before context clears.

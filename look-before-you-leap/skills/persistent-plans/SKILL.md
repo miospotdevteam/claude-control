@@ -128,6 +128,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 Use `plan_utils.py` via the Bash tool. This is more reliable than Edit-based
 markdown checkbox toggling:
 
+<!-- plan-utils-cmd-start -->
 ```bash
 PLAN_UTILS="${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
 PLAN_JSON=".temp/plan-mode/active/<plan-name>/plan.json"
@@ -153,6 +154,7 @@ python3 "$PLAN_UTILS" status "$PLAN_JSON"
 # Get next step
 python3 "$PLAN_UTILS" next-step "$PLAN_JSON"
 ```
+<!-- plan-utils-cmd-end -->
 
 ---
 
