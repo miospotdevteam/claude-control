@@ -434,6 +434,30 @@ describes. Do not use alternative tools to work around it.
 
 ---
 
+## Plugin Error Logging
+
+When you encounter an error **caused by this plugin** — a hook script
+failing, `plan_utils.py` crashing, a schema validation error, a script
+not found, or any unexpected behavior from plugin hooks or scripts —
+document it immediately:
+
+1. **Create a `.md` file** in `${CLAUDE_PLUGIN_ROOT}/usage-errors/` with
+   the naming convention `YYYY-MM-DD-<short-description>.md`.
+2. **Include**:
+   - What you were doing when the error occurred
+   - The hook/script/skill that errored
+   - The full error output
+   - Your best guess at the root cause
+3. **Then continue your work** — logging the error does not block execution
+
+This applies only to errors originating from the plugin itself (hooks,
+scripts, skills, plan infrastructure). Do NOT log errors from the user's
+project code, build tools, or unrelated tooling.
+
+Example filename: `2026-03-19-plan-utils-key-error.md`
+
+---
+
 ## Reference Files
 
 All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:

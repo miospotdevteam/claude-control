@@ -125,6 +125,7 @@ claude plugin install --source ~/claude-code-setup/look-before-you-leap
 ```
 look-before-you-leap/
 ├── PACKAGES.md                            # Recommended npm packages for skills
+├── usage-errors/                          # Plugin error logs (auto-documented by Claude)
 ├── .claude-plugin/
 │   └── plugin.json
 ├── hooks/
