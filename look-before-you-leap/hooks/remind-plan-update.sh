@@ -98,18 +98,7 @@ PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
 latest_plan=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
 
-# Fallback to masterPlan.md if no plan.json found
-if [ -z "$latest_plan" ]; then
-  if command -v stat >/dev/null 2>&1; then
-    latest_plan=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
-    if [ -z "$latest_plan" ]; then
-      latest_plan=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-    fi
-  fi
-  if [ -z "$latest_plan" ]; then
-    latest_plan=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f 2>/dev/null | head -1)
-  fi
-fi
+# No fallback to other sessions' plans — keep empty if this session has none
 
 # Reset counter after firing the reminder
 echo "0" > "$COUNTER_FILE"
