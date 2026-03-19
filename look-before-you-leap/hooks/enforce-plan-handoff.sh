@@ -3,7 +3,7 @@
 #
 # After every Edit/Write to a masterPlan.md, checks if the plan is fresh
 # (all steps are [ ], none are [x] or [~]). If so:
-# 1. Creates .temp/plan-mode/.handoff-pending marker
+# 1. Creates .handoff-pending marker inside the plan directory
 # 2. Injects directive to present the plan via Orbit MCP for user review
 #
 # The Orbit flow: generate resolved artifact (opens in VS Code) → user
@@ -12,7 +12,7 @@
 # via plan mode handoff (EnterPlanMode → summarize → ExitPlanMode).
 #
 # The marker is cleared by session-start.sh (new session = context cleared).
-# Bypass: rm .temp/plan-mode/.handoff-pending
+# Bypass: rm <plan-dir>/.handoff-pending
 #
 # Input: JSON on stdin with tool_name, tool_input.file_path, cwd
 
@@ -74,25 +74,15 @@ fi
 
 # --- Fresh plan detected: all steps are [ ] ---
 
-# Find project root
-source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
-
-HOOK_CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
-
-PROJECT_ROOT="$(find_project_root "${HOOK_CWD:-$PWD}")"
-PLAN_MODE_DIR="$PROJECT_ROOT/.temp/plan-mode"
-MARKER_FILE="$PLAN_MODE_DIR/.handoff-pending"
+# Write marker to per-plan directory (not global)
+MARKER_FILE="$PLAN_DIR/.handoff-pending"
 
 # Don't re-fire if handoff is already pending (prevents re-injection after Orbit approval)
 if [ -f "$MARKER_FILE" ]; then
   exit 0
 fi
 
-# Create the marker
+# Create the marker in the plan directory
 echo "$FILE_PATH" > "$MARKER_FILE"
 
 # Inject directive

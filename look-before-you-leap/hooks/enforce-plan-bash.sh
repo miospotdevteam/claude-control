@@ -9,7 +9,7 @@
 # Allows:
 #   - Commands targeting .temp/ paths
 #   - Git commands, package managers, build tools, etc.
-#   - Commands when .no-plan counter-based bypass is active (max N edits)
+#   - Commands when .no-plan-$PPID per-session counter-based bypass is active (max N edits)
 #   - Commands when an active plan exists
 #
 # Input: JSON on stdin with tool_name, tool_input.command, cwd
@@ -119,20 +119,19 @@ print(data.get('cwd', ''))
 
 PROJECT_ROOT="$(find_project_root "${HOOK_CWD:-$PWD}")"
 
-# Check for explicit bypass (counter-based: contains PID:remaining_edits)
-NO_PLAN_FILE="$PROJECT_ROOT/.temp/plan-mode/.no-plan"
+# Check for per-session bypass (counter-based: contains PID:remaining_edits)
+NO_PLAN_FILE="$PROJECT_ROOT/.temp/plan-mode/.no-plan-$PPID"
 if [ -f "$NO_PLAN_FILE" ]; then
   bypass_content=$(cat "$NO_PLAN_FILE" 2>/dev/null) || true
   if [[ "$bypass_content" == *:* ]]; then
     bypass_pid="${bypass_content%%:*}"
     bypass_count="${bypass_content##*:}"
   else
-    # Legacy format (just PID, no counter) — remove stale bypass
     rm -f "$NO_PLAN_FILE"
     bypass_pid=""
     bypass_count=""
   fi
-  if [ -n "$bypass_pid" ] && [ -n "$bypass_count" ] && kill -0 "$bypass_pid" 2>/dev/null; then
+  if [ -n "$bypass_pid" ] && [ "$bypass_pid" = "$PPID" ] && [ -n "$bypass_count" ]; then
     # Decrement counter
     new_count=$((bypass_count - 1))
     if [ "$new_count" -le 0 ]; then
@@ -142,28 +141,22 @@ if [ -f "$NO_PLAN_FILE" ]; then
     fi
     exit 0
   else
-    # Session ended or invalid format — stale bypass, remove it
+    # Wrong session or invalid format — stale bypass, remove it
     rm -f "$NO_PLAN_FILE"
     # Fall through to deny
   fi
 fi
 
-# Check for active plan (plan.json or legacy masterPlan.md) — if one exists, allow
-ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
-if [ -d "$ACTIVE_DIR" ]; then
-  for plan in "$ACTIVE_DIR"/*/plan.json; do
-    if [ -f "$plan" ]; then
-      exit 0
-    fi
-  done
-  for plan in "$ACTIVE_DIR"/*/masterPlan.md; do
-    if [ -f "$plan" ]; then
-      exit 0
-    fi
-  done
+# PPID-scoped plan check: this session must have a claimed plan
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+
+if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
+  exit 0
 fi
 
-# No plan + file-writing Bash command — deny
+# No plan for this session + file-writing Bash command — deny
 python3 << 'PYEOF'
 import json, sys
 
@@ -172,14 +165,15 @@ output = {
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",
         "permissionDecisionReason": (
-            "Bash command appears to write files, but no active plan exists. "
-            "Using Bash to bypass the Edit/Write plan enforcement is not allowed.\n\n"
+            "Bash command appears to write files, but no active plan exists for "
+            "this session. Using Bash to bypass the Edit/Write plan enforcement "
+            "is not allowed.\n\n"
             "The enforce-plan hook exists for a reason. Do NOT work around it.\n\n"
             "To proceed:\n"
             "1. Create a plan: write masterPlan.md to "
             ".temp/plan-mode/active/<plan-name>/masterPlan.md\n"
             "2. Use the Edit or Write tool (not Bash) to modify files\n\n"
-            "For trivial changes (max 3 edits): echo \\\"$PPID:3\\\" > .temp/plan-mode/.no-plan"
+            "For trivial changes (max 3 edits): echo \"$PPID:3\" > .temp/plan-mode/.no-plan-$PPID"
         )
     }
 }

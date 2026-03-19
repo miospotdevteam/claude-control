@@ -96,7 +96,7 @@ fi
 # Find the active plan path for the message (prefer plan.json)
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
-latest_plan=$(python3 "$PLAN_UTILS" find-active "$PROJECT_ROOT" 2>/dev/null) || true
+latest_plan=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
 
 # Fallback to masterPlan.md if no plan.json found
 if [ -z "$latest_plan" ]; then

@@ -51,11 +51,27 @@ show_plan_json() {
   local name="$(basename "$dir")"
   local label="${2:-}"
 
+  # Read owner PID from .session-lock
+  local owner_pid=""
+  local owner_status=""
+  if [ -f "$dir/.session-lock" ]; then
+    owner_pid=$(cat "$dir/.session-lock" 2>/dev/null) || true
+    if [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null; then
+      owner_status="PID $owner_pid (alive)"
+    elif [ -n "$owner_pid" ]; then
+      owner_status="PID $owner_pid (dead)"
+    else
+      owner_status="unclaimed"
+    fi
+  else
+    owner_status="unclaimed"
+  fi
+
   echo "========================================"
   if [ -n "$label" ]; then
-    echo "  Plan: $name  [$label]"
+    echo "  Plan: $name  [$label]  Owner: $owner_status"
   else
-    echo "  Plan: $name"
+    echo "  Plan: $name  Owner: $owner_status"
   fi
   echo "----------------------------------------"
 

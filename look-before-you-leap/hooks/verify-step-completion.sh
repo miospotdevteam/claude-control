@@ -9,8 +9,8 @@
 # The verification agent checks acceptance criteria, file changes, and
 # Progress completeness before removing the marker.
 #
-# Marker: .temp/plan-mode/.verify-pending-N (N = step number)
-# Cache: .temp/plan-mode/.step-status-cache (N:status per line)
+# Marker: <plan-dir>/.verify-pending-N (N = step number)
+# Cache: <plan-dir>/.step-status-cache (N:status per line)
 #
 # Input: JSON on stdin with tool_name, tool_input.file_path, cwd
 
@@ -44,8 +44,7 @@ print(data.get('cwd', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
-PLAN_MODE_DIR="$PROJECT_ROOT/.temp/plan-mode"
-CACHE_FILE="$PLAN_MODE_DIR/.step-status-cache"
+CACHE_FILE="$PLAN_DIR/.step-status-cache"
 
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
@@ -57,7 +56,6 @@ export HOOK_PLAN_JSON="$PLAN_JSON"
 export HOOK_MASTER_PLAN="$MASTER_PLAN"
 export HOOK_PLAN_UTILS="$PLAN_UTILS"
 export HOOK_CACHE_FILE="$CACHE_FILE"
-export HOOK_PLAN_MODE_DIR="$PLAN_MODE_DIR"
 
 # Compare current step statuses with cached, detect done transitions
 RESULT=$(python3 << 'PYEOF'
@@ -67,7 +65,7 @@ plan_json = os.environ["HOOK_PLAN_JSON"]
 master_plan = os.environ["HOOK_MASTER_PLAN"]
 plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
 cache_file = os.environ["HOOK_CACHE_FILE"]
-plan_mode_dir = os.environ["HOOK_PLAN_MODE_DIR"]
+plan_dir_env = os.environ["HOOK_PLAN_DIR"]
 
 # Parse current step statuses — prefer plan.json
 current_steps = {}
@@ -116,7 +114,7 @@ for step_num, status in current_steps.items():
         newly_completed.append(step_num)
 
 # Update cache
-os.makedirs(plan_mode_dir, exist_ok=True)
+os.makedirs(plan_dir_env, exist_ok=True)
 with open(cache_file, 'w') as f:
     for num in sorted(current_steps.keys(), key=int):
         f.write(f"{num}:{current_steps[num]}\n")
@@ -128,7 +126,7 @@ if not newly_completed:
 # Create .verify-pending-N markers
 markers_created = []
 for step_num in newly_completed:
-    marker_path = os.path.join(plan_mode_dir, f".verify-pending-{step_num}")
+    marker_path = os.path.join(plan_dir_env, f".verify-pending-{step_num}")
     with open(marker_path, 'w') as f:
         f.write(f"{step_num}\n{plan_path_for_marker}\n")
     markers_created.append(step_num)
@@ -168,7 +166,7 @@ import json, os, sys
 steps = os.environ["HOOK_NEWLY_COMPLETED"]
 plan_path = os.environ["HOOK_PLAN_PATH"]
 plan_name = os.environ["HOOK_PLAN_NAME"]
-plan_mode_dir = os.environ["HOOK_PLAN_MODE_DIR"]
+plan_dir = os.environ["HOOK_PLAN_DIR"]
 
 step_list = steps.split()
 step_display = ", ".join(f"Step {s}" for s in step_list)
@@ -200,7 +198,7 @@ output = {
             "the step's description.\n\n"
             "If ALL checks pass:\n"
             f"- Remove the verification marker(s): "
-            + " && ".join(f"rm {plan_mode_dir}/.verify-pending-{s}" for s in step_list)
+            + " && ".join(f"rm {plan_dir}/.verify-pending-{s}" for s in step_list)
             + "\n"
             "- Report: 'Verification PASSED for " + step_display + "'\n\n"
             "If ANY check fails:\n"
@@ -210,7 +208,7 @@ output = {
             "```\n\n"
             "Code file edits are BLOCKED until verification passes (the "
             f"enforce-plan hook checks for {markers}).\n\n"
-            f"To bypass: rm {plan_mode_dir}/.verify-pending-* "
+            f"To bypass: rm {plan_dir}/.verify-pending-* "
             "(only if you're sure the step is fully implemented)"
         )
     }

@@ -21,20 +21,15 @@ print(data.get('cwd', ''))
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 
-# Build active plan notice — prefer plan.json (execution source of truth)
+# Build active plan notice — PPID routing (subagents share parent's PPID)
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
 active_plan_path=""
 if [ -d "$ACTIVE_DIR" ]; then
-  # Find most recent plan.json (macOS stat, then Linux fallback)
-  active_plan_path=$(find "$ACTIVE_DIR" -name "plan.json" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
+  active_plan_path=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+  # Fallback to find-active if no PPID match (e.g. legacy plans without locks)
   if [ -z "$active_plan_path" ]; then
-    active_plan_path=$(find "$ACTIVE_DIR" -name "plan.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
-  fi
-  # Legacy fallback to masterPlan.md
-  if [ -z "$active_plan_path" ]; then
-    active_plan_path=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
-    if [ -z "$active_plan_path" ]; then
-      active_plan_path=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
-    fi
+    active_plan_path=$(python3 "$PLAN_UTILS" find-active "$PROJECT_ROOT" 2>/dev/null) || true
   fi
 fi
 

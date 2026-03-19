@@ -17,18 +17,21 @@ PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
 ACTIVE_DIR="$PLAN_DIR/active"
 PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
 
-# Clear handoff-pending — compaction achieves the same goal as plan mode handoff
-rm -f "$PROJECT_ROOT/.temp/plan-mode/.handoff-pending"
+# Clear per-plan handoff-pending — compaction achieves the same goal as plan mode handoff
+# (cleared below after finding this session's plan)
 
 active_plan_summary=""
 
 if [ -d "$ACTIVE_DIR" ]; then
-  # Try plan.json first
-  latest_json=$(python3 "$PLAN_UTILS" find-active "$PROJECT_ROOT" 2>/dev/null) || true
+  # PPID-based plan routing: find the plan claimed by this session
+  latest_json=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
 
   if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
     plan_dir="$(dirname "$latest_json")"
     plan_name="$(basename "$plan_dir")"
+
+    # Clear per-plan handoff marker — compaction achieves same goal
+    rm -f "$plan_dir/.handoff-pending"
 
     export HOOK_PLAN_JSON="$latest_json"
     export HOOK_PLAN_UTILS="$PLAN_UTILS"
@@ -76,31 +79,13 @@ PYEOF
     fi
 
     if [ "$has_work" = "True" ]; then
-      # Session lock — claim the plan for this session
-      lock_file="$plan_dir/.session-lock"
-      own_plan=true
-
-      if [ -f "$lock_file" ]; then
-        lock_pid=$(cat "$lock_file" 2>/dev/null) || true
-        if [ -n "$lock_pid" ] && [ "$lock_pid" != "$PPID" ]; then
-          if kill -0 "$lock_pid" 2>/dev/null; then
-            own_plan=false
-          fi
-        fi
-      fi
-
-      if $own_plan; then
-        echo "$PPID" > "$lock_file"
-        active_plan_summary="CONTEXT WAS COMPACTED — ACTIVE PLAN EXISTS"
-        active_plan_summary+=$'\n'"Plan: $plan_name"
-        active_plan_summary+=$'\n'"File: $latest_json"
-        active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
-        [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-        active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the plan.json file IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
-      else
-        active_plan_summary="NOTE: Context was compacted. Active plan exists but is owned by another session (PID: $lock_pid)."
-        active_plan_summary+=$'\n'"Plan: $plan_name | File: $latest_json"
-      fi
+      # Plan is already claimed by this PPID (find-for-session guarantees it)
+      active_plan_summary="CONTEXT WAS COMPACTED — ACTIVE PLAN EXISTS"
+      active_plan_summary+=$'\n'"Plan: $plan_name"
+      active_plan_summary+=$'\n'"File: $latest_json"
+      active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
+      [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
+      active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the plan.json file IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
     fi
   else
     # Legacy fallback: find masterPlan.md
@@ -129,31 +114,15 @@ PYEOF
           [ -n "$next_step" ] && next_step="NEXT: $next_step"
         fi
 
+        # Legacy path: claim for this session
         plan_dir="$(dirname "$latest")"
-        lock_file="$plan_dir/.session-lock"
-        own_plan=true
-
-        if [ -f "$lock_file" ]; then
-          lock_pid=$(cat "$lock_file" 2>/dev/null) || true
-          if [ -n "$lock_pid" ] && [ "$lock_pid" != "$PPID" ]; then
-            if kill -0 "$lock_pid" 2>/dev/null; then
-              own_plan=false
-            fi
-          fi
-        fi
-
-        if $own_plan; then
-          echo "$PPID" > "$lock_file"
-          active_plan_summary="CONTEXT WAS COMPACTED — ACTIVE PLAN EXISTS"
-          active_plan_summary+=$'\n'"Plan: $plan_name"
-          active_plan_summary+=$'\n'"File: $latest"
-          active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
-          [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-          active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
-        else
-          active_plan_summary="NOTE: Context was compacted. Active plan exists but is owned by another session (PID: $lock_pid)."
-          active_plan_summary+=$'\n'"Plan: $plan_name | File: $latest"
-        fi
+        echo "$PPID" > "$plan_dir/.session-lock"
+        active_plan_summary="CONTEXT WAS COMPACTED — ACTIVE PLAN EXISTS"
+        active_plan_summary+=$'\n'"Plan: $plan_name"
+        active_plan_summary+=$'\n'"File: $latest"
+        active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
+        [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
+        active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
       fi
     fi
   fi

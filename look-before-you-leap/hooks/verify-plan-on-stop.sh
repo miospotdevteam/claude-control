@@ -34,20 +34,22 @@ print(data.get('cwd', ''))
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 
-# Allow stopping during plan review (handoff pending = waiting for user in Orbit)
-if [ -f "$PROJECT_ROOT/.temp/plan-mode/.handoff-pending" ]; then
-  exit 0
-fi
-
 # No active directory — nothing to check
 if [ ! -d "$ACTIVE_DIR" ]; then
   exit 0
 fi
 
-# Find most recent active plan — prefer plan.json
+# Find this session's plan via PPID routing
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
-latest_json=$(python3 "$PLAN_UTILS" find-active "$PROJECT_ROOT" 2>/dev/null) || true
+latest_json=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+
+# Allow stopping during plan review (per-plan handoff pending = waiting for user in Orbit)
+if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
+  if [ -f "$(dirname "$latest_json")/.handoff-pending" ]; then
+    exit 0
+  fi
+fi
 
 if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
   # Use plan.json for status check

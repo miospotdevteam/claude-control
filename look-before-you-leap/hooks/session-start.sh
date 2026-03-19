@@ -42,10 +42,26 @@ fi
 # Read config as JSON (empty object if missing/broken)
 PROJECT_CONFIG_JSON=$(python3 "$LIB_DIR/read-config.py" "$PROJECT_ROOT" 2>/dev/null) || PROJECT_CONFIG_JSON="{}"
 
-# --- Section 1.7: Clear handoff-pending marker ---
+# --- Section 1.7: Clear per-plan handoff-pending marker for this session ---
 # A new session means context was cleared (via plan mode handoff, /clear, or
 # compaction). The handoff goal (fresh context for execution) is achieved.
-rm -f "$PROJECT_ROOT/.temp/plan-mode/.handoff-pending"
+# Find this session's plan and clear its marker (per-plan, not global).
+PLAN_UTILS_EARLY="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+session_plan=$(python3 "$PLAN_UTILS_EARLY" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+if [ -n "$session_plan" ] && [ -f "$session_plan" ]; then
+  rm -f "$(dirname "$session_plan")/.handoff-pending"
+fi
+
+# --- Section 1.8: Clean up stale .no-plan-* files (dead PIDs) ---
+if [ -d "$PROJECT_ROOT/.temp/plan-mode" ]; then
+  for no_plan_file in "$PROJECT_ROOT/.temp/plan-mode"/.no-plan-*; do
+    [ -f "$no_plan_file" ] || continue
+    stale_pid="${no_plan_file##*.no-plan-}"
+    if [ -n "$stale_pid" ] && ! kill -0 "$stale_pid" 2>/dev/null; then
+      rm -f "$no_plan_file"
+    fi
+  done
+fi
 
 # --- Section 2: Active plan detection ---
 active_plan_summary=""
@@ -53,8 +69,21 @@ ACTIVE_DIR="$PLAN_DIR/active"
 PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
 
 if [ -d "$ACTIVE_DIR" ]; then
-  # Try plan.json first
-  latest_json=$(python3 "$PLAN_UTILS" find-active "$PROJECT_ROOT" 2>/dev/null) || true
+  # PPID-based plan routing: find the plan claimed by this session
+  latest_json=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+
+  # If no plan claimed by this PPID, try to auto-claim an unclaimed (orphaned) plan
+  if [ -z "$latest_json" ]; then
+    unclaimed_line=$(python3 "$PLAN_UTILS" find-unclaimed "$PROJECT_ROOT" 2>/dev/null | head -1) || true
+    if [ -n "$unclaimed_line" ]; then
+      unclaimed_path="${unclaimed_line#*	}"
+      if [ -n "$unclaimed_path" ] && [ -f "$unclaimed_path" ]; then
+        # Auto-claim by writing PPID to .session-lock
+        echo "$PPID" > "$(dirname "$unclaimed_path")/.session-lock"
+        latest_json="$unclaimed_path"
+      fi
+    fi
+  fi
 
   if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
     plan_dir="$(dirname "$latest_json")"
@@ -108,37 +137,70 @@ PYEOF
     fi
 
     if [ "$has_work" = "True" ]; then
-      # --- Session lock ---
-      lock_file="$plan_dir/.session-lock"
-      own_plan=true
-
-      if [ -f "$lock_file" ]; then
-        lock_pid=$(cat "$lock_file" 2>/dev/null) || true
-        if [ -n "$lock_pid" ] && [ "$lock_pid" != "$PPID" ]; then
-          if kill -0 "$lock_pid" 2>/dev/null; then
-            own_plan=false
-          fi
-        fi
-      fi
-
-      if $own_plan; then
-        echo "$PPID" > "$lock_file"
-        active_plan_summary="ACTIVE PLAN DETECTED"
-        active_plan_summary+=$'\n'"Plan: $plan_name"
-        active_plan_summary+=$'\n'"File: $latest_json"
-        active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
-        [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-        active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the plan.json file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
-      else
-        active_plan_summary="NOTE: Active plan exists but is owned by another Claude session"
-        active_plan_summary+=$'\n'"Plan: $plan_name"
-        active_plan_summary+=$'\n'"File: $latest_json"
-        active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
-        [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-        active_plan_summary+=$'\n'$'\n'"This plan is being worked on by another Claude session (PID: $lock_pid). Do NOT auto-resume it."
-      fi
+      # Plan is already claimed by this PPID (either found or just auto-claimed)
+      active_plan_summary="ACTIVE PLAN DETECTED"
+      active_plan_summary+=$'\n'"Plan: $plan_name"
+      active_plan_summary+=$'\n'"File: $latest_json"
+      active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
+      [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
+      active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the plan.json file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
     fi
-  else
+
+  # No plan found for this session — check if OTHER sessions own plans (informational)
+  elif [ -z "$latest_json" ]; then
+    other_plan=$(python3 "$PLAN_UTILS" find-active "$PROJECT_ROOT" 2>/dev/null) || true
+    if [ -n "$other_plan" ] && [ -f "$other_plan" ]; then
+      other_dir="$(dirname "$other_plan")"
+      other_name="$(basename "$other_dir")"
+      other_lock_pid=$(cat "$other_dir/.session-lock" 2>/dev/null) || true
+
+      export HOOK_PLAN_JSON="$other_plan"
+      export HOOK_PLAN_UTILS="$PLAN_UTILS"
+
+      other_status_info=$(python3 << 'PYEOF'
+import json, os, sys
+plan_json = os.environ["HOOK_PLAN_JSON"]
+plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
+sys.path.insert(0, os.path.dirname(plan_utils_path))
+import plan_utils
+plan = plan_utils.read_plan(plan_json)
+counts = plan_utils.count_by_status(plan)
+next_step = plan_utils.get_next_step(plan)
+next_info = ""
+if next_step:
+    if next_step["status"] == "in_progress":
+        next_info = f"IN PROGRESS: Step {next_step['id']}: {next_step['title']}"
+    else:
+        next_info = f"NEXT: Step {next_step['id']}: {next_step['title']}"
+print(json.dumps({
+    "done": counts.get("done", 0),
+    "active": counts.get("in_progress", 0),
+    "pending": counts.get("pending", 0),
+    "blocked": counts.get("blocked", 0),
+    "next_step": next_info,
+}))
+PYEOF
+      ) || true
+
+      if [ -n "$other_status_info" ]; then
+        done_count=$(python3 -c "import json; print(json.loads('$other_status_info').get('done', 0))" 2>/dev/null) || true
+        active_count=$(python3 -c "import json; print(json.loads('$other_status_info').get('active', 0))" 2>/dev/null) || true
+        pending_count=$(python3 -c "import json; print(json.loads('$other_status_info').get('pending', 0))" 2>/dev/null) || true
+        blocked_count=$(python3 -c "import json; print(json.loads('$other_status_info').get('blocked', 0))" 2>/dev/null) || true
+        next_step=$(python3 -c "import json; print(json.loads('$other_status_info').get('next_step', ''))" 2>/dev/null) || true
+      fi
+
+      active_plan_summary="NOTE: Active plan exists but is owned by another Claude session"
+      active_plan_summary+=$'\n'"Plan: $other_name"
+      active_plan_summary+=$'\n'"File: $other_plan"
+      active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
+      [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
+      active_plan_summary+=$'\n'$'\n'"This plan is being worked on by another Claude session (PID: $other_lock_pid). Do NOT auto-resume it."
+    fi
+  fi
+
+  # Legacy fallback only if no plan.json found at all via any method
+  if [ -z "$latest_json" ] && [ -z "$active_plan_summary" ]; then
     # Legacy fallback: find masterPlan.md
     latest=""
     latest=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')

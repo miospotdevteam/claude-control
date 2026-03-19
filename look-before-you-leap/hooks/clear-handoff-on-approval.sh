@@ -14,7 +14,7 @@ set -euo pipefail
 
 INPUT=$(cat)
 
-# Find project root
+# Find project root and derive plan dir via PPID routing
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
 CWD=$(python3 -c "
@@ -24,7 +24,17 @@ print(data.get('cwd', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
-MARKER="$PROJECT_ROOT/.temp/plan-mode/.handoff-pending"
+
+# Find the plan for this session
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+
+if [ -z "$SESSION_PLAN" ] || [ ! -f "$SESSION_PLAN" ]; then
+  exit 0
+fi
+
+MARKER="$(dirname "$SESSION_PLAN")/.handoff-pending"
 
 # No marker — nothing to do
 if [ ! -f "$MARKER" ]; then
