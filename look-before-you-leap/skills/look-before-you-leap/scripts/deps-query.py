@@ -2,8 +2,8 @@
 """Query dependency maps for a file's dependencies and dependents.
 
 Usage:
-    python3 deps-query.py <project_root> <file_path>
-    python3 deps-query.py <project_root> <file_path> --json
+    python3 deps-query.py <project_root> "<file_path>"
+    python3 deps-query.py <project_root> "<file_path>" --json
 
 Auto-regenerates stale modules before querying. Scans ALL dep maps
 for cross-module dependents.
@@ -152,7 +152,7 @@ def format_human(result):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: deps-query.py <project_root> <file_path> [--json]", file=sys.stderr)
+        print('Usage: deps-query.py <project_root> "<file_path>" [--json]', file=sys.stderr)
         sys.exit(1)
 
     project_root = os.path.abspath(sys.argv[1])

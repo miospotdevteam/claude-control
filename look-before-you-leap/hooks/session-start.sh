@@ -377,7 +377,7 @@ try:
 
     if dep_maps.get("modules"):
         module_count = len(dep_maps["modules"])
-        deps_cmd = f"python3 {scripts_dir}/deps-query.py {project_root} <file_path>"
+        deps_cmd = f'python3 {scripts_dir}/deps-query.py {project_root} "<file_path>"'
         gen_cmd = f"python3 {scripts_dir}/deps-generate.py {project_root} --stale-only"
 
         # Conductor skill: replace exploration preamble with resolved command
@@ -550,7 +550,7 @@ if project_profile:
 # Dep maps awareness — explicit callout when configured
 if dep_maps.get("modules"):
     module_list = ", ".join(dep_maps["modules"])
-    deps_cmd = f"python3 {scripts_dir}/deps-query.py {project_root} <file_path>"
+    deps_cmd = f'python3 {scripts_dir}/deps-query.py {project_root} "<file_path>"'
     gen_cmd = f"python3 {scripts_dir}/deps-generate.py {project_root} --stale-only"
     dep_maps_notice = (
         "**Dependency Maps Available**\n\n"

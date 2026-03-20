@@ -10,10 +10,10 @@ import/consumer discovery in TypeScript projects.
 
 ```bash
 # Query a file's dependencies and dependents (auto-regens if stale)
-python3 <plugin>/scripts/deps-query.py <project_root> <file_path>
+python3 <plugin>/scripts/deps-query.py <project_root> "<file_path>"
 
 # Same, JSON output for machine consumption
-python3 <plugin>/scripts/deps-query.py <project_root> <file_path> --json
+python3 <plugin>/scripts/deps-query.py <project_root> "<file_path>" --json
 ```
 
 The output shows:
@@ -27,7 +27,7 @@ The output shows:
 
 ```bash
 # Generate dep map for one module
-python3 <plugin>/scripts/deps-generate.py <project_root> --module apps/api
+python3 <plugin>/scripts/deps-generate.py <project_root> --module "apps/api"
 
 # Generate all configured modules
 python3 <plugin>/scripts/deps-generate.py <project_root> --all

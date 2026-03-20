@@ -2,7 +2,7 @@
 """Generate normalized dependency maps via madge + dynamic import scanning.
 
 Usage:
-    python3 deps-generate.py <project_root> --module apps/api
+    python3 deps-generate.py <project_root> --module "apps/api"
     python3 deps-generate.py <project_root> --all
     python3 deps-generate.py <project_root> --stale-only
 
@@ -434,7 +434,7 @@ def generate_module(project_root, module_path, config):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: deps-generate.py <project_root> (--module <path> | --all | --stale-only)", file=sys.stderr)
+        print('Usage: deps-generate.py <project_root> (--module "<path>" | --all | --stale-only)', file=sys.stderr)
         sys.exit(1)
 
     project_root = os.path.abspath(sys.argv[1])

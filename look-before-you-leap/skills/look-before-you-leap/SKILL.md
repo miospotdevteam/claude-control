@@ -441,7 +441,7 @@ failing, `plan_utils.py` crashing, a schema validation error, a script
 not found, or any unexpected behavior from plugin hooks or scripts —
 document it immediately:
 
-1. **Create a `.md` file** in `${CLAUDE_PLUGIN_ROOT}/usage-errors/` with
+1. **Create a `.md` file** in `usage-errors/` at the **project root** with
    the naming convention `YYYY-MM-DD-<short-description>.md`.
 2. **Include**:
    - What you were doing when the error occurred
@@ -449,6 +449,7 @@ document it immediately:
    - The full error output
    - Your best guess at the root cause
 3. **Then continue your work** — logging the error does not block execution
+4. **When the error is fixed**, move the `.md` file to `usage-errors/resolved/`
 
 This applies only to errors originating from the plugin itself (hooks,
 scripts, skills, plan infrastructure). Do NOT log errors from the user's

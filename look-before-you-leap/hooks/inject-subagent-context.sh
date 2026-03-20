@@ -153,7 +153,7 @@ if dep_maps and dep_maps.get("modules"):
     )
     if scripts_dir and project_root:
         base_rules.append(
-            f"  Command: `python3 {scripts_dir}/deps-query.py {project_root} <file_path>`"
+            f'  Command: `python3 {scripts_dir}/deps-query.py {project_root} "<file_path>"`'
         )
 
 preamble_lines = list(base_rules)

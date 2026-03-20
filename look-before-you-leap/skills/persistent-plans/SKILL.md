@@ -186,10 +186,10 @@ modify BEFORE writing the plan. This tells you:
 
 ```bash
 # Query blast radius for a file
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py . <file_path>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py . "<file_path>"
 
 # JSON output for programmatic use
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py . <file_path> --json
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py . "<file_path>" --json
 ```
 
 Feed the dep-map output directly into your plan: use the DEPENDENTS list

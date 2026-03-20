@@ -38,6 +38,11 @@ print(data.get('cwd', ''))
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 
+# Allow edits to files outside the project root (e.g., ~/.claude/plans/ scratch pad)
+if [[ -n "$FILE_PATH" ]] && [[ "$FILE_PATH" != "$PROJECT_ROOT"* ]]; then
+  exit 0
+fi
+
 # Check for per-session bypass (counter-based: contains PID:remaining_edits)
 NO_PLAN_FILE="$PROJECT_ROOT/.temp/plan-mode/.no-plan-$PPID"
 if [ -f "$NO_PLAN_FILE" ]; then

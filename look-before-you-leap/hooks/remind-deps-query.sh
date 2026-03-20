@@ -87,7 +87,7 @@ output = {
         "permissionDecisionReason": (
             "Dep maps are configured — grepping for import/consumer patterns is blocked. "
             "Use deps-query.py instead, which is faster and catches cross-module consumers.\n\n"
-            "Run: python3 ${SCRIPTS_DIR}/deps-query.py ${PROJECT_ROOT} <file_path>\n\n"
+            "Run: python3 ${SCRIPTS_DIR}/deps-query.py ${PROJECT_ROOT} \"<file_path>\"\n\n"
             "Grep is only allowed for:\n"
             "- Non-TypeScript files\n"
             "- String references (config keys, env vars, literal text)\n"

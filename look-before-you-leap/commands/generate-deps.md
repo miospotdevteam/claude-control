@@ -144,7 +144,7 @@ Summarize what was done:
 
 Show the query command so the user can try it:
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> <any-file-path>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> "<any-file-path>"
 ```
 
 Mention that dep maps auto-refresh: the `mark-deps-stale.sh` hook marks

@@ -95,7 +95,7 @@ section of discovery. Without dep maps, you're guessing at consumers;
 with them, you have the complete picture.
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> <file_path>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> "<file_path>"
 ```
 
 #### masterPlan.md — user-facing proposal (write-once)

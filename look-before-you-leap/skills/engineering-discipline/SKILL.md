@@ -37,7 +37,7 @@ When you open a file to change it, also read:
   every consumer is affected. Find them **before** editing:
   ```bash
   # Primary method (TypeScript projects with dep maps configured):
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> <file_path>
+  python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> "<file_path>"
   # Fallback (no dep maps, or non-TypeScript):
   # Grep for import statements referencing this file
   ```
@@ -131,7 +131,7 @@ The check process:
 <!-- deps-consumer-blast-start -->
 1. Find all consumers using dep maps (primary) or grep (fallback):
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> <file_path>
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> "<file_path>"
    ```
    This shows every file that imports the one you're changing, across
    all modules. A hook enforces this when dep maps are configured.
@@ -232,7 +232,7 @@ you didn't break them.
 
 ```bash
 # Re-run deps-query on every file you modified that has downstream consumers:
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> <modified_file>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> "<modified_file>"
 ```
 
 For each consumer found, verify it still compiles and behaves correctly
