@@ -181,7 +181,8 @@ compaction recovery depends on them. Do NOT invent your own schema:
   `entryPoints`, `consumers`, `blastRadius`, `confidence`. Your exploration
   findings go HERE, not just in discovery.md.
 - **Each step**: `id`, `title`, `status`, `skill`, `files`, `description`,
-  `acceptanceCriteria`, `progress`, `result`
+  `acceptanceCriteria`, `progress`, `result`. Optional booleans:
+  `simplify`, `qa`, `codexVerify` (all default false)
 - **Each progress item**: `task`, `status`, `files` — all three fields,
   no exceptions. Progress arrays go INSIDE each step, never at the top level.
 
@@ -378,6 +379,55 @@ QA sub-agent after marking the step `done`:
 QA dispatch is opt-in per step. The `writing-plans` skill decides which
 steps warrant it. Do not dispatch for steps without `qa: true`.
 
+### Post-step Codex verification
+
+When a completed step has `codexVerify: true` in plan.json, call the
+Codex MCP tool to get an independent second opinion after marking the
+step `done`. Codex runs on a different model (GPT-5.4) with its own
+engineering-discipline plugin, providing truly independent verification
+with fresh context.
+
+**Prerequisites**: The Codex MCP server must be configured globally
+(`claude mcp add --scope user codex -- codex mcp-server`). If the
+`mcp__codex__codex` tool is not available, skip Codex verification
+gracefully and note it in the step's result field.
+
+**Flow:**
+
+1. **Read the prompt template** from
+   `references/codex-verify-template.md`
+2. **Assemble the MCP call** by interpolating plan.json values into the
+   template:
+   - `developer-instructions`: role + discovery scope/consumers/blast
+     radius + step title/acceptance criteria/files/description
+   - `prompt`: verification task for the specific step
+3. **Call `mcp__codex__codex`** with:
+   ```json
+   {
+     "prompt": "<assembled prompt>",
+     "developer-instructions": "<assembled instructions>",
+     "sandbox": "workspace-write",
+     "approval-policy": "never",
+     "cwd": "<project root>"
+   }
+   ```
+4. **Read Codex's response** (`content` field). If it reports issues:
+   - Fix each issue (follow engineering-discipline, not quick patches)
+   - After fixing, call `mcp__codex__codex-reply` with the saved
+     `threadId` and the re-verify prompt from the template
+   - Repeat until Codex reports PASS or you've addressed all findings
+5. **Record the Codex verdict** in the step's `result` field: PASS or
+   list of issues found and how they were resolved
+
+Codex verification is **on by default for every step** — the
+`writing-plans` skill sets `codexVerify: true` on all steps unless the
+user explicitly opts out. Do not dispatch for steps with
+`codexVerify: false`.
+
+The `verify-step-completion` hook automatically injects a Codex
+verification directive when it detects a step with `codexVerify: true`
+transitioning to done.
+
 ---
 
 ## Step 4: Verify (every time, no exceptions)
@@ -477,6 +527,9 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 - `references/testing-strategy.md`, `references/security-guide.md`,
   `references/api-contracts-guide.md`, `references/dependency-mapping.md`
 - `references/debugging-root-cause-tracing.md`, `references/debugging-defense-in-depth.md`
+
+**Codex verification:**
+- `references/codex-verify-template.md` — prompt templates for Codex MCP verification calls
 
 **Scripts:**
 - `scripts/init-plan-dir.sh` — initialize `.temp/plan-mode/`

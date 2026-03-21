@@ -167,10 +167,57 @@ steps = os.environ["HOOK_NEWLY_COMPLETED"]
 plan_path = os.environ["HOOK_PLAN_PATH"]
 plan_name = os.environ["HOOK_PLAN_NAME"]
 plan_dir = os.environ["HOOK_PLAN_DIR"]
+plan_json_path = os.environ["HOOK_PLAN_JSON"]
+plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
 
 step_list = steps.split()
 step_display = ", ".join(f"Step {s}" for s in step_list)
 markers = ", ".join(f".verify-pending-{s}" for s in step_list)
+
+# Check which completed steps have codexVerify: true
+codex_verify_steps = []
+if os.path.isfile(plan_json_path):
+    try:
+        sys.path.insert(0, os.path.dirname(plan_utils_path))
+        import plan_utils
+        plan = plan_utils.read_plan(plan_json_path)
+        for step in plan.get("steps", []):
+            if str(step["id"]) in step_list and step.get("codexVerify", False):
+                codex_verify_steps.append(str(step["id"]))
+    except Exception:
+        pass
+
+# Build Codex verification directive if any steps have codexVerify
+codex_directive = ""
+if codex_verify_steps:
+    codex_step_display = ", ".join(f"Step {s}" for s in codex_verify_steps)
+    codex_directive = (
+        f"\n\n## Codex Independent Verification\n\n"
+        f"{codex_step_display} {'has' if len(codex_verify_steps) == 1 else 'have'} "
+        "`codexVerify: true` — after the verification agent passes, also run "
+        "Codex MCP verification for an independent second opinion.\n\n"
+        "1. Read `references/codex-verify-template.md` for the prompt template\n"
+        "2. Assemble the MCP call by interpolating plan.json values:\n"
+        "   - `developer-instructions`: discovery scope/consumers/blast radius "
+        "+ step title/acceptance criteria/files/description\n"
+        "   - `prompt`: verification task for the step\n"
+        "3. Call `mcp__codex__codex` with:\n"
+        "   ```json\n"
+        "   {\n"
+        '     "prompt": "<assembled prompt>",\n'
+        '     "developer-instructions": "<assembled instructions>",\n'
+        '     "sandbox": "workspace-write",\n'
+        '     "approval-policy": "never",\n'
+        '     "cwd": "<project root>"\n'
+        "   }\n"
+        "   ```\n"
+        "4. Read the response. If Codex found issues:\n"
+        "   - Fix them, then call `mcp__codex__codex-reply` with the "
+        "`threadId` and re-verify prompt\n"
+        "5. Record the Codex verdict in the step's `result` field\n\n"
+        "If `mcp__codex__codex` is not available (Codex MCP server not "
+        "configured), skip gracefully and note in the result field."
+    )
 
 output = {
     "hookSpecificOutput": {
@@ -210,6 +257,7 @@ output = {
             f"enforce-plan hook checks for {markers}).\n\n"
             f"To bypass: rm {plan_dir}/.verify-pending-* "
             "(only if you're sure the step is fully implemented)"
+            + codex_directive
         )
     }
 }

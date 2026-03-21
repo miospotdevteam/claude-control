@@ -211,6 +211,22 @@ to see: inconsistencies, missing edge cases, unclear code, broken patterns.
 Default to `false` for backend logic, config changes, and steps already
 covered by automated tests.
 
+#### `codexVerify` — default to `true` on every step
+
+**Set `codexVerify: true` on every step by default.** Codex runs as an
+independent MCP agent (GPT-5.4 with its own engineering discipline plugin)
+that independently verifies the diff against the step's acceptance criteria,
+runs the project's type checker and tests, and checks consumer integrity
+via dep maps. It catches issues Claude might miss due to compaction or
+tunnel vision — bugs found early are cheap to fix.
+
+Only set `codexVerify: false` when the user explicitly opts out, or when
+the Codex MCP server is known to be unavailable. If unavailable at
+runtime, Codex verification is skipped gracefully.
+
+See `references/codex-verify-template.md` for the prompt templates used
+in the MCP call.
+
 #### Key rules
 
 - **Exact skill identifiers** — in each step's `skill` field, use the full

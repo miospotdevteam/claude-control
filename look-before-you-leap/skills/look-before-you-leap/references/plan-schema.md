@@ -37,6 +37,7 @@ human-facing presentation document — it does NOT contain execution state.
       "status": "pending",
       "skill": "none",
       "simplify": false,
+      "codexVerify": true,
       "files": ["src/foo.ts", "src/bar.ts"],
       "description": "What needs to happen. Specific enough for a fresh context window.",
       "acceptanceCriteria": "Concrete, verifiable conditions (e.g., 'tsc --noEmit passes').",
@@ -103,6 +104,7 @@ human-facing presentation document — it does NOT contain execution state.
 | `skill` | string | yes | Skill to invoke, or `"none"` |
 | `simplify` | boolean | yes | Whether to run simplification after step |
 | `qa` | boolean | no | Whether to run fresh-eyes QA sub-agent after step (default false) |
+| `codexVerify` | boolean | no | Whether to run Codex MCP verification after step (default true — set on every step unless user opts out). Requires Codex MCP server configured globally. See `references/codex-verify-template.md` for prompt templates. |
 | `files` | string[] | yes | Files involved in this step |
 | `description` | string | yes | What to do — self-contained for fresh context |
 | `acceptanceCriteria` | string | yes | How to know the step is done |

@@ -173,6 +173,7 @@ look-before-you-leap/
     │   │   ├── debugging-defense-in-depth.md        # Layer 3: Multi-layer validation
     │   │   ├── debugging-condition-based-waiting.md  # Layer 3: Replace timeouts with polling
     │   │   ├── verification-commands.md # tsc/lint/test commands by ecosystem
+    │   │   ├── codex-verify-template.md # Prompt templates for Codex MCP verification
     │   │   └── anti-slop.md             # Shared anti-AI-slop banlist for creative skills
     │   └── scripts/
     │       ├── init-plan-dir.sh         # Sets up .temp/plan-mode/
