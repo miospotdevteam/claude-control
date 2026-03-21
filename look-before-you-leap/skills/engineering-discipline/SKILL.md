@@ -402,3 +402,5 @@ If you catch yourself doing any of these, stop and reconsider:
 | Doing work that a skill covers without invoking that skill first | Check the skill routing table in the conductor — if a skill exists for this work, invoke it via the Skill tool |
 | Ignoring a warning from plan_utils.py or a hook script | Stop and fix the issue — warnings mean something is wrong, not "proceed with caution" |
 | Reacting to IDE/LSP diagnostics mid-edit without running the real type checker | LSP diagnostics go stale during edits — run `tsc --noEmit` (or equivalent) to confirm before "fixing" phantom errors |
+| Writing plan.json directly after brainstorming (skipping writing-plans skill) | Brainstorming produces design.md, then you MUST call `Skill(skill: "look-before-you-leap:writing-plans")` — do not shortcut |
+| Fixing Codex findings then moving on without re-verifying via codex-reply | Call `mcp__codex__codex-reply` with the threadId after fixes — tsc passing is not the same as Codex confirming |

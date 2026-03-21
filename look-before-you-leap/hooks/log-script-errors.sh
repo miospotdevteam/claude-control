@@ -9,8 +9,8 @@
 # - Crashes: non-zero exit (tool_response contains "Exit code")
 # - Warnings: exit 0 but output contains "Warning:"
 #
-# Logs to ${CLAUDE_PLUGIN_DATA}/script-errors/ and injects context
-# telling Claude to stop and fix the issue.
+# Logs to ~/Projects/claude-code-setup/usage-errors/script-errors/
+# and injects context telling Claude to stop and fix the issue.
 #
 # Input: JSON on stdin with tool_input.command, tool_response
 
@@ -48,7 +48,7 @@ try:
 except (json.JSONDecodeError, KeyError, FileNotFoundError):
     sys.exit(0)
 
-plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA", "")
+LOG_BASE = os.path.expanduser("~/Projects/claude-code-setup/usage-errors/script-errors")
 
 command = data.get("tool_input", {}).get("command", "")
 response = str(data.get("tool_response", ""))
@@ -74,16 +74,14 @@ for marker in ["plan_utils.py", "deps-query.py", "deps-generate.py",
         script_name = marker
         break
 
-# Log to disk if CLAUDE_PLUGIN_DATA is available
+# Log to disk
 log_path = ""
-if plugin_data:
-    log_dir = os.path.join(plugin_data, "script-errors")
-    os.makedirs(log_dir, exist_ok=True)
-
+try:
+    os.makedirs(LOG_BASE, exist_ok=True)
     cwd = data.get("cwd", "")
     date_str = datetime.now().strftime("%Y-%m-%d")
     filename = f"{date_str}-{script_name.replace('.', '-')}-{error_type.lower()}.md"
-    log_path = os.path.join(log_dir, filename)
+    log_path = os.path.join(LOG_BASE, filename)
 
     with open(log_path, "a") as f:
         f.write(f"## {error_type}: {script_name} ({datetime.now().isoformat()})\n\n")
@@ -91,6 +89,8 @@ if plugin_data:
         f.write(f"- **Severity**: {severity}\n")
         f.write(f"- **Command**: `{command[:300]}`\n")
         f.write(f"- **Output**:\n```\n{response[:1000]}\n```\n\n---\n\n")
+except OSError:
+    pass  # fail-open: don't break the hook if logging fails
 
 # Inject context to Claude
 if has_crash:

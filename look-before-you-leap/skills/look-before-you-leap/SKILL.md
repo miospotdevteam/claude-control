@@ -424,13 +424,17 @@ gracefully and note it in the step's result field.
    }
    ```
 4. **Read Codex's response** (`content` field). If it reports issues:
-   - **Log the findings** before fixing (see "Codex Findings Log" below)
+   - Codex auto-logs findings to `~/Projects/claude-code-setup/usage-errors/codex-findings/`
    - Fix each issue (follow engineering-discipline, not quick patches)
-   - After fixing, call `mcp__codex__codex-reply` with the saved
-     `threadId` and the re-verify prompt from the template
-   - Repeat until Codex reports PASS or you've addressed all findings
+   - **You MUST re-verify after fixing.** Call `mcp__codex__codex-reply`
+     with the saved `threadId` and the re-verify prompt from the template.
+     Do NOT skip this — `tsc --noEmit` passing is not the same as Codex
+     confirming your fixes are correct.
+   - Repeat the fix → re-verify loop until Codex reports PASS
 5. **Record the Codex verdict** in the step's `result` field: PASS or
-   list of issues found and how they were resolved
+   list of issues found and how they were resolved. The verdict must
+   come from Codex (the final PASS or remaining issues), not from your
+   own assessment
 
 Codex verification is **on by default for every step** — the
 `writing-plans` skill sets `codexVerify: true` on all steps unless the
@@ -442,32 +446,16 @@ verification directive when it detects a step with `codexVerify: true`
 
 ### Codex Findings Log
 
-When Codex reports issues (anything other than PASS), log the findings
-to `${CLAUDE_PLUGIN_DATA}/codex-findings/` **before fixing them**. This
-builds a failure mode database that helps improve the plugin's
-instructions over time.
+Codex automatically logs its findings (when not PASS) to
+`~/Projects/claude-code-setup/usage-errors/codex-findings/`. This is
+configured in the developer-instructions passed to the MCP call — Codex
+writes the file itself before returning its response. You do not need
+to log findings manually.
 
-1. **Create a `.md` file** with the naming convention
-   `YYYY-MM-DD-<plan-name>-step-N.md`
-2. **Include**:
-   - Plan name and step number
-   - Project directory
-   - Each finding from Codex: severity, failure category, file, what
-     was wrong
-   - Whether the issue was something the conductor/engineering-discipline
-     should have caught (i.e., a gap in plugin instructions vs. a
-     legitimate edge case)
-3. **Do NOT wait** — log first, fix second. The log captures what Claude
-   got wrong before the evidence is fixed away.
-
-The failure categories (from the Codex template) are: `INCOMPLETE_WORK`,
-`MISSED_CONSUMER`, `TYPE_SAFETY`, `SILENT_SCOPE_CUT`, `WRONG_PATTERN`,
-`MISSING_TEST`, `MISSING_I18N`, `OTHER`. These categories help identify
-which plugin instructions need strengthening.
-
-If `${CLAUDE_PLUGIN_DATA}` is not set (plugin not installed via
-marketplace), skip the log gracefully
-transitioning to done.
+The failure categories are: `INCOMPLETE_WORK`, `MISSED_CONSUMER`,
+`TYPE_SAFETY`, `SILENT_SCOPE_CUT`, `WRONG_PATTERN`, `MISSING_TEST`,
+`MISSING_I18N`, `OTHER`. These help identify which plugin instructions
+need strengthening over time.
 
 ---
 

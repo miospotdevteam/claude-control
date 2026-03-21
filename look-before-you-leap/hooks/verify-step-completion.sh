@@ -206,13 +206,13 @@ if codex_verify_steps:
         "   {\n"
         '     "prompt": "<assembled prompt>",\n'
         '     "developer-instructions": "<assembled instructions>",\n'
-        '     "sandbox": "workspace-write",\n'
+        '     "sandbox": "danger-full-access",\n'
         '     "approval-policy": "never",\n'
         '     "cwd": "<project root>"\n'
         "   }\n"
         "   ```\n"
         "4. Read the response. If Codex found issues:\n"
-        "   - **Log findings first** to `${CLAUDE_PLUGIN_DATA}/codex-findings/` "
+        "   - **Log findings first** to `~/Projects/claude-code-setup/usage-errors/codex-findings/` "
         "as `YYYY-MM-DD-<plan>-step-N.md` (see conductor skill for format)\n"
         "   - Fix them, then call `mcp__codex__codex-reply` with the "
         "`threadId` and re-verify prompt\n"

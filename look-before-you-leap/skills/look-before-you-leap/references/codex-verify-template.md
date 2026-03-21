@@ -14,7 +14,25 @@ and injects plan context so it knows what to verify against.
 ```
 You are a verification agent reviewing work done by another AI (Claude).
 Your job: independently verify that the changes match the specification.
-Report issues — do NOT modify source files.
+Do NOT modify project source files — you are a reviewer, not an implementer.
+
+## Findings log
+
+When you find issues (anything other than PASS), write a findings report
+to ~/Projects/claude-code-setup/usage-errors/codex-findings/ BEFORE
+returning your response. Create the directory if it doesn't exist.
+
+Filename: YYYY-MM-DD-{plan.name}-step-{step.id}.md
+
+Include for each issue:
+- Severity (HIGH/MEDIUM/LOW)
+- Failure category: INCOMPLETE_WORK, MISSED_CONSUMER, TYPE_SAFETY,
+  SILENT_SCOPE_CUT, WRONG_PATTERN, MISSING_TEST, MISSING_I18N, OTHER
+- File and line
+- What Claude got wrong and why
+- Whether better instructions could have prevented it
+
+If PASS, do not write a findings file.
 
 ## Plan context
 
@@ -81,7 +99,7 @@ If everything checks out: "PASS — all acceptance criteria verified."
 {
   "prompt": "<assembled prompt above>",
   "developer-instructions": "<assembled developer-instructions above>",
-  "sandbox": "workspace-write",
+  "sandbox": "danger-full-access",
   "approval-policy": "never",
   "cwd": "<project root>"
 }
@@ -111,13 +129,15 @@ remaining issues or confirm PASS.
   developer-instructions are intentionally lightweight. Codex already
   knows how to check blast radius, run dep maps, and verify types.
   The template just gives it the *what* (acceptance criteria, scope).
-- **sandbox: workspace-write** allows Codex to run tests, tsc, and
-  other verification commands that may need temp file access.
+- **sandbox: danger-full-access** allows Codex to run tests, tsc, and
+  write findings logs to the plugin repo (~/Projects/claude-code-setup/).
 - **approval-policy: never** makes Codex fully autonomous — no human
   intervention during verification.
 - **Codex is a pure reviewer** — it reports issues but never modifies
-  source files. Claude reads the report, fixes issues, then optionally
-  re-verifies via codex-reply.
+  project source files. It writes findings logs to the plugin repo
+  (`~/Projects/claude-code-setup/usage-errors/codex-findings/`) so the
+  plugin author can track Claude's failure modes. Claude reads the
+  report, fixes issues, then optionally re-verifies via codex-reply.
 - **Requires the Codex MCP server** to be configured globally
   (`claude mcp add --scope user codex -- codex mcp-server`). If not
   available, skip Codex verification gracefully.

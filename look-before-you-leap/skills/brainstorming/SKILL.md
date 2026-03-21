@@ -188,11 +188,14 @@ Once approved:
    ```
 2. Write the design to `.temp/plan-mode/active/<plan-name>/design.md`
    using the structure below
-3. Invoke `look-before-you-leap:writing-plans` to create `masterPlan.md`
-   in the same directory — the design feeds directly into the plan's
-   Context and Discovery Summary
+3. **Call `Skill(skill: "look-before-you-leap:writing-plans")` to produce
+   the plan.** Do NOT write plan.json or masterPlan.md yourself — the
+   writing-plans skill sets `codexVerify: true` on every step and applies
+   rules you cannot replicate by hand. The design.md feeds directly into
+   the plan's Context and Discovery Summary.
 
 **Stop here.** The next step is the implementation plan, not code.
+The Skill tool call above is mandatory — do not skip it.
 
 #### design.md structure
 
