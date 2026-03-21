@@ -4,12 +4,15 @@
 # After Edit/Write to plan.json/masterPlan.md, or after Bash calls that
 # update plan.json via plan_utils.py, compares step statuses with a cached
 # snapshot. When a step transitions to done/[x]:
-# 1. Creates .verify-pending-N marker
-# 2. Injects directive to dispatch a verification sub-agent
-# 3. If step has codexVerify: true, also injects Codex MCP directive
+# 1. For codexVerify steps: checks if result field contains a Codex verdict
+#    (pattern: "Codex: PASS" or "Codex: FAIL"). If missing, reverts the
+#    step to in_progress and blocks with instructions to run Codex first.
+# 2. For steps that pass the Codex gate (or don't have codexVerify):
+#    creates .verify-pending-N marker and injects directive to dispatch
+#    a verification sub-agent.
 #
 # The verification agent checks acceptance criteria, file changes, and
-# Progress completeness before removing the marker.
+# progress completeness before removing the marker.
 #
 # Marker: <plan-dir>/.verify-pending-N (N = step number)
 # Cache: <plan-dir>/.step-status-cache (N:status per line)
@@ -222,7 +225,7 @@ export HOOK_PLAN_PATH="$plan_path"
 export HOOK_PLAN_NAME="$plan_name"
 
 python3 << 'PYEOF'
-import json, os, sys
+import json, os, re, sys
 
 steps = os.environ["HOOK_NEWLY_COMPLETED"]
 plan_path = os.environ["HOOK_PLAN_PATH"]
@@ -235,53 +238,68 @@ step_list = steps.split()
 step_display = ", ".join(f"Step {s}" for s in step_list)
 markers = ", ".join(f".verify-pending-{s}" for s in step_list)
 
-# Check which completed steps have codexVerify: true
-codex_verify_steps = []
+# Check codexVerify steps and enforce Codex-before-done gate
+codex_blocked_steps = []
+plan = None
 if os.path.isfile(plan_json_path):
     try:
         sys.path.insert(0, os.path.dirname(plan_utils_path))
         import plan_utils
         plan = plan_utils.read_plan(plan_json_path)
         for step in plan.get("steps", []):
-            if str(step["id"]) in step_list and step.get("codexVerify", False):
-                codex_verify_steps.append(str(step["id"]))
+            sid = str(step["id"])
+            if sid not in step_list:
+                continue
+            if not step.get("codexVerify", False):
+                continue
+            # Check if result field contains a Codex verdict
+            result = step.get("result") or ""
+            if not re.search(r"Codex:\s*(PASS|FAIL)", result, re.IGNORECASE):
+                codex_blocked_steps.append(sid)
     except Exception:
         pass
 
-# Build Codex verification directive if any steps have codexVerify
-codex_directive = ""
-if codex_verify_steps:
-    codex_step_display = ", ".join(f"Step {s}" for s in codex_verify_steps)
-    codex_directive = (
-        f"\n\n## Codex Independent Verification\n\n"
-        f"{codex_step_display} {'has' if len(codex_verify_steps) == 1 else 'have'} "
-        "`codexVerify: true` — after the verification agent passes, also run "
-        "Codex MCP verification for an independent second opinion.\n\n"
-        "1. Read `references/codex-verify-template.md` for the prompt template\n"
-        "2. Assemble the MCP call by interpolating plan.json values:\n"
-        "   - `developer-instructions`: discovery scope/consumers/blast radius "
-        "+ step title/acceptance criteria/files/description\n"
-        "   - `prompt`: verification task for the step\n"
-        "3. Call `mcp__codex__codex` with:\n"
-        "   ```json\n"
-        "   {\n"
-        '     "prompt": "<assembled prompt>",\n'
-        '     "developer-instructions": "<assembled instructions>",\n'
-        '     "sandbox": "danger-full-access",\n'
-        '     "approval-policy": "never",\n'
-        '     "cwd": "<project root>"\n'
-        "   }\n"
-        "   ```\n"
-        "4. Read the response. If Codex found issues:\n"
-        "   - **Log findings first** to `~/Projects/claude-code-setup/usage-errors/codex-findings/` "
-        "as `YYYY-MM-DD-<plan>-step-N.json` (see conductor skill for format)\n"
-        "   - Fix them, then call `mcp__codex__codex-reply` with the "
-        "`threadId` and re-verify prompt\n"
-        "5. Record the Codex verdict in the step's `result` field\n\n"
-        "If `mcp__codex__codex` is not available (Codex MCP server not "
-        "configured), skip gracefully and note in the result field."
-    )
+# If any codexVerify steps lack a Codex verdict, revert them and block
+if codex_blocked_steps:
+    # Revert blocked steps to in_progress and remove their markers
+    for sid in codex_blocked_steps:
+        try:
+            plan_utils.update_step(plan_json_path, int(sid), "in_progress")
+        except Exception:
+            pass
+        marker_path = os.path.join(plan_dir, f".verify-pending-{sid}")
+        if os.path.exists(marker_path):
+            os.remove(marker_path)
 
+    blocked_display = ", ".join(f"Step {s}" for s in codex_blocked_steps)
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": (
+                f"CODEX VERIFICATION REQUIRED BEFORE MARKING DONE — "
+                f"{blocked_display} {'has' if len(codex_blocked_steps) == 1 else 'have'} "
+                "`codexVerify: true` but no Codex verdict in the result field.\n\n"
+                f"{'This step has' if len(codex_blocked_steps) == 1 else 'These steps have'} "
+                "been reverted to `in_progress`.\n\n"
+                "You must run Codex MCP verification and get a PASS verdict "
+                "BEFORE marking the step done. Follow the conductor skill's "
+                "'Codex verification (gate before marking done)' flow:\n\n"
+                "1. Read `references/codex-verify-template.md` for the prompt template\n"
+                "2. Call `mcp__codex__codex` with the step's context\n"
+                "3. Fix any findings, then call `mcp__codex__codex-reply` to re-verify\n"
+                "4. Repeat until Codex reports PASS\n"
+                "5. Set the result field to include 'Codex: PASS' (or the verdict)\n"
+                "6. Then mark the step done again\n\n"
+                "If `mcp__codex__codex` is not available, note 'Codex: skipped — "
+                "MCP not configured' in the result field."
+            )
+        }
+    }
+    json.dump(output, sys.stdout)
+    sys.exit(0)
+
+# All codexVerify gates passed (or no codexVerify steps) — proceed with
+# generic verification sub-agent flow
 output = {
     "hookSpecificOutput": {
         "hookEventName": "PostToolUse",
@@ -298,8 +316,10 @@ output = {
             "implemented correctly and FULLY. Do the following checks:\n\n"
             "1. Read the step from plan.json — note its acceptanceCriteria, "
             "files array, and progress items.\n"
-            "2. Check `git diff --name-only` to confirm every file listed in "
-            "the step's `files` array was actually modified.\n"
+            "2. Check `git diff --name-only` for modified tracked files AND "
+            "`git status --short` for untracked new files. Every file in "
+            "the step's `files` array should appear in one of these — "
+            "either as a modified tracked file or as a new untracked file.\n"
             "3. Check that ALL progress items in the step have status 'done' — "
             "none should be 'pending' or 'in_progress'.\n"
             "4. If the acceptance criteria include a test or verification "
@@ -320,7 +340,6 @@ output = {
             f"enforce-plan hook checks for {markers}).\n\n"
             f"To bypass: rm {plan_dir}/.verify-pending-* "
             "(only if you're sure the step is fully implemented)"
-            + codex_directive
         )
     }
 }

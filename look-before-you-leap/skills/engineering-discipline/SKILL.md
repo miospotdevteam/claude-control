@@ -63,6 +63,32 @@ Before implementing something, search the codebase for prior art:
 If you find an existing utility or pattern, use it. Reimplementing something
 that already exists creates divergence and maintenance burden.
 
+### Never cache facts about code
+
+Memory (the auto-memory system) should only store **procedural rules** —
+how to work. Never store **declarative facts** about code — what the code
+looks like, what fields an API returns, how many locales a project has,
+what a type contains.
+
+Facts go stale. Code changes between sessions. If you memorize "the API
+returns `uploadedKey`" and the field gets renamed next week, your memory
+becomes a source of bugs instead of help.
+
+**DO store** (procedural):
+- "Always read the API handler before typing response shapes"
+- "This project uses dep maps — run deps-query.py, not grep"
+- "User prefers bundled PRs for refactors"
+
+**DO NOT store** (declarative):
+- "Project has 6 locales"
+- "API returns `{ settings, uploadedKey }`"
+- "MenuPublishSettings type has a `slugStatus` field"
+- "The publish flow gates on `slugStatus === 'available'`"
+
+CLAUDE.md per project is for current project state, maintained by reading
+the codebase. Memory is for behavioral rules that transcend any single
+codebase state.
+
 ---
 
 ## Phase 2: Make Changes Carefully
@@ -250,6 +276,98 @@ Do NOT assume packages are installed. Do NOT assume env vars are loaded.
 Do NOT use a tool without checking it exists. These are the most common
 sources of "it works in my head but not on the machine" failures.
 
+### Read API handlers before typing response shapes
+
+Before writing any typed API call — a fetch wrapper, a hook that reads a
+response, a client method that destructures a result — **grep for the
+endpoint path and read the return statement in the handler**. Never guess
+what an API returns based on what you think it should return.
+
+The check:
+
+1. Find the route handler: `Grep` for the endpoint path (e.g., `/api/settings`)
+2. Read the handler's return statement — what fields does it actually send?
+3. Type your client code to match the ACTUAL response, not your assumption
+
+This prevents the class of bug where you type a response as `{ heroImage }`
+but the API actually returns `{ settings, uploadedKey }`. These bugs are
+invisible in the UI until the user saves and loses data.
+
+### Diff against source when reimplementing behavior
+
+When a new component, hook, or handler reimplements behavior that already
+exists elsewhere in the codebase (e.g., a new page that replaces an old
+one, a unified flow that wraps existing operations), **read the source
+you're replacing and verify parity**:
+
+1. Open the existing implementation
+2. List what it does: validation rules, error handling, edge cases, save
+   paths, precondition checks
+3. Verify your new implementation covers each item
+4. If you intentionally omit something, document why
+
+The pattern to watch for: you read the old code during exploration, then
+write the new code from memory hours later. Memory drifts. The old code
+uses `slugStatus === "available"` as a gate; you write `slug.length > 0`.
+The old code strips leading/trailing hyphens from slugs; you only strip
+invalid characters. Always diff — never rely on recall.
+
+### Trace the save path for every editable field
+
+After writing any UI with mutable state (forms, inline editing, settings
+panels), verify that **every editable field has a complete path from UI
+change → state update → API mutation → persistence**:
+
+1. List every field the user can edit in the UI
+2. For each field, trace: onChange handler → state variable → mutation
+   call → API endpoint → database write
+3. If any field has no save path, it's a data-loss bug — the user edits,
+   sees the change reflected, then loses everything on navigation
+
+This is the highest-damage class of UI bug because it's invisible during
+development. The UI looks correct. The state updates. But the mutation
+never fires, so the next page load shows the old data. Check every field,
+every time.
+
+### Match existing operation preconditions when wrapping
+
+When building a unified flow that calls existing operations (e.g., a
+"publish all" button that triggers individual publish operations), **read
+each operation's handler and replicate its precondition checks**:
+
+1. For each operation your flow will trigger, read its handler
+2. List its preconditions (auth checks, status gates, validation)
+3. Replicate those checks in your unified flow's readiness logic
+4. If the existing handler checks `slugStatus === "available"`, your
+   wrapper must check the same — not a weaker version
+
+The failure mode: you build a unified publish flow that only checks
+`isPro && !isDraft && slug.length > 0`, but the existing publish handler
+gates on `slugStatus === "available"` (which requires async validation).
+Your flow lets users publish with invalid slugs because you invented
+simpler preconditions instead of reading the real ones.
+
+### Extract a deliverables checklist before coding
+
+Before writing code for any step, **extract every deliverable from the
+step's description and acceptance criteria into a numbered checklist**.
+Write it down — in the plan notes, in a comment, anywhere persistent.
+Then verify each item before marking the step done.
+
+The process:
+
+1. Re-read the step description word by word
+2. List every concrete deliverable (not just the main feature — also
+   supporting items like i18n keys, adapted labels, documentation)
+3. After coding, walk through the checklist item by item
+4. If any item is missing, implement it before declaring done
+
+This prevents the failure mode where you focus on the primary feature
+and forget secondary deliverables. Example: step description says
+"Tab label adapts to vertical (Menu vs Lookbook)" — you implement the
+tab content but forget the label adaptation because you focused on the
+harder part.
+
 ### Autonomy boundaries
 
 Not every blocker requires stopping. Use these rules to decide:
@@ -318,6 +436,18 @@ prevents the thrashing that comes from random fix attempts.
 
 This step is not optional. It is not something you do when asked. It is
 something you do EVERY TIME, automatically, as the final step of every task.
+
+### No pre-existing exemptions
+
+If the acceptance criteria say "tsc passes" and tsc does not pass, fix
+the issue — regardless of whether this step introduced the failure or it
+existed before. "Pre-existing" is not a valid dismissal. Either fix the
+failure or get the acceptance criteria changed before the plan was
+approved.
+
+This applies to all verification: type checker errors, lint failures,
+test failures, and Codex findings. If the criteria require it to pass
+and it doesn't, that's a finding — full stop.
 
 ### Self-audit after corrections
 
@@ -451,7 +581,14 @@ If you catch yourself doing any of these, stop and reconsider:
 | Reacting to IDE/LSP diagnostics mid-edit without running the real type checker | LSP diagnostics go stale during edits — run `tsc --noEmit` (or equivalent) to confirm before "fixing" phantom errors |
 | Writing plan.json directly after brainstorming (skipping writing-plans skill) | Brainstorming produces design.md, then you MUST call `Skill(skill: "look-before-you-leap:writing-plans")` — do not shortcut |
 | Fixing Codex findings then moving on without re-verifying via codex-reply | Call `mcp__codex__codex-reply` with the threadId after fixes — tsc passing is not the same as Codex confirming |
+| Dismissing a failure as "pre-existing" when acceptance criteria require it to pass | Fix the failure or change the acceptance criteria — "pre-existing" is not an exemption |
+| Marking a step done before Codex verification passes (for codexVerify steps) | Codex is a gate — complete the fix → re-verify loop until PASS, then mark done |
 | Writing `.catch(() => {})` or `.catch(() => null)` | Handle the error, rethrow, or comment why ignoring is safe |
 | Broad `try/catch` that resolves successfully on failure | Catch at the narrowest scope — let failures propagate or degrade visibly |
 | Adding a new API endpoint without an integration test | Every new endpoint lands with at least one happy-path test — no exceptions |
 | Adding a new API endpoint without updating project docs | Update the API inventory (api.md, OpenAPI spec) in the same step — not later |
+| Typing an API response shape from memory | Grep for the endpoint, read the handler's return statement, then type |
+| Reimplementing existing behavior without reading the source | Open the original, list what it does, verify parity in your new code |
+| Rendering editable fields without tracing the save path | For every editable field: trace onChange → state → mutation → API → DB |
+| Writing simpler preconditions than the operation you're wrapping | Read the handler, list its gates, replicate them exactly |
+| Starting to code a step without listing its deliverables | Extract every deliverable from description + acceptance criteria first |

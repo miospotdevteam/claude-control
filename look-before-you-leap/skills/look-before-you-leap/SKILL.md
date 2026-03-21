@@ -263,6 +263,37 @@ For renames: add the new name first (keeping the old one temporarily),
 update all consumers, then remove the old name. This ensures the codebase
 compiles at every step.
 
+### Pre-step deliverables checklist
+
+Before writing any code for a step, extract every deliverable from its
+`description` and `acceptanceCriteria` fields into a numbered checklist.
+This is separate from progress items (which track sub-tasks) — the
+deliverables checklist tracks *what the step must produce*, not *how*.
+
+**The process:**
+
+1. Re-read the step's `description` word by word
+2. Re-read its `acceptanceCriteria` word by word
+3. List every concrete deliverable as a numbered item — primary features,
+   secondary behaviors, adapted labels, i18n keys, documentation updates,
+   precondition checks, validation rules
+4. Write this checklist somewhere persistent (plan notes, discovery.md,
+   or inline as you work)
+5. **Before marking the step done**, walk through every item and verify
+   it was implemented
+
+This prevents the failure mode where you focus on the primary feature
+and forget secondary deliverables mid-implementation. Example: a step
+says "Tab label adapts to vertical (Menu vs Lookbook)" — you build the
+tab content but forget the label because you focused on the harder part.
+Or a step lists "Translation progress section" and "Retranslate button"
+among other features — you implement the novel parts and silently drop
+the ones that seemed straightforward.
+
+**The checklist is mandatory for every step.** Even simple steps benefit
+from it — the cost is 30 seconds of reading, and the payoff is catching
+scope cuts before they ship.
+
 ### Skill dispatch during execution
 
 **Skills MUST be invoked via the Skill tool — not approximated from memory.**
@@ -394,18 +425,30 @@ QA sub-agent after marking the step `done`:
 QA dispatch is opt-in per step. The `writing-plans` skill decides which
 steps warrant it. Do not dispatch for steps without `qa: true`.
 
-### Post-step Codex verification
+### Codex verification (gate before marking done)
 
-When a completed step has `codexVerify: true` in plan.json, call the
-Codex MCP tool to get an independent second opinion after marking the
-step `done`. Codex runs on a different model (GPT-5.4) with its own
+When a step has `codexVerify: true` in plan.json, Codex MCP verification
+is a **gate** — you MUST get a Codex PASS **before** marking the step
+`done`. Codex runs on a different model (GPT-5.4) with its own
 engineering-discipline plugin, providing truly independent verification
 with fresh context.
 
+**Codex runs BEFORE done, not after.** The old flow (mark done → run
+Codex → fix) led to inaccurate result fields and false completion
+signals. The correct flow is: complete all progress items → run your
+own verification (tsc, lint, tests) → call Codex → fix any findings →
+re-verify until PASS → THEN mark the step done with the Codex verdict
+in the result field.
+
+**No pre-existing exemptions.** If the acceptance criteria say "tsc
+passes" and tsc does not pass, fix the issue — regardless of whether
+this step introduced the failure. "Pre-existing" is not a valid
+dismissal. Either fix the failure or get the acceptance criteria changed
+before the plan was approved.
+
 **One step at a time.** Each step gets its own Codex call. NEVER batch
 multiple steps into a single call — this creates massive prompts that
-take too long and make findings harder to act on. The hook fires per-step,
-and each step must be verified independently before moving to the next.
+take too long and make findings harder to act on.
 
 **Prerequisites**: The Codex MCP server must be configured globally
 (`claude mcp add --scope user codex -- codex mcp-server`). If the
@@ -414,14 +457,16 @@ gracefully and note it in the step's result field.
 
 **Flow:**
 
-1. **Read the prompt template** from
+1. **Complete the step's work** — all progress items done, your own
+   verification passing (tsc, lint, tests).
+2. **Read the prompt template** from
    `references/codex-verify-template.md`
-2. **Assemble the MCP call** by interpolating plan.json values into the
+3. **Assemble the MCP call** by interpolating plan.json values into the
    template for **this step only**:
    - `developer-instructions`: role + discovery scope/consumers/blast
      radius + step title/acceptance criteria/files/description
    - `prompt`: verification task for the specific step
-3. **Call `mcp__codex__codex`** with:
+4. **Call `mcp__codex__codex`** with:
    ```json
    {
      "prompt": "<assembled prompt>",
@@ -431,26 +476,28 @@ gracefully and note it in the step's result field.
      "cwd": "<project root>"
    }
    ```
-4. **Read Codex's response** (`content` field). If it reports issues:
+5. **Read Codex's response** (`content` field). If it reports issues:
    - Codex auto-logs findings to `~/Projects/claude-code-setup/usage-errors/codex-findings/`
+     (initial: `*-step-N.json`, re-verify: `*-step-N-reverify-M.json`)
    - Fix each issue (follow engineering-discipline, not quick patches)
    - **You MUST re-verify after fixing.** Call `mcp__codex__codex-reply`
      with the saved `threadId` and the re-verify prompt from the template.
      Do NOT skip this — `tsc --noEmit` passing is not the same as Codex
      confirming your fixes are correct.
    - Repeat the fix → re-verify loop until Codex reports PASS
-5. **Record the Codex verdict** in the step's `result` field: PASS or
-   list of issues found and how they were resolved. The verdict must
-   come from Codex (the final PASS or remaining issues), not from your
-   own assessment
+6. **THEN mark the step done** with the Codex verdict in the result
+   field: "Codex: PASS" or a summary of issues found and how they were
+   resolved. The verdict must come from Codex (the final PASS or
+   remaining issues), not from your own assessment.
 
 Codex verification is **on by default for every step** — the
 `writing-plans` skill sets `codexVerify: true` on all steps unless the
 user explicitly opts out. Do not dispatch for steps with
 `codexVerify: false`.
 
-The `verify-step-completion` hook automatically injects a Codex
-verification directive when it detects a step with `codexVerify: true`
+The `verify-step-completion` hook enforces this gate: if a step with
+`codexVerify: true` is marked done without a Codex verdict in the result
+field, the hook reverts the step to `in_progress` and blocks.
 
 ### Codex Findings Log
 
@@ -459,6 +506,14 @@ Codex automatically logs its findings (when not PASS) to
 configured in the developer-instructions passed to the MCP call — Codex
 writes the file itself before returning its response. You do not need
 to log findings manually.
+
+**Findings are logged on every verification round** — initial
+verification AND re-verify rounds. Each round gets its own file:
+- Initial: `YYYY-MM-DD-{plan}-step-{N}.json`
+- Re-verify: `YYYY-MM-DD-{plan}-step-{N}-reverify-{M}.json`
+
+This ensures the full verification history is auditable, not just the
+initial findings.
 
 The failure categories are: `INCOMPLETE_WORK`, `MISSED_CONSUMER`,
 `TYPE_SAFETY`, `SILENT_SCOPE_CUT`, `WRONG_PATTERN`, `MISSING_TEST`,
@@ -550,6 +605,28 @@ scripts, skills, plan infrastructure). Do NOT log errors from the user's
 project code, build tools, or unrelated tooling.
 
 Example filename: `2026-03-19-plan-utils-key-error.md`
+
+---
+
+## Codex Lessons Pipeline
+
+When Codex catches a behavioral pattern that the existing rules should
+have prevented (e.g., "guessed API response shape" maps to "Read API
+handlers before typing responses"), the lesson belongs in the centralized
+pipeline — not in memory.
+
+**Location**: `usage-errors/codex-lessons/` at the project root.
+
+**Workflow**: After a session where Codex found genuine bugs, analyze the
+root causes. If a bug reveals a gap in engineering-discipline rules (a
+habit that would have prevented it), write a proposal to
+`usage-errors/codex-lessons/proposals/`. During periodic review, proposals
+are either promoted to plugin rules or discarded.
+
+This is distinct from error logging (which tracks plugin bugs) and memory
+(which tracks procedural preferences). The lessons pipeline tracks
+**behavioral rule gaps** — patterns Codex keeps catching that the rules
+should make impossible.
 
 ---
 

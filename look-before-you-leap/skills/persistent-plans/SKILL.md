@@ -367,6 +367,10 @@ This is a loop. Follow it mechanically.
 │  1. Read plan.json from disk                            │
 │  2. Find the next pending or in_progress step           │
 │  3. Mark it in_progress — write to disk NOW             │
+│  3b. EXTRACT DELIVERABLES CHECKLIST:                    │
+│      - Re-read step description + acceptanceCriteria    │
+│      - List every deliverable as a numbered checklist   │
+│      - This checklist gates "mark done" (see below)     │
 │                                                         │
 │  4. IF step has a subPlan:                              │
 │     a. Find next pending group                          │
@@ -374,17 +378,27 @@ This is a loop. Follow it mechanically.
 │     c. Mark group done in plan.json                     │
 │     d. Checkpoint: update progress items                │
 │     e. IF all groups complete:                          │
-│        - Mark step done                                 │
+│        - Verify deliverables checklist (every item)     │
+│        - Run own verification (tsc, lint, tests)        │
+│        - IF codexVerify: true → Codex gate (see below)  │
+│        - Mark step done (with Codex verdict in result)  │
 │        - Add to completedSummary                        │
-│        - Run verification                               │
 │                                                         │
 │  5. IF step has no subPlan:                             │
 │     a. Execute the step                                 │
 │     b. CHECKPOINT after every 2-3 file edits:           │
 │        - Update progress items via plan_utils.py        │
 │        - Write partial notes to result field            │
-│     c. When done: mark step done                        │
-│     d. Add to completedSummary                          │
+│     c. Verify deliverables checklist (every item)       │
+│     d. Run own verification (tsc, lint, tests)          │
+│     e. IF codexVerify: true → Codex gate (see below)    │
+│     f. Mark step done (with Codex verdict in result)    │
+│     g. Add to completedSummary                          │
+│                                                         │
+│  CODEX GATE (for steps with codexVerify: true):         │
+│     a. Call mcp__codex__codex with step context          │
+│     b. If issues found: fix → codex-reply → repeat      │
+│     c. Only proceed to "mark done" after Codex PASS     │
 │                                                         │
 │  6. IF all steps are now done:                          │
 │     a. Move plan folder from active/ to completed/      │
@@ -402,13 +416,21 @@ any step `done`:
 
 1. The code you wrote actually works (you verified it, not just assumed)
 2. The step's acceptance criteria are met
-3. You've written meaningful notes in the result field
+3. Every item on the deliverables checklist (extracted in step 3b of the
+   loop) has been verified — if any deliverable is missing, implement it
+   before marking done
+4. If `codexVerify: true`: Codex MCP has reported PASS (not just your
+   own verification — Codex is an independent gate)
+5. You've written meaningful notes in the result field, including the
+   Codex verdict (e.g., "Codex: PASS") for codexVerify steps
 
 **A plan with all steps `done` but unverified work is a lie on disk.** A
 hook guards the `mv` command — you cannot move an incomplete plan to
-`completed/`. But more importantly, don't mark steps done until they ARE
-done. If you're unsure, leave it `in_progress` with notes about what
-remains.
+`completed/`. The `verify-step-completion` hook also enforces the Codex
+gate: if a codexVerify step is marked done without a Codex verdict in
+the result field, it reverts to `in_progress`. Don't mark steps done
+until they ARE done. If you're unsure, leave it `in_progress` with
+notes about what remains.
 
 ### Progress updates are NOT optional
 

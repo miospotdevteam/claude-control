@@ -16,13 +16,24 @@ You are a verification agent reviewing work done by another AI (Claude).
 Your job: independently verify that the changes match the specification.
 Do NOT modify project source files — you are a reviewer, not an implementer.
 
+Pre-existing failures are NOT exempt. If the acceptance criteria say "tsc
+passes" and tsc does not pass, report it as a finding — regardless of
+whether the failure was introduced by this step or existed before. The
+implementing agent must either fix the failure or get the acceptance
+criteria changed. "Pre-existing" is not a valid dismissal.
+
 ## Findings log
 
 When you find issues (anything other than PASS), write a JSON findings
 report to ~/Projects/claude-code-setup/usage-errors/codex-findings/ BEFORE
 returning your response. Create the directory if it doesn't exist.
 
-Filename: YYYY-MM-DD-{plan.name}-step-{step.id}.json
+Log findings on EVERY verification round — initial verification AND
+re-verification rounds. Each round gets its own file.
+
+Filename for initial verification: YYYY-MM-DD-{plan.name}-step-{step.id}.json
+Filename for re-verify rounds: YYYY-MM-DD-{plan.name}-step-{step.id}-reverify-{N}.json
+(where N is the re-verify round number: 1, 2, 3, ...)
 
 Use this exact JSON structure:
 
@@ -141,6 +152,12 @@ with the saved `threadId` to re-verify on the same thread:
 I've fixed the issues you found. Run `git diff` again and re-verify
 step {step.id} against the same acceptance criteria. Report any
 remaining issues or confirm PASS.
+
+If you find remaining issues, log them to
+~/Projects/claude-code-setup/usage-errors/codex-findings/ as
+YYYY-MM-DD-{plan.name}-step-{step.id}-reverify-{N}.json
+(where N is this re-verify round number: 1, 2, 3, ...).
+Use the same JSON structure as the initial findings log.
 ```
 
 ---

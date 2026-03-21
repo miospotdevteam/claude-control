@@ -21,6 +21,10 @@ Single Claude Code plugin: `look-before-you-leap`. Enforces structured explorati
 - When adding new skills, reference files, or hooks, update the Repo Structure tree in `README.md`.
 - Keep PACKAGES.md and README.md accurate — they are user-facing docs that must reflect the current state.
 
+## References
+
+- Skill evaluation scaffold: `~/Projects/claude-tests` — use this project when running skill-creator evals
+
 ## Plan Mode
 
 All tasks use persistent plans in `.temp/plan-mode/`. This is the default operating mode — not optional.
