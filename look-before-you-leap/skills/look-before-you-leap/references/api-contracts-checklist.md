@@ -9,6 +9,16 @@ disagree on a type, there's a bug — the only question is when you'll find it.
 > `stack.backend`, and `stack.validation`. The advice below uses generic
 > terms — substitute your project's actual values.
 
+## New Endpoint Gate
+
+When adding a brand-new endpoint (not modifying an existing one), these
+items are **mandatory** — they ship in the same step, not as follow-ups:
+
+- [ ] Write at least one integration test (happy-path + empty/error state)
+- [ ] Update the project's API inventory doc (e.g., `project-structure/api.md`, OpenAPI spec, route registry)
+- [ ] Verify the response shape matches the written contract (field names, value formats, nullability)
+- [ ] Confirm error responses are handled — no `.catch(() => {})` that hides failures from callers
+
 ## Before
 
 - [ ] Locate the shared API package (check `structure.shared_api_package` in your config)

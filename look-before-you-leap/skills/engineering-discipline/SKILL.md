@@ -185,6 +185,53 @@ If you find yourself writing implementation code before the corresponding
 RED progress item is done, STOP — you're violating TDD. Go back and write
 the test first.
 
+### No swallowed errors
+
+Error handling that hides failures is worse than no error handling at all.
+Never write these patterns:
+
+- `.catch(() => {})` or `.catch(() => null)` — swallows the error and
+  continues as if nothing happened. If the operation matters enough to
+  call, its failure matters enough to handle.
+- Broad `try/catch` around multi-step operations that resolves
+  successfully on failure — a single failed step aborts the rest, but
+  the caller never knows. Catch at the narrowest scope and either
+  rethrow, log meaningfully, or degrade explicitly.
+- Fire-and-forget API calls where the result determines correctness
+  (e.g., a DELETE that must succeed for the UI to be consistent) —
+  if the response matters, check it.
+
+The pattern to watch for: code that **looks** like it handles errors but
+actually just makes them invisible. A `.catch` that returns a fallback
+the consumer can't distinguish from success is not error handling — it's
+error hiding.
+
+**What to do instead:**
+- If the error is recoverable: handle it explicitly and make the
+  recovery visible (log, UI feedback, retry with backoff)
+- If the error is not recoverable: let it propagate so the caller
+  can decide what to do
+- If you genuinely don't care about the result: add a comment
+  explaining WHY the failure is safe to ignore (e.g., "best-effort
+  analytics ping — failure doesn't affect user flow")
+
+### New endpoints need tests and docs
+
+When you add a new API endpoint (route, handler, RPC method), it MUST
+land with:
+
+1. **At least one integration test** — happy-path coverage at minimum.
+   Boundary/empty-state coverage strongly preferred. An endpoint without
+   a test is an endpoint that will silently break on the next refactor.
+2. **Project documentation update** — if the project maintains an API
+   inventory (e.g., `project-structure/api.md`, OpenAPI spec, route
+   registry), update it in the same step. This is not a follow-up task —
+   it's part of adding the endpoint.
+
+Do NOT defer either of these. "I'll add tests later" means "these tests
+will never exist." The plan step that adds the endpoint must include both
+the test and the doc update as progress items.
+
 ### Install before import
 
 If you add a new import, verify the package exists in the project:
@@ -404,3 +451,7 @@ If you catch yourself doing any of these, stop and reconsider:
 | Reacting to IDE/LSP diagnostics mid-edit without running the real type checker | LSP diagnostics go stale during edits — run `tsc --noEmit` (or equivalent) to confirm before "fixing" phantom errors |
 | Writing plan.json directly after brainstorming (skipping writing-plans skill) | Brainstorming produces design.md, then you MUST call `Skill(skill: "look-before-you-leap:writing-plans")` — do not shortcut |
 | Fixing Codex findings then moving on without re-verifying via codex-reply | Call `mcp__codex__codex-reply` with the threadId after fixes — tsc passing is not the same as Codex confirming |
+| Writing `.catch(() => {})` or `.catch(() => null)` | Handle the error, rethrow, or comment why ignoring is safe |
+| Broad `try/catch` that resolves successfully on failure | Catch at the narrowest scope — let failures propagate or degrade visibly |
+| Adding a new API endpoint without an integration test | Every new endpoint lands with at least one happy-path test — no exceptions |
+| Adding a new API endpoint without updating project docs | Update the API inventory (api.md, OpenAPI spec) in the same step — not later |
