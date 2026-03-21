@@ -67,6 +67,8 @@ Report each issue as:
 - File and line
 - What's wrong and why
 - Suggested fix
+- Failure category: one of INCOMPLETE_WORK, MISSED_CONSUMER, TYPE_SAFETY,
+  SILENT_SCOPE_CUT, WRONG_PATTERN, MISSING_TEST, MISSING_I18N, OTHER
 
 If everything checks out: "PASS — all acceptance criteria verified."
 ```

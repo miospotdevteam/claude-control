@@ -156,7 +156,15 @@ from zero.
 
 ## Step 2: Plan (write to disk before editing code)
 
-**Invoke `look-before-you-leap:writing-plans`** to produce the plan.
+**You MUST invoke `look-before-you-leap:writing-plans` via the Skill tool
+to produce the plan. Do NOT write plan.json or masterPlan.md directly.**
+The writing-plans skill applies rules you cannot replicate by hand: it sets
+`codexVerify: true` on every step, evaluates sub-plan criteria, applies
+TDD rhythm to progress items, and checks discipline checklists. Even if you
+have the schema memorized, skipping the skill means skipping those rules.
+
+Call: `Skill(skill: "look-before-you-leap:writing-plans")`
+
 The skill consumes your discovery.md, identifies applicable discipline
 checklists, structures TDD-granularity steps, and writes both:
 - `plan.json` — execution source of truth (hooks read this, updated during execution)
@@ -182,7 +190,8 @@ compaction recovery depends on them. Do NOT invent your own schema:
   findings go HERE, not just in discovery.md.
 - **Each step**: `id`, `title`, `status`, `skill`, `files`, `description`,
   `acceptanceCriteria`, `progress`, `result`. Optional booleans:
-  `simplify`, `qa`, `codexVerify` (all default false)
+  `simplify`, `qa` (default false), `codexVerify` (default true — set by
+  writing-plans on every step unless user opts out)
 - **Each progress item**: `task`, `status`, `files` — all three fields,
   no exceptions. Progress arrays go INSIDE each step, never at the top level.
 
@@ -253,9 +262,12 @@ compiles at every step.
 
 ### Skill dispatch during execution
 
+**Skills MUST be invoked via the Skill tool — not approximated from memory.**
 When starting a step, check its `skill` field in plan.json. If the field
-is not `"none"`, **invoke that skill** before executing the step. The skill
-provides the execution guidance — follow its phases mechanically.
+is not `"none"`, **call `Skill(skill: "<value>")` before executing the
+step.** The skill provides execution guidance you cannot replicate by hand.
+Do NOT read a skill's SKILL.md and follow it manually — invoke it so the
+full skill context (references, checklists, hooks) loads properly.
 
 | Step `skill` value | What happens |
 |---|---|
@@ -412,6 +424,7 @@ gracefully and note it in the step's result field.
    }
    ```
 4. **Read Codex's response** (`content` field). If it reports issues:
+   - **Log the findings** before fixing (see "Codex Findings Log" below)
    - Fix each issue (follow engineering-discipline, not quick patches)
    - After fixing, call `mcp__codex__codex-reply` with the saved
      `threadId` and the re-verify prompt from the template
@@ -426,6 +439,34 @@ user explicitly opts out. Do not dispatch for steps with
 
 The `verify-step-completion` hook automatically injects a Codex
 verification directive when it detects a step with `codexVerify: true`
+
+### Codex Findings Log
+
+When Codex reports issues (anything other than PASS), log the findings
+to `${CLAUDE_PLUGIN_DATA}/codex-findings/` **before fixing them**. This
+builds a failure mode database that helps improve the plugin's
+instructions over time.
+
+1. **Create a `.md` file** with the naming convention
+   `YYYY-MM-DD-<plan-name>-step-N.md`
+2. **Include**:
+   - Plan name and step number
+   - Project directory
+   - Each finding from Codex: severity, failure category, file, what
+     was wrong
+   - Whether the issue was something the conductor/engineering-discipline
+     should have caught (i.e., a gap in plugin instructions vs. a
+     legitimate edge case)
+3. **Do NOT wait** — log first, fix second. The log captures what Claude
+   got wrong before the evidence is fixed away.
+
+The failure categories (from the Codex template) are: `INCOMPLETE_WORK`,
+`MISSED_CONSUMER`, `TYPE_SAFETY`, `SILENT_SCOPE_CUT`, `WRONG_PATTERN`,
+`MISSING_TEST`, `MISSING_I18N`, `OTHER`. These categories help identify
+which plugin instructions need strengthening.
+
+If `${CLAUDE_PLUGIN_DATA}` is not set (plugin not installed via
+marketplace), skip the log gracefully
 transitioning to done.
 
 ---
@@ -473,6 +514,10 @@ Hooks enforce this discipline automatically. Key behaviors to know:
   a reminder fires. Update the plan immediately.
 - **Plan completion guard**: Cannot move a plan to `completed/` if steps
   remain unfinished. Cannot stop if the active plan has unfinished steps.
+- **Script warnings**: When `plan_utils.py` emits a warning (e.g., "step
+  marked done with no result"), treat it as an error. Stop and fix the
+  issue before continuing. Warnings exist because something is wrong —
+  they are not informational noise to ignore.
 - **Sub-agent injection**: Engineering discipline is automatically injected
   into every sub-agent prompt.
 - **PostCompact resumption**: After context compaction, a dedicated hook
@@ -498,7 +543,10 @@ document it immediately:
    - The hook/script/skill that errored
    - The full error output
    - Your best guess at the root cause
-3. **Then continue your work** — logging the error does not block execution
+3. **Then fix the issue before continuing.** If the error is in your
+   command arguments (wrong step number, missing file), fix and retry.
+   If the error is a genuine plugin bug (script crash on valid input),
+   log it and continue — the bug is not yours to fix mid-task
 4. **When the error is fixed**, move the `.md` file to `usage-errors/resolved/`
 
 This applies only to errors originating from the plugin itself (hooks,

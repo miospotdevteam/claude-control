@@ -398,3 +398,7 @@ If you catch yourself doing any of these, stop and reconsider:
 | Writing implementation before tests on a TDD step | Follow RED-GREEN-REFACTOR — tests first, always. Invoke the TDD skill |
 | Guessing at fixes when tests fail during verification | Invoke `look-before-you-leap:systematic-debugging` — root cause first |
 | Starting a new feature without brainstorming the design | Invoke `look-before-you-leap:brainstorming` for creative tasks |
+| Writing plan.json/masterPlan.md directly without invoking writing-plans skill | Call `Skill(skill: "look-before-you-leap:writing-plans")` — it sets codexVerify, evaluates sub-plans, applies TDD rhythm |
+| Doing work that a skill covers without invoking that skill first | Check the skill routing table in the conductor — if a skill exists for this work, invoke it via the Skill tool |
+| Ignoring a warning from plan_utils.py or a hook script | Stop and fix the issue — warnings mean something is wrong, not "proceed with caution" |
+| Reacting to IDE/LSP diagnostics mid-edit without running the real type checker | LSP diagnostics go stale during edits — run `tsc --noEmit` (or equivalent) to confirm before "fixing" phantom errors |

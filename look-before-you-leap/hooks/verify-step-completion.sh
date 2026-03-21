@@ -212,6 +212,8 @@ if codex_verify_steps:
         "   }\n"
         "   ```\n"
         "4. Read the response. If Codex found issues:\n"
+        "   - **Log findings first** to `${CLAUDE_PLUGIN_DATA}/codex-findings/` "
+        "as `YYYY-MM-DD-<plan>-step-N.md` (see conductor skill for format)\n"
         "   - Fix them, then call `mcp__codex__codex-reply` with the "
         "`threadId` and re-verify prompt\n"
         "5. Record the Codex verdict in the step's `result` field\n\n"
