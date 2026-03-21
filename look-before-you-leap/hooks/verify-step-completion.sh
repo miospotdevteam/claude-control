@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # PostToolUse hook: Verify step completion before proceeding to next step.
 #
-# After every Edit/Write to a masterPlan.md, compares step statuses with
-# a cached snapshot. When a step transitions to [x]:
+# After Edit/Write to plan.json/masterPlan.md, or after Bash calls that
+# update plan.json via plan_utils.py, compares step statuses with a cached
+# snapshot. When a step transitions to done/[x]:
 # 1. Creates .verify-pending-N marker
 # 2. Injects directive to dispatch a verification sub-agent
+# 3. If step has codexVerify: true, also injects Codex MCP directive
 #
 # The verification agent checks acceptance criteria, file changes, and
 # Progress completeness before removing the marker.
@@ -12,29 +14,13 @@
 # Marker: <plan-dir>/.verify-pending-N (N = step number)
 # Cache: <plan-dir>/.step-status-cache (N:status per line)
 #
-# Input: JSON on stdin with tool_name, tool_input.file_path, cwd
+# Input: JSON on stdin with tool_name, tool_input, cwd
 
 set -euo pipefail
 
 INPUT=$(cat)
 
-# Extract file path
-FILE_PATH=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('file_path', ''))
-" <<< "$INPUT" 2>/dev/null) || true
-
-# Act on plan.json OR masterPlan.md in active plans
-if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
-  PLAN_DIR="$(dirname "$FILE_PATH")"
-elif [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
-  PLAN_DIR="$(dirname "$FILE_PATH")"
-else
-  exit 0
-fi
-
-# Find project root
+# Find project root first (needed for Bash path)
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
 CWD=$(python3 -c "
@@ -44,6 +30,81 @@ print(data.get('cwd', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
+
+# Determine PLAN_DIR based on tool type
+TOOL_NAME=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('tool_name', ''))
+" <<< "$INPUT" 2>/dev/null) || true
+
+PLAN_DIR=""
+
+if [[ "$TOOL_NAME" == "Edit" || "$TOOL_NAME" == "Write" ]]; then
+  # Edit/Write: extract file_path and check if it's a plan file
+  FILE_PATH=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('tool_input', {}).get('file_path', ''))
+" <<< "$INPUT" 2>/dev/null) || true
+
+  if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
+    PLAN_DIR="$(dirname "$FILE_PATH")"
+  elif [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
+    PLAN_DIR="$(dirname "$FILE_PATH")"
+  fi
+
+elif [[ "$TOOL_NAME" == "Bash" ]]; then
+  # Bash: check if command is a plan_utils call that marks a step done.
+  # Extract the specific plan.json path from the command to handle multiple
+  # active plans correctly (not just the first one found on disk).
+  COMMAND=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('tool_input', {}).get('command', ''))
+" <<< "$INPUT" 2>/dev/null) || true
+
+  export HOOK_COMMAND="$COMMAND"
+  export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
+
+  PLAN_DIR=$(python3 << 'PYEOF'
+import re, os, sys
+
+command = os.environ.get("HOOK_COMMAND", "")
+project_root = os.environ.get("HOOK_PROJECT_ROOT", "")
+
+# Must contain plan_utils
+if "plan_utils" not in command:
+    sys.exit(0)
+
+# Must contain update-step with "done" as the status argument (not a substring)
+if not re.search(r"update-step\s+\S+\s+\d+\s+done(?:\s|$|&|;)", command):
+    sys.exit(0)
+
+# Extract plan.json path from PLAN_JSON="..." variable assignment in the command
+m = re.search(r'PLAN_JSON="(.*?\.temp/plan-mode/active/[^/]+/plan\.json)"', command)
+if m:
+    print(os.path.dirname(m.group(1)))
+    sys.exit(0)
+
+# Fallback: scan active plans directory (for commands where PLAN_JSON was set
+# in a previous Bash call and only referenced as $PLAN_JSON here)
+active_dir = os.path.join(project_root, ".temp", "plan-mode", "active")
+if os.path.isdir(active_dir):
+    for name in sorted(os.listdir(active_dir)):
+        pj = os.path.join(active_dir, name, "plan.json")
+        if os.path.isfile(pj):
+            print(os.path.join(active_dir, name))
+            break
+PYEOF
+  ) || true
+fi
+
+# No relevant plan file found — exit silently
+if [[ -z "$PLAN_DIR" ]]; then
+  exit 0
+fi
+
 CACHE_FILE="$PLAN_DIR/.step-status-cache"
 
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
@@ -213,7 +274,7 @@ if codex_verify_steps:
         "   ```\n"
         "4. Read the response. If Codex found issues:\n"
         "   - **Log findings first** to `~/Projects/claude-code-setup/usage-errors/codex-findings/` "
-        "as `YYYY-MM-DD-<plan>-step-N.md` (see conductor skill for format)\n"
+        "as `YYYY-MM-DD-<plan>-step-N.json` (see conductor skill for format)\n"
         "   - Fix them, then call `mcp__codex__codex-reply` with the "
         "`threadId` and re-verify prompt\n"
         "5. Record the Codex verdict in the step's `result` field\n\n"

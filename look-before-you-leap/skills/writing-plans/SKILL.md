@@ -125,6 +125,7 @@ specific behavior, then implements just enough to pass.
   "status": "pending",
   "skill": "look-before-you-leap:test-driven-development",
   "simplify": false,
+  "codexVerify": true,
   "files": ["src/lib/validate-email.ts", "tests/lib/validate-email.test.ts"],
   "description": "Add email validation function. Rejects empty strings, missing @, missing domain.",
   "acceptanceCriteria": "npx vitest run validate-email passes, tsc --noEmit clean.",

@@ -228,6 +228,7 @@ structure exactly. Hooks parse this schema — deviations break tooling.
       "status": "pending",
       "skill": "none",
       "simplify": false,
+      "codexVerify": true,
       "files": ["src/foo.ts", "src/bar.ts"],
       "description": "What needs to happen. Self-contained for a fresh context.",
       "acceptanceCriteria": "Concrete conditions (e.g., 'tsc --noEmit passes').",

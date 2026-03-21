@@ -183,15 +183,18 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 Every plan.json MUST include these fields — hooks parse them, and
 compaction recovery depends on them. Do NOT invent your own schema:
 
-- **Top level**: `name`, `title`, `context`, `status`, `discovery`, `steps`,
-  `completedSummary`
+- **Top level**: `name`, `title`, `context`, `status`, `requiredSkills`,
+  `disciplines`, `discovery`, `steps`, `blocked`, `completedSummary`,
+  `deviations`
 - **`discovery` object** (required, not a separate file): `scope`,
-  `entryPoints`, `consumers`, `blastRadius`, `confidence`. Your exploration
-  findings go HERE, not just in discovery.md.
-- **Each step**: `id`, `title`, `status`, `skill`, `files`, `description`,
-  `acceptanceCriteria`, `progress`, `result`. Optional booleans:
-  `simplify`, `qa` (default false), `codexVerify` (default true — set by
-  writing-plans on every step unless user opts out)
+  `entryPoints`, `consumers`, `existingPatterns`, `testInfrastructure`,
+  `conventions`, `blastRadius`, `confidence`. Your exploration findings
+  go HERE, not just in discovery.md.
+- **Each step**: `id`, `title`, `status`, `skill`, `simplify`, `files`,
+  `description`, `acceptanceCriteria`, `progress`. Optional: `qa` (default
+  false), `codexVerify` (default true — set by writing-plans on every step
+  unless user opts out), `subPlan` (null if none), `result` (null until
+  completion)
 - **Each progress item**: `task`, `status`, `files` — all three fields,
   no exceptions. Progress arrays go INSIDE each step, never at the top level.
 
@@ -399,6 +402,11 @@ step `done`. Codex runs on a different model (GPT-5.4) with its own
 engineering-discipline plugin, providing truly independent verification
 with fresh context.
 
+**One step at a time.** Each step gets its own Codex call. NEVER batch
+multiple steps into a single call — this creates massive prompts that
+take too long and make findings harder to act on. The hook fires per-step,
+and each step must be verified independently before moving to the next.
+
 **Prerequisites**: The Codex MCP server must be configured globally
 (`claude mcp add --scope user codex -- codex mcp-server`). If the
 `mcp__codex__codex` tool is not available, skip Codex verification
@@ -409,7 +417,7 @@ gracefully and note it in the step's result field.
 1. **Read the prompt template** from
    `references/codex-verify-template.md`
 2. **Assemble the MCP call** by interpolating plan.json values into the
-   template:
+   template for **this step only**:
    - `developer-instructions`: role + discovery scope/consumers/blast
      radius + step title/acceptance criteria/files/description
    - `prompt`: verification task for the specific step
@@ -418,7 +426,7 @@ gracefully and note it in the step's result field.
    {
      "prompt": "<assembled prompt>",
      "developer-instructions": "<assembled instructions>",
-     "sandbox": "workspace-write",
+     "sandbox": "danger-full-access",
      "approval-policy": "never",
      "cwd": "<project root>"
    }

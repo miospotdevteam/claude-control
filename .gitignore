@@ -1,5 +1,6 @@
 .temp/
 .claude/settings.local.json
+usage-errors/
 skill-review-standard-workspace/
 look-before-you-leap-workspace
 refactoring-workspace

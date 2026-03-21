@@ -80,6 +80,8 @@ disciplines.">
 ### Step 1: <Title>
 - **Skill**: `look-before-you-leap:refactoring` | none
 - **Simplify**: true/false
+- **QA**: true/false
+- **Codex verify**: true/false
 - **Sub-plan**: none
 - **Files involved**: `src/foo.ts`, `src/bar.ts`
 - **Description**: What needs to happen in this step.
@@ -159,6 +161,8 @@ High — issue is clear, fix is straightforward.
 ### Step 1: Fix button alignment
 - **Skill**: none
 - **Simplify**: false
+- **QA**: false
+- **Codex verify**: true
 - **Sub-plan**: none
 - **Files involved**: `src/app/(auth)/login/page.tsx`
 - **Description**: Add `w-full` to the button wrapper div for mobile viewports

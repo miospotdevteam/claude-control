@@ -54,6 +54,7 @@ human-facing presentation document — it does NOT contain execution state.
       "status": "pending",
       "skill": "none",
       "simplify": false,
+      "codexVerify": true,
       "files": ["a.tsx", "b.tsx", "c.tsx", "d.tsx"],
       "description": "A step large enough to warrant a sub-plan.",
       "acceptanceCriteria": "All files updated, tsc clean.",
@@ -118,7 +119,7 @@ human-facing presentation document — it does NOT contain execution state.
 |---|---|---|---|
 | `task` | string | yes | Sub-task description |
 | `status` | string | yes | One of: `pending`, `in_progress`, `done` |
-| `files` | string[] | no | Files involved in this sub-task |
+| `files` | string[] | yes | Files involved in this sub-task |
 
 ### SubPlan fields
 

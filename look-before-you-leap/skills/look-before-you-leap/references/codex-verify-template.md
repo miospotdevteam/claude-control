@@ -18,19 +18,38 @@ Do NOT modify project source files — you are a reviewer, not an implementer.
 
 ## Findings log
 
-When you find issues (anything other than PASS), write a findings report
-to ~/Projects/claude-code-setup/usage-errors/codex-findings/ BEFORE
+When you find issues (anything other than PASS), write a JSON findings
+report to ~/Projects/claude-code-setup/usage-errors/codex-findings/ BEFORE
 returning your response. Create the directory if it doesn't exist.
 
-Filename: YYYY-MM-DD-{plan.name}-step-{step.id}.md
+Filename: YYYY-MM-DD-{plan.name}-step-{step.id}.json
 
-Include for each issue:
-- Severity (HIGH/MEDIUM/LOW)
-- Failure category: INCOMPLETE_WORK, MISSED_CONSUMER, TYPE_SAFETY,
-  SILENT_SCOPE_CUT, WRONG_PATTERN, MISSING_TEST, MISSING_I18N, OTHER
-- File and line
-- What Claude got wrong and why
-- Whether better instructions could have prevented it
+Use this exact JSON structure:
+
+{
+  "plan": "{plan.name}",
+  "project": "{cwd}",
+  "step": {step.id},
+  "stepTitle": "{step.title}",
+  "acceptanceCriteria": "{step.acceptanceCriteria}",
+  "date": "YYYY-MM-DD",
+  "findings": [
+    {
+      "severity": "HIGH | MEDIUM | LOW",
+      "category": "INCOMPLETE_WORK | MISSED_CONSUMER | TYPE_SAFETY | SILENT_SCOPE_CUT | WRONG_PATTERN | MISSING_TEST | MISSING_I18N | OTHER",
+      "file": "relative/path/to/file.ts",
+      "line": 99,
+      "summary": "One-line description of what went wrong",
+      "detail": "Full explanation: what Claude did, why it's wrong, suggested fix",
+      "preventable": "Whether better plugin instructions could have caught this, and which instruction/checklist to strengthen"
+    }
+  ]
+}
+
+Severity guide:
+- HIGH: blocks shipping, runtime failure, data loss, security issue
+- MEDIUM: should fix before merge, incorrect behavior in edge cases
+- LOW: nit, style, minor inconsistency
 
 If PASS, do not write a findings file.
 
@@ -57,9 +76,12 @@ Description: {step.description}
 
 | Placeholder | Source in plan.json |
 |---|---|
+| `{plan.name}` | `.name` |
+| `{cwd}` | Project root (passed as `cwd` in the MCP call) |
 | `{discovery.scope}` | `.discovery.scope` |
 | `{discovery.consumers}` | `.discovery.consumers` |
 | `{discovery.blastRadius}` | `.discovery.blastRadius` |
+| `{step.id}` | `.steps[N].id` |
 | `{step.title}` | `.steps[N].title` |
 | `{step.acceptanceCriteria}` | `.steps[N].acceptanceCriteria` |
 | `{step.files}` | `.steps[N].files` (join with commas) |
@@ -134,10 +156,31 @@ remaining issues or confirm PASS.
 - **approval-policy: never** makes Codex fully autonomous — no human
   intervention during verification.
 - **Codex is a pure reviewer** — it reports issues but never modifies
-  project source files. It writes findings logs to the plugin repo
-  (`~/Projects/claude-code-setup/usage-errors/codex-findings/`) so the
-  plugin author can track Claude's failure modes. Claude reads the
-  report, fixes issues, then optionally re-verifies via codex-reply.
+  project source files. It writes JSON findings logs to the plugin repo
+  (`~/Projects/claude-code-setup/usage-errors/codex-findings/`) so
+  Claude can parse them programmatically to identify recurring failure
+  patterns and improve plugin instructions.
 - **Requires the Codex MCP server** to be configured globally
   (`claude mcp add --scope user codex -- codex mcp-server`). If not
   available, skip Codex verification gracefully.
+
+## Analyzing Findings
+
+To spot patterns across findings files:
+
+```bash
+# Count by category
+jq -r '.findings[].category' usage-errors/codex-findings/*.json | sort | uniq -c | sort -rn
+
+# Count by severity
+jq -r '.findings[].severity' usage-errors/codex-findings/*.json | sort | uniq -c | sort -rn
+
+# List all HIGH findings with file and summary
+jq -r '.findings[] | select(.severity == "HIGH") | "\(.file):\(.line) — \(.summary)"' usage-errors/codex-findings/*.json
+
+# Check which plans had the most issues
+jq -r '.plan' usage-errors/codex-findings/*.json | sort | uniq -c | sort -rn
+
+# Find preventable issues
+jq -r '.findings[] | select(.preventable != null and .preventable != "") | "\(.category): \(.preventable)"' usage-errors/codex-findings/*.json
+```
