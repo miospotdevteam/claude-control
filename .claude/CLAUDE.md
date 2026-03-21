@@ -21,6 +21,15 @@ Single Claude Code plugin: `look-before-you-leap`. Enforces structured explorati
 - When adding new skills, reference files, or hooks, update the Repo Structure tree in `README.md`.
 - Keep PACKAGES.md and README.md accurate — they are user-facing docs that must reflect the current state.
 
+## Codex Lessons Pipeline
+
+`codex-lessons/` (repo root) tracks behavioral rules derived from Codex verification findings. When Codex catches a pattern that existing engineering-discipline rules should have prevented, the lesson is captured as a proposal and eventually promoted to a plugin rule.
+
+- `proposals/` (gitignored) — new lessons awaiting review, may contain project-specific details
+- `promoted/` — generalized lessons that became plugin rules (pattern, evidence, where promoted)
+- After sessions where Codex finds genuine bugs, analyze root causes and write proposals for rule gaps
+- During plugin maintenance, review proposals: generalize and promote to SKILL.md rules, or discard
+
 ## References
 
 - Skill evaluation scaffold: `~/Projects/claude-tests` — use this project when running skill-creator evals

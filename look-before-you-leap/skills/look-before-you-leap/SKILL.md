@@ -615,7 +615,7 @@ have prevented (e.g., "guessed API response shape" maps to "Read API
 handlers before typing responses"), the lesson belongs in the centralized
 pipeline — not in memory.
 
-**Location**: `usage-errors/codex-lessons/` at the project root.
+**Location**: `codex-lessons/` at the plugin repo root.
 
 **Workflow**: After a session where Codex found genuine bugs, analyze the
 root causes. If a bug reveals a gap in engineering-discipline rules (a
