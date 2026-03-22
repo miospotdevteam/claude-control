@@ -402,9 +402,10 @@ This is a loop. Follow it mechanically.
 │     g. Add to completedSummary                          │
 │                                                         │
 │  CODEX GATE (for steps with codexVerify: true):         │
-│     a. Call mcp__codex__codex with step context          │
-│     b. If issues found: fix → codex-reply → repeat      │
-│     c. Only proceed to "mark done" after Codex PASS     │
+│     a. Run run-codex-verify.sh (claude-impl steps)      │
+│        or Claude verifies independently (codex-impl)    │
+│     b. If issues found: fix → re-run verify → repeat    │
+│     c. Only proceed to "mark done" after PASS           │
 │                                                         │
 │  6. IF all steps are now done:                          │
 │     a. Move plan folder from active/ to completed/      │
@@ -425,8 +426,9 @@ any step `done`:
 3. Every item on the deliverables checklist (extracted in step 3b of the
    loop) has been verified — if any deliverable is missing, implement it
    before marking done
-4. If `codexVerify: true`: Codex MCP has reported PASS (not just your
-   own verification — Codex is an independent gate)
+4. If `codexVerify: true`: Codex has reported PASS via `run-codex-verify.sh`
+   (for claude-impl steps) or Claude has independently verified (for
+   codex-impl steps)
 5. You've written meaningful notes in the result field, including the
    Codex verdict (e.g., "Codex: PASS") for codexVerify steps
 

@@ -47,7 +47,7 @@ Look for installed skills that match these needs:
 | Webapp/E2E/browser testing, Playwright | **Always** use `look-before-you-leap:webapp-testing` — never another plugin's E2E testing skill |
 | MCP server development | **Always** use `look-before-you-leap:mcp-builder` — never another plugin's MCP skill |
 | Writing docs, specs, RFCs, proposals | **Always** use `look-before-you-leap:doc-coauthoring` — never another plugin's doc-writing skill |
-| Codex MCP interactions (discovery challenge, plan review, implementation, verification) | **Always** use `look-before-you-leap:codex-dispatch` — handles thread lifecycle, template routing, prompt assembly |
+| Codex interactions (step verification, Codex-owned implementation) | **Always** use `look-before-you-leap:codex-dispatch` — routes to direction-locked scripts, monitors JSONL, enforces independent verification |
 | PR/commit workflow | "commit", "PR", "git" |
 
 If no specialized skill exists, use the checklists and guides in `references/`.
@@ -155,24 +155,21 @@ from zero.
 
 ### Codex adversarial discovery challenge
 
-After writing discovery.md, invoke `look-before-you-leap:codex-dispatch`
-for an adversarial discovery challenge. This creates the persistent Codex
-thread for the plan.
+After writing discovery.md, run a Codex adversarial discovery challenge
+via `codex exec`:
 
-1. Invoke `Skill(skill: "look-before-you-leap:codex-dispatch")` with
-   phase `"discovery"`
-2. Codex reads your discovery findings and challenges them:
-   - What consumers did you miss?
-   - What blast radius did you underestimate?
-   - What dangerous assumptions did you make?
-   - What existing patterns or utilities should you use?
-3. Incorporate significant findings into discovery.md and plan.json's
-   discovery object
-4. The `threadId` is saved to `plan.json.codexSession` — all subsequent
-   Codex interactions use this thread
+```bash
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read the discovery findings at <plan-dir>/discovery.md and the plan at <plan.json>. \
+   Challenge: What consumers did the discovery miss? What blast radius was underestimated? \
+   What dangerous assumptions were made? What existing patterns or utilities should be used?"
+```
 
-If Codex MCP is not available, skip this step and proceed to planning.
-Note "Codex: skipped — MCP not configured" in the discovery notes.
+Incorporate significant findings into discovery.md and plan.json's
+discovery object.
+
+If `codex` CLI is not available, skip this step and proceed to planning.
+Note "Codex: skipped — codex CLI not installed" in the discovery notes.
 
 ---
 
@@ -207,7 +204,7 @@ compaction recovery depends on them. Do NOT invent your own schema:
 
 - **Top level**: `name`, `title`, `context`, `status`, `requiredSkills`,
   `disciplines`, `discovery`, `steps`, `blocked`, `completedSummary`,
-  `deviations`. Optional: `codexSession` (persistent Codex thread state)
+  `deviations`.
 - **`discovery` object** (required, not a separate file): `scope`,
   `entryPoints`, `consumers`, `existingPatterns`, `testInfrastructure`,
   `conventions`, `blastRadius`, `confidence`. Your exploration findings
@@ -217,7 +214,9 @@ compaction recovery depends on them. Do NOT invent your own schema:
   (`"claude"` default or `"codex"`), `mode` (collaboration mode, default
   `"claude-impl"`), `qa` (default false), `codexVerify` (default true —
   set by writing-plans on every step unless user opts out), `subPlan`
-  (null if none), `result` (null until completion)
+  (null if none), `result` (null until completion),
+  `routingJustification` (why this owner/mode was assigned — required by
+  writing-plans for auditability)
 - **Each progress item**: `task`, `status`, `files` — all three fields,
   no exceptions. Progress arrays go INSIDE each step, never at the top level.
 
@@ -234,32 +233,31 @@ compaction recovery depends on them. Do NOT invent your own schema:
   If no skill applies, use `"none"`.
 - Do NOT omit `title`, `context`, or `status` at the top level — even for
   lightweight bug-fix plans
+- Do NOT leave all steps as `claude-impl` without consulting the routing
+  matrix — mechanical sweeps, refactoring across files, test writing, and
+  verification steps should route to Codex (`codex-impl`). An all-claude-impl
+  plan with 3+ steps is almost certainly wrong.
 
 See `references/plan-schema.md` for the complete schema with all optional
 fields. But the fields above are non-negotiable.
 
 ### Codex plan attack pass
 
-After writing-plans produces the plan (plan.json + masterPlan.md), invoke
-`look-before-you-leap:codex-dispatch` for a plan attack pass — before
-presenting to the user via Orbit.
+After writing-plans produces the plan (plan.json + masterPlan.md), run
+a Codex plan attack pass before presenting to the user via Orbit:
 
-1. Invoke `Skill(skill: "look-before-you-leap:codex-dispatch")` with
-   phase `"plan-review"`
-2. Codex reads masterPlan.md and critiques the plan:
-   - Which steps are too large for a single context window?
-   - Which acceptance criteria are vague or unverifiable?
-   - What steps are missing?
-   - Is the ordering correct (definitions before consumers)?
-   - Are step ownership assignments correct per the routing matrix?
-3. Adjust the plan based on Codex's findings:
-   - Fix step sizing (split large steps)
-   - Sharpen vague acceptance criteria
-   - Add missing steps
-   - Correct ordering or ownership issues
-4. Then proceed to Orbit review
+```bash
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
+   Critique: Which steps are too large? Which acceptance criteria are vague? \
+   What steps are missing? Is the ordering correct? Are ownership assignments correct?"
+```
 
-If Codex MCP is not available, skip and proceed directly to Orbit review.
+Adjust the plan based on Codex's findings (fix step sizing, sharpen
+criteria, add missing steps, correct ordering). Then proceed to Orbit
+review.
+
+If `codex` CLI is not available, skip and proceed directly to Orbit review.
 
 ### Plan review via Orbit
 
@@ -380,67 +378,70 @@ FOR each step in plan.steps:
 
   ELSE IF step.owner == "claude":           # claude-impl
     Claude implements
-    → codex-dispatch (verify template, persistent thread)
-    → If issues: Claude fixes → codex-reply re-verify → repeat until PASS
+    → run-codex-verify.sh (read-only sandbox)
+    → If findings: Claude fixes → re-run verify → repeat until PASS
     → Mark done with "Codex: PASS"
 
   ELSE IF step.owner == "codex":            # codex-impl
-    → codex-dispatch (implement template, persistent thread)
-    → Codex implements via codex-reply
-    → Claude verifies: read files, tsc/lint/tests, deps-query
-    → If issues: Claude fixes or sends back via codex-reply
+    → run-codex-implement.sh (workspace-write sandbox)
+    → Codex implements via codex exec
+    → Claude verifies INDEPENDENTLY: read files, tsc/lint/tests, deps-query
+    → If issues: Claude fixes directly
     → Log findings to usage-errors/claude-findings/
     → Mark done with "Claude: verified"
 
   ELSE IF step.mode == "collab-split":
-    Claude proposes approach via codex-reply
-    Codex pushes back, they converge
+    Claude proposes approach
     Split into sub-tasks with mixed ownership
     Execute each sub-task via its owner's flow above
 
   ELSE IF step.mode == "dual-pass":
     Claude does design/UX/architecture pass
-    Codex does correctness/security pass via codex-reply
+    Codex does correctness/security pass via run-codex-verify.sh
     Claude synthesizes both sets of findings
 ```
 
 **`owner: "claude"` (default — Claude implements, Codex verifies):**
 
-This is the existing flow. Claude implements the step, then Codex verifies
-via `codex-dispatch`. Applies to modes `claude-solo` and `claude-impl`.
+Claude implements the step, then Codex verifies via `run-codex-verify.sh`.
+Applies to modes `claude-solo` and `claude-impl`.
 
 - For `claude-solo`: no Codex interaction at all (skip codexVerify)
-- For `claude-impl`: standard flow — implement, then Codex verifies
+- For `claude-impl`: standard flow — implement, then run Codex verification
 
 **`owner: "codex"` (Codex implements, Claude verifies):**
 
-1. Invoke `Skill(skill: "look-before-you-leap:codex-dispatch")` with the
-   step context and phase `"execution"` (role: implement)
-2. Codex implements the step via `codex-reply` on the persistent thread
+1. Invoke `Skill(skill: "look-before-you-leap:codex-dispatch")` —
+   the skill runs `run-codex-implement.sh` in the background
+2. Codex implements the step via `codex exec` (workspace-write sandbox)
 3. After Codex reports completion, Claude does a full verification pass:
-   - Read all files Codex modified
+   - Read all files Codex modified (`git diff --name-only`)
+   - Read EVERY modified file
    - Run tsc/lint/tests
    - Check consumers via deps-query on any modified shared files
    - Verify against the step's acceptance criteria
 4. If issues found:
-   - Fix directly (for minor issues) or send back via `codex-reply`
+   - Fix directly
    - Log Claude's findings to `usage-errors/claude-findings/` (see
      Symmetric Error Logging below)
 5. Update progress items in plan.json based on Codex's report
 6. Mark step done with "Claude: verified" in result field
 
+**Do NOT run `run-codex-verify.sh` on codex-impl steps.** The script
+rejects them — and even if it didn't, having Codex verify its own work
+defeats the purpose. The `verify-step-completion` hook enforces this:
+it rejects "Codex: PASS" on codex-impl steps.
+
 **`mode: "collab-split"` (collaborative design, then split execution):**
 
-1. Claude proposes an approach via `codex-reply`
-2. Codex pushes back, suggests alternatives, identifies risks
-3. They converge on a design
-4. The step splits into sub-tasks with mixed ownership
-5. Each sub-task executes via its owner's flow (claude-impl or codex-impl)
+1. Claude proposes an approach (notes in plan.json or discovery.md)
+2. Split the step into sub-tasks with mixed ownership
+3. Each sub-task executes via its owner's flow (claude-impl or codex-impl)
 
 **`mode: "dual-pass"` (both agents work independently):**
 
 1. Claude does its pass first (design/UX/architecture focus)
-2. Codex does its pass via `codex-reply` (correctness/security focus)
+2. Run `run-codex-verify.sh` — Codex focuses on correctness/security
 3. Claude synthesizes both sets of findings
 4. Record combined findings in step result
 
@@ -451,7 +452,7 @@ on the step owner:
 
 | Step owner | Who verifies | How |
 |---|---|---|
-| `claude` | Codex | Via `codex-verify-template.md` on persistent thread |
+| `claude` | Codex | Via `run-codex-verify.sh` (read-only sandbox) |
 | `codex` | Claude | Read files, run tsc/lint/tests, check consumers |
 | `dual-pass` | Both | Each focuses on different aspects, Claude synthesizes |
 
@@ -460,8 +461,8 @@ on the step owner:
 Findings flow in both directions:
 
 - **Codex → Claude**: Codex logs Claude's mistakes to
-  `usage-errors/codex-findings/` (existing flow, via developer-instructions
-  in the verify template)
+  `usage-errors/codex-findings/` (auto-logged by the `lbyl-verify` Codex
+  skill installed at `~/.codex/skills/`)
 - **Claude → Codex**: When Claude verifies Codex-owned steps and finds
   issues, write findings to `usage-errors/claude-findings/` using the same
   JSON schema. See `codex-dispatch` skill for the exact schema and naming
@@ -579,18 +580,15 @@ steps warrant it. Do not dispatch for steps without `qa: true`.
 
 ### Codex verification (gate before marking done)
 
-When a step has `codexVerify: true` in plan.json, Codex MCP verification
+When a step has `codexVerify: true` in plan.json, Codex verification
 is a **gate** — you MUST get a Codex PASS **before** marking the step
-`done`. Codex runs on a different model (GPT-5.4) with its own
-engineering-discipline plugin, providing truly independent verification
-with fresh context.
+`done`. Codex runs on a different model with its own engineering-discipline
+plugin, providing truly independent verification with fresh context.
 
-**Codex runs BEFORE done, not after.** The old flow (mark done → run
-Codex → fix) led to inaccurate result fields and false completion
-signals. The correct flow is: complete all progress items → run your
-own verification (tsc, lint, tests) → call Codex → fix any findings →
-re-verify until PASS → THEN mark the step done with the Codex verdict
-in the result field.
+**Codex runs BEFORE done, not after.** The correct flow is: complete all
+progress items → run your own verification (tsc, lint, tests) → run
+`run-codex-verify.sh` → fix any findings → re-run until PASS → THEN
+mark the step done with the Codex verdict in the result field.
 
 **No pre-existing exemptions.** If the acceptance criteria say "tsc
 passes" and tsc does not pass, fix the issue — regardless of whether
@@ -599,81 +597,66 @@ dismissal. Either fix the failure or get the acceptance criteria changed
 before the plan was approved.
 
 **One step at a time.** Each step gets its own Codex call. NEVER batch
-multiple steps into a single call — this creates massive prompts that
-take too long and make findings harder to act on.
+multiple steps into a single call.
 
-**Prerequisites**: The Codex MCP server must be configured globally
-(`claude mcp add --scope user codex -- codex mcp-server`). If the
-`mcp__codex__codex` tool is not available, skip Codex verification
-gracefully and note it in the step's result field.
+**Prerequisites**: The Codex CLI must be installed (`npm install -g
+@openai/codex`). Codex skills must be installed at `~/.codex/skills/`
+(done automatically by the SessionStart hook). If `codex` is not
+available, skip verification and note "Codex: skipped — codex CLI not
+installed" in the step's result field.
 
 **Flow:**
 
 1. **Complete the step's work** — all progress items done, your own
    verification passing (tsc, lint, tests).
-2. **Invoke codex-dispatch** — `Skill(skill: "look-before-you-leap:codex-dispatch")`
-   with phase `"execution"` (role: verify). The skill handles template
-   selection, prompt assembly, and thread management:
-   - **Persistent thread** (preferred): If `plan.json.codexSession.threadId`
-     exists, uses `mcp__codex__codex-reply` with the verify template's
-     persistent-thread prompt (includes ROLE SWITCH + full role context).
-   - **Fresh thread** (fallback): If no persistent thread exists, uses
-     `mcp__codex__codex` with developer-instructions + prompt from the
-     verify template's fallback path.
-3. **Read Codex's response** (`content` field). If it reports issues:
-   - Codex auto-logs findings to `~/Projects/claude-code-setup/usage-errors/codex-findings/`
-     (initial: `*-step-N.json`, re-verify: `*-step-N-reverify-M.json`)
+2. **Run Codex verification** via `run-codex-verify.sh`:
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh <plan.json> <step-number>
+   ```
+   Run this in the background (`Bash run_in_background: true`). While
+   Codex runs, you can begin exploring the next step (read files, check
+   consumers) — but do NOT start editing code.
+3. **Read the result** from `.codex-result-step-N.txt`. If findings:
+   - Codex auto-logs findings to `usage-errors/codex-findings/`
    - Do NOT dismiss a Codex finding as "pre-existing," "out of scope,"
      or "my interpretation is different." If you believe the finding is
      wrong, you have exactly two options:
      1. Quote the exact code path or plan text that proves it is wrong.
      2. Ask the user to approve a plan / acceptance-criteria change
         before continuing.
-     You may NOT dismiss, reinterpret, or partially address findings on
-     your own. Narrowing an acceptance criterion after a failed Codex
-     round counts as a plan deviation, not a normal fix.
    - **Investigate before fixing.** Before editing any code:
-     1. Read the file(s) and line(s) Codex cited — do not fix from the
-        finding description alone.
-     2. State the root cause in one sentence.
-     3. If the finding has multiple parts, number each one and confirm
-        you will address ALL of them.
-     For heuristic, layout, timing, and threshold bugs, changing a
-     constant is NOT evidence of understanding. Do not bump margins,
-     delays, widths, retry counts, or safety factors until you have
-     recorded: (a) what concrete behavior is wrong, (b) what assumption
-     in the current code is false, (c) what measurement, trace, or
-     source proves your new value is justified.
+     1. Read the file(s) and line(s) Codex cited
+     2. State the root cause in one sentence
+     3. If the finding has multiple parts, address ALL of them
    - Fix each issue (follow engineering-discipline, not quick patches)
-   - **You MUST re-verify after fixing.** Call `mcp__codex__codex-reply`
-     with the saved `threadId` and the re-verify prompt from the template.
-     Do NOT skip this — `tsc --noEmit` passing is not the same as Codex
-     confirming your fixes are correct. Include root-cause rationale in
-     the re-verify prompt so Codex can evaluate whether the fix addresses
-     the actual cause, not just the symptom.
+   - **Re-run verification after fixing.** Run `run-codex-verify.sh`
+     again. Do NOT skip this — `tsc --noEmit` passing is not the same
+     as Codex confirming your fixes are correct.
    - Repeat the fix → re-verify loop until Codex reports PASS
 4. **THEN mark the step done** with the Codex verdict in the result
    field: "Codex: PASS" or a summary of issues found and how they were
-   resolved. The verdict must come from Codex (the final PASS or
-   remaining issues), not from your own assessment. Do NOT plan to
-   "mark done" before Codex runs — Codex is a gate, not a formality.
+   resolved. The verdict must come from Codex, not from your own
+   assessment.
 
 Codex verification is **on by default for every step** — the
 `writing-plans` skill sets `codexVerify: true` on all steps unless the
 user explicitly opts out. Do not dispatch for steps with
 `codexVerify: false`.
 
-The `verify-step-completion` hook enforces this gate: if a step with
-`codexVerify: true` is marked done without a Codex verdict in the result
-field, the hook reverts the step to `in_progress` and blocks.
+The `verify-step-completion` hook enforces this gate with direction
+awareness:
+- For `owner: "claude"` steps: result must contain "Codex: PASS" (or
+  FAIL or skipped)
+- For `owner: "codex"` steps: result must contain "Claude: verified"
+  AND must NOT contain "Codex: PASS" (prevents Codex self-verification)
 
 ### Codex Findings Log (both directions)
 
 Findings flow in both directions, logged to separate directories:
 
 **Codex verifies Claude** → `usage-errors/codex-findings/`
-Codex auto-logs its findings via developer-instructions in the verify
-template. You do not need to log these manually.
+Codex auto-logs its findings via the `lbyl-verify` skill installed at
+`~/.codex/skills/`. You do not need to log these manually.
 - Initial: `YYYY-MM-DD-{plan}-step-{N}.json`
 - Re-verify: `YYYY-MM-DD-{plan}-step-{N}-reverify-{M}.json`
 
@@ -821,11 +804,7 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
   `references/api-contracts-guide.md`, `references/dependency-mapping.md`
 - `references/debugging-root-cause-tracing.md`, `references/debugging-defense-in-depth.md`
 
-**Codex lifecycle templates:**
-- `references/codex-discover-template.md` — adversarial discovery challenge (creates persistent thread)
-- `references/codex-plan-review-template.md` — plan attack pass review
-- `references/codex-implement-template.md` — Codex-owned step implementation (with skill injection)
-- `references/codex-verify-template.md` — step verification (persistent thread + fallback paths)
+**Codex integration:**
 - `references/routing-matrix.md` — task-type routing table for step ownership assignment
 - `references/scenario-playbook.md` — 23-scenario ownership matrix with collaboration modes
 
@@ -834,3 +813,5 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 - `scripts/plan_utils.py` — read/update plan.json (used by hooks and Claude)
 - `scripts/deps-query.py` — query dep maps for consumers and blast radius
 - `scripts/deps-generate.py` — generate or regenerate dep maps
+- `scripts/run-codex-verify.sh` — direction-locked Codex verification (read-only sandbox)
+- `scripts/run-codex-implement.sh` — direction-locked Codex implementation (workspace-write sandbox)

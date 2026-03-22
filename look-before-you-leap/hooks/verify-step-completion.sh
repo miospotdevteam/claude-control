@@ -238,8 +238,12 @@ step_list = steps.split()
 step_display = ", ".join(f"Step {s}" for s in step_list)
 markers = ", ".join(f".verify-pending-{s}" for s in step_list)
 
-# Check codexVerify steps and enforce Codex-before-done gate
+# Check codexVerify steps and enforce direction-locked verification gate
+# - owner=="claude" (claude-impl): result must match "Codex: (PASS|FAIL|skipped)"
+# - owner=="codex" (codex-impl): result must match "Claude: verified" AND
+#   must NOT contain "Codex: PASS" (prevents Codex self-verification)
 codex_blocked_steps = []
+direction_blocked_steps = []
 plan = None
 if os.path.isfile(plan_json_path):
     try:
@@ -252,16 +256,64 @@ if os.path.isfile(plan_json_path):
                 continue
             if not step.get("codexVerify", False):
                 continue
-            # Check if result field contains a Codex verdict
             result = step.get("result") or ""
-            if not re.search(r"Codex:\s*(PASS|FAIL)", result, re.IGNORECASE):
-                codex_blocked_steps.append(sid)
+            owner = step.get("owner", "claude")
+
+            if owner == "codex":
+                # codex-impl: Claude must verify independently
+                has_claude_verified = re.search(r"Claude:\s*verified", result, re.IGNORECASE)
+                has_codex_pass = re.search(r"Codex:\s*PASS", result, re.IGNORECASE)
+                if not has_claude_verified:
+                    direction_blocked_steps.append(sid)
+                elif has_codex_pass:
+                    # Codex verified its own work — reject
+                    direction_blocked_steps.append(sid)
+            else:
+                # claude-impl: Codex must verify
+                if not re.search(r"Codex:\s*(PASS|FAIL|skipped)", result, re.IGNORECASE):
+                    codex_blocked_steps.append(sid)
     except Exception:
         pass
 
-# If any codexVerify steps lack a Codex verdict, revert them and block
+# Handle direction-blocked codex-impl steps
+if direction_blocked_steps:
+    for sid in direction_blocked_steps:
+        try:
+            plan_utils.update_step(plan_json_path, int(sid), "in_progress")
+        except Exception:
+            pass
+        marker_path = os.path.join(plan_dir, f".verify-pending-{sid}")
+        if os.path.exists(marker_path):
+            os.remove(marker_path)
+
+    blocked_display = ", ".join(f"Step {s}" for s in direction_blocked_steps)
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": (
+                f"CLAUDE INDEPENDENT VERIFICATION REQUIRED — "
+                f"{blocked_display} {'is' if len(direction_blocked_steps) == 1 else 'are'} "
+                "codex-impl (owner: codex) with `codexVerify: true`.\n\n"
+                f"{'This step has' if len(direction_blocked_steps) == 1 else 'These steps have'} "
+                "been reverted to `in_progress`.\n\n"
+                "For codex-impl steps, CLAUDE must verify independently — "
+                "Codex cannot verify its own work.\n\n"
+                "1. Read `git diff --name-only` to see what Codex changed\n"
+                "2. Read EVERY modified file (at least changed sections)\n"
+                "3. Run tsc/lint/tests\n"
+                "4. Check each acceptance criterion against actual code\n"
+                "5. If dep maps exist, run deps-query on modified shared files\n"
+                "6. Set the result field to include 'Claude: verified'\n"
+                "7. Do NOT include 'Codex: PASS' — that would be rejected\n"
+                "8. Then mark the step done again"
+            )
+        }
+    }
+    json.dump(output, sys.stdout)
+    sys.exit(0)
+
+# Handle codex-blocked claude-impl steps
 if codex_blocked_steps:
-    # Revert blocked steps to in_progress and remove their markers
     for sid in codex_blocked_steps:
         try:
             plan_utils.update_step(plan_json_path, int(sid), "in_progress")
@@ -281,17 +333,16 @@ if codex_blocked_steps:
                 "`codexVerify: true` but no Codex verdict in the result field.\n\n"
                 f"{'This step has' if len(codex_blocked_steps) == 1 else 'These steps have'} "
                 "been reverted to `in_progress`.\n\n"
-                "You must run Codex MCP verification and get a PASS verdict "
-                "BEFORE marking the step done. Follow the conductor skill's "
-                "'Codex verification (gate before marking done)' flow:\n\n"
-                "1. Read `references/codex-verify-template.md` for the prompt template\n"
-                "2. Call `mcp__codex__codex` with the step's context\n"
-                "3. Fix any findings, then call `mcp__codex__codex-reply` to re-verify\n"
+                "You must run Codex verification via `run-codex-verify.sh` and get a "
+                "PASS verdict BEFORE marking the step done:\n\n"
+                "1. Invoke `Skill(skill: 'look-before-you-leap:codex-dispatch')`\n"
+                "2. The skill runs `run-codex-verify.sh` in the background\n"
+                "3. Fix any findings, then re-run verification\n"
                 "4. Repeat until Codex reports PASS\n"
                 "5. Set the result field to include 'Codex: PASS' (or the verdict)\n"
                 "6. Then mark the step done again\n\n"
-                "If `mcp__codex__codex` is not available, note 'Codex: skipped — "
-                "MCP not configured' in the result field."
+                "If `codex` CLI is not available, note 'Codex: skipped — "
+                "codex CLI not installed' in the result field."
             )
         }
     }

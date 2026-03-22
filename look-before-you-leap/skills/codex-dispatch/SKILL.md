@@ -1,228 +1,161 @@
 ---
 name: codex-dispatch
-description: "Orchestrates all Codex MCP interactions for the look-before-you-leap plugin. Manages the persistent Codex thread lifecycle (create, reply, recover, overflow), routes to phase-specific prompt templates (discovery, plan-review, implementation, verification), assembles prompts with plan.json interpolation, parses responses, and updates codexSession state. Handles all 5 collaboration modes (claude-solo, claude-impl, codex-impl, collab-split, dual-pass) and symmetric error logging. Use whenever a plan step requires Codex interaction: adversarial discovery challenge, plan attack pass, Codex-owned implementation, or step verification. Do NOT use for: plans with no Codex involvement, claude-solo steps, or direct Codex MCP calls outside the plan lifecycle."
+description: "Orchestrates all Codex interactions for the look-before-you-leap plugin via codex exec CLI. Routes to direction-locked scripts (run-codex-verify.sh for claude-impl, run-codex-implement.sh for codex-impl), monitors JSONL streaming output, parses results, and enforces independent verification. Handles all 5 collaboration modes (claude-solo, claude-impl, codex-impl, collab-split, dual-pass) and symmetric error logging. Use whenever a plan step requires Codex interaction: verification of Claude's work, or Codex-owned implementation. Do NOT use for: plans with no Codex involvement, claude-solo steps, or discovery/plan-review phases (use codex exec directly for those)."
 ---
 
 # Codex Dispatch
 
-This skill orchestrates ALL Codex MCP interactions. Claude never calls
-`mcp__codex__codex` or `mcp__codex__codex-reply` directly — it invokes
-this skill, which handles thread management, template selection, prompt
-assembly, response parsing, and state updates.
+This skill orchestrates ALL Codex interactions during plan execution.
+Claude never calls `codex exec` directly for step verification or
+implementation — it invokes this skill, which selects the correct
+direction-locked script, runs it in the background, monitors output,
+and enforces the verification protocol.
 
 ---
 
 ## Prerequisites
 
-The Codex MCP server must be configured globally:
+The Codex CLI must be installed globally:
 ```bash
-claude mcp add --scope user codex -- codex mcp-server
+npm install -g @openai/codex
 ```
 
-If `mcp__codex__codex` is not available, skip Codex interactions gracefully
-and note "Codex: skipped — MCP not configured" in the step's result field.
+Codex skills must be installed to `~/.codex/skills/` (done automatically
+by the SessionStart hook via `install-codex-skills.sh`):
+- `lbyl-verify` — teaches Codex the verification protocol
+- `lbyl-implement` — teaches Codex the implementation protocol
+
+If `codex` is not available (`command -v codex` fails), skip Codex
+interactions gracefully and note "Codex: skipped — codex CLI not
+installed" in the step's result field.
 
 ---
 
-## Thread Lifecycle
+## Script Selection
 
-One persistent thread per plan. Created during discovery, reused for all
-subsequent interactions.
+Two direction-locked scripts enforce the ownership model. Neither script
+can be used for the wrong direction — they validate the step's `owner`
+field and exit with an error if mismatched.
 
-### Create (discovery phase)
+| Step owner | Script | Sandbox | What happens |
+|---|---|---|---|
+| `claude` | `run-codex-verify.sh` | `read-only` | Codex reviews Claude's work, cannot modify files |
+| `codex` | `run-codex-implement.sh` | `workspace-write` | Codex implements the step, can edit files |
 
-The first Codex interaction creates the thread:
+Both scripts live at:
+```
+${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh
+${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-implement.sh
+```
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/references/codex-discover-template.md`
-2. Interpolate plan.json values into the template
-3. Call `mcp__codex__codex` with:
-   - `prompt`: assembled discovery prompt
-   - `developer-instructions`: lifecycle-wide instructions (allows phase
-     switching via ROLE SWITCH directives)
-   - `sandbox`: `"danger-full-access"`
-   - `approval-policy`: `"never"`
-   - `cwd`: project root
-4. Save returned `threadId` to plan.json:
-   ```bash
-   python3 plan_utils.py update-codex-session <plan.json> <threadId> discovery
-   ```
+Usage:
+```bash
+bash <script> <plan.json-path> <step-number>
+```
 
-### Reply (all subsequent phases)
-
-Every interaction after discovery uses `mcp__codex__codex-reply`:
-
-1. Read the phase-appropriate template
-2. Interpolate plan.json values
-3. Call `mcp__codex__codex-reply` with:
-   - `threadId`: from `plan.json.codexSession.threadId`
-   - `prompt`: assembled prompt (includes ROLE SWITCH + role context +
-     task, since codex-reply has no developer-instructions parameter)
-4. Update session:
-   ```bash
-   python3 plan_utils.py update-codex-session <plan.json> <threadId> <phase>
-   ```
-
-### Recover (thread lost)
-
-If `codex-reply` fails with a thread-not-found error:
-
-1. Log the error
-2. Create a fresh thread via `mcp__codex__codex` with:
-   - Developer-instructions: same lifecycle-wide instructions as original
-   - Prompt: compressed summary of prior interactions from
-     `plan.json.completedSummary` + `discovery` + current task
-3. Save new `threadId` to plan.json (replaces old one)
-4. Continue with the current phase
-
-No data is lost because plan.json has all state on disk.
-
-### Overflow (thread too long)
-
-Long threads degrade Codex response time and can cause timeouts. The
-threshold is deliberately conservative — real-world testing showed timeouts
-starting around 15 interactions.
-
-**Trigger**: Check `codexSession.interactionCount` before every
-`codex-reply` call. If **>= 10**, trigger overflow before the next
-interaction. Do not wait for a timeout.
-
-**Fresh thread initialization protocol:**
-
-1. **Read current state** from plan.json:
-   - `plan.context` (what the user asked for)
-   - `discovery` object (scope, consumers, blast radius, patterns)
-   - `completedSummary` array (what's been done so far)
-   - Current step context (id, title, description, acceptanceCriteria)
-   - `codexSession.phase` (what phase we're in)
-
-2. **Assemble the handoff prompt** for the new thread's
-   `developer-instructions`:
-
-   ```
-   You are a collaborator working with another AI (Claude) across a full
-   plan lifecycle. Your role changes per phase — Claude will tell you your
-   current role in each prompt via a ROLE SWITCH directive.
-
-   ## Continuing from a previous thread
-
-   This is a continuation of an earlier Codex thread that was retired due
-   to length. Here is the accumulated context:
-
-   ### Plan context
-   {plan.context}
-
-   ### Discovery findings
-   Scope: {discovery.scope}
-   Consumers: {discovery.consumers}
-   Blast radius: {discovery.blastRadius}
-   Existing patterns: {discovery.existingPatterns}
-
-   ### Work completed so far
-   {completedSummary — join with newlines}
-
-   ### Current phase: {codexSession.phase}
-   ```
-
-3. **Create the fresh thread** via `mcp__codex__codex`:
-   ```json
-   {
-     "prompt": "<current phase prompt — same as what you were about to send>",
-     "developer-instructions": "<assembled handoff prompt above>",
-     "sandbox": "danger-full-access",
-     "approval-policy": "never",
-     "cwd": "<project root>"
-   }
-   ```
-
-4. **Update plan.json** — save new `threadId`, reset `interactionCount`
-   to 1, keep the same `phase`:
-   ```bash
-   python3 plan_utils.py clear-codex-session <plan.json>
-   python3 plan_utils.py update-codex-session <plan.json> <newThreadId> <phase>
-   ```
-
-5. **Continue** with the current phase as normal.
-
-No data is lost because plan.json has all state on disk. The new thread
-gets a compressed summary of everything the old thread knew.
+Output files (in the plan directory):
+- `.codex-stream-step-N.jsonl` — JSONL event stream (live progress)
+- `.codex-result-step-N.txt` — final result text
 
 ---
 
-## Phase Routing
+## Dispatch Flow
 
-Read `codexSession.phase` from plan.json and the current step's context
-to select the correct template:
+### For `claude-impl` steps (Claude implements, Codex verifies)
 
-| Phase | Template | When |
-|---|---|---|
-| `discovery` | `codex-discover-template.md` | After Claude writes discovery.md |
-| `plan-review` | `codex-plan-review-template.md` | After writing-plans produces the plan |
-| `execution` (verify) | `codex-verify-template.md` | After Claude completes an `owner: "claude"` step |
-| `execution` (implement) | `codex-implement-template.md` | When starting an `owner: "codex"` step |
+1. Claude completes the step — all progress items done, own verification
+   passing (tsc, lint, tests)
+2. **Dispatch Codex verification:**
+   ```
+   Bash(
+     command: "bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh <plan.json> <step-number>",
+     run_in_background: true
+   )
+   ```
+3. **Monitor JSONL** — periodically read `.codex-stream-step-N.jsonl`
+   (see Monitoring section)
+4. **When Codex finishes** — read `.codex-result-step-N.txt`
+5. **If PASS**: record "Codex: PASS" in step result, mark done
+6. **If findings**: fix issues, then re-run verification:
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh <plan.json> <step-number>
+   ```
+   Repeat until PASS.
 
-### Template selection logic
+### For `codex-impl` steps (Codex implements, Claude verifies)
 
-```
-IF phase == "discovery":
-    template = codex-discover-template.md
-
-ELSE IF phase == "plan-review":
-    template = codex-plan-review-template.md
-
-ELSE IF phase == "execution":
-    IF step.owner == "claude" AND step is completed:
-        template = codex-verify-template.md (persistent thread path)
-    ELSE IF step.owner == "codex" AND step is starting:
-        template = codex-implement-template.md
-    ELSE IF step.mode == "dual-pass":
-        # Both agents work independently
-        # Use verify template for Codex's independent pass
-        template = codex-verify-template.md (with dual-pass context)
-```
+1. **Dispatch Codex implementation:**
+   ```
+   Bash(
+     command: "bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-implement.sh <plan.json> <step-number>",
+     run_in_background: true
+   )
+   ```
+2. **Monitor JSONL** — watch for file changes, commands, issues
+3. **When Codex finishes** — read `.codex-result-step-N.txt`
+4. **Claude verifies independently** (see Independent Verification below)
+5. Record "Claude: verified" in step result, mark done
 
 ---
 
-## Prompt Assembly
+## JSONL Monitoring
 
-Every template uses `{placeholder}` syntax. Interpolate from plan.json:
+While Codex runs in the background, periodically read the stream file
+to report progress to the user:
 
-### Common placeholders (all templates)
+```bash
+# Read latest events
+tail -20 <plan-dir>/.codex-stream-step-N.jsonl
+```
 
-| Placeholder | Source |
-|---|---|
-| `{plan.name}` | `plan.json .name` |
-| `{plan.context}` | `plan.json .context` |
-| `{discovery.scope}` | `plan.json .discovery.scope` |
-| `{discovery.entryPoints}` | `plan.json .discovery.entryPoints` |
-| `{discovery.consumers}` | `plan.json .discovery.consumers` |
-| `{discovery.existingPatterns}` | `plan.json .discovery.existingPatterns` |
-| `{discovery.blastRadius}` | `plan.json .discovery.blastRadius` |
-| `{discovery.confidence}` | `plan.json .discovery.confidence` |
+Key JSONL event types:
+- `item.completed` + `type: "agent_message"` — Codex's text output
+  (findings, status updates)
+- `item.completed` + `type: "command_execution"` — commands Codex ran
+  and their output (tsc, grep, tests)
+- `item.completed` + `type: "file_change"` — files Codex modified
+  (implement only)
+- `turn.completed` — Codex is done, includes token usage
 
-### Step-specific placeholders (execution templates)
+Report to the user only what's relevant:
+- "Codex is running tsc..." (from command_execution)
+- "Codex found 2 issues in ModalShell.tsx" (from agent_message)
+- "Codex modified 5 files" (from file_change count)
+- "Codex finished — PASS" or "Codex finished — 3 findings"
 
-| Placeholder | Source |
-|---|---|
-| `{step.id}` | `plan.json .steps[N].id` |
-| `{step.title}` | `plan.json .steps[N].title` |
-| `{step.description}` | `plan.json .steps[N].description` |
-| `{step.acceptanceCriteria}` | `plan.json .steps[N].acceptanceCriteria` |
-| `{step.files}` | `plan.json .steps[N].files` (join with commas) |
-| `{step.progress}` | `plan.json .steps[N].progress` (format as numbered list) |
-| `{plan.completedSummary}` | `plan.json .completedSummary` (join with newlines) |
-| `{cwd}` | Project root path |
+---
 
-### Plan-review placeholder
+## Claude's Independent Verification (codex-impl steps)
 
-| Placeholder | Source |
-|---|---|
-| `{masterPlan.content}` | Read `masterPlan.md` from the plan directory |
+When Codex implements a step, Claude MUST verify independently. Do NOT
+use `run-codex-verify.sh` — that would have Codex verify its own work,
+which is exactly the failure mode this architecture prevents.
 
-### Skill injection placeholder
+### Verification protocol
 
-| Placeholder | Source |
-|---|---|
-| `{step.skill.content}` | Read the SKILL.md for the step's `skill` field. Empty if `"none"`. See Skill Injection below. |
+1. **Read what changed**: `git diff --name-only` to see Codex's modifications
+2. **Read EVERY modified file** — at least the changed sections, not just
+   the diff summary
+3. **Run verification commands**: tsc/lint/tests — same commands Codex ran
+4. **Check each acceptance criterion** against the actual code — read the
+   step's `acceptanceCriteria` from plan.json and verify each one
+5. **Check consumers**: if Codex modified shared code, run deps-query on
+   modified files (if dep maps configured) or grep for import statements
+6. **Write result**: "Claude: verified — read N files, checked M criteria,
+   [all pass | found issues: ...]"
+
+### If Claude finds issues
+
+- Fix directly (for minor issues) or note what needs fixing
+- Log findings to `usage-errors/claude-findings/` (see Symmetric Error
+  Logging below)
+- Re-run verification after fixes
+- Update progress items in plan.json
+
+The `verify-step-completion` hook enforces this:
+- For `owner: "codex"` steps: result must contain `Claude: verified`
+  AND must NOT contain `Codex: PASS`
+- This makes "Codex verifies Codex" structurally impossible
 
 ---
 
@@ -234,47 +167,32 @@ No Codex interaction. Skip this step entirely in codex-dispatch.
 
 ### `claude-impl` (default)
 
-1. Claude implements the step (normal flow)
-2. After Claude marks all progress items done and passes own verification:
-   - Invoke codex-dispatch with verify template
-   - Codex reviews via `codex-reply`
-   - If issues found: Claude fixes, then re-verifies via `codex-reply`
-   - Repeat until PASS
-3. Record "Codex: PASS" in step result
+1. Claude implements the step
+2. After own verification passes: dispatch `run-codex-verify.sh`
+3. Fix findings, re-verify until PASS
+4. Record "Codex: PASS" in step result
 
 ### `codex-impl`
 
-1. Invoke codex-dispatch with implement template
-2. Codex implements via `codex-reply` (has edit permission from
-   lifecycle-wide developer-instructions)
-3. After Codex reports completion:
-   - Claude verifies: read all modified files, run tsc/lint/tests, check
-     consumers via deps-query
-   - If issues found: Claude either fixes directly OR sends back via
-     `codex-reply` for Codex to fix
-   - Log Claude's findings to `usage-errors/claude-findings/` (see
-     Symmetric Error Logging)
+1. Dispatch `run-codex-implement.sh`
+2. After Codex reports completion: Claude verifies independently
+3. Fix issues, re-verify
 4. Record "Claude: verified" in step result
 
 ### `collab-split`
 
-1. Claude proposes an approach in a `codex-reply`:
-   - "Here's how I think we should split this step..."
-2. Codex pushes back, suggests alternatives, identifies risks
-3. They converge on a design
-4. The step is split into sub-steps with mixed ownership:
-   - Create progress items with clear owner annotations
-   - Execute each sub-task based on its owner (claude-impl or codex-impl
-     flow for each)
-5. Record the split and outcomes in step result
+1. Claude proposes an approach (notes in plan.json or discovery.md)
+2. Split the step into sub-tasks with mixed ownership
+3. Execute each sub-task based on its owner:
+   - Claude-owned: Claude implements, then `run-codex-verify.sh`
+   - Codex-owned: `run-codex-implement.sh`, then Claude verifies
+4. Record the split and outcomes in step result
 
 ### `dual-pass`
 
-1. Claude does its independent pass first (design/UX/architecture focus)
-2. Invoke codex-dispatch with verify template + dual-pass context:
-   - Add to prompt: "This is a dual-pass review. Focus on implementation
-     correctness, security, edge cases, and test coverage. I (Claude)
-     focused on design and architecture."
+1. Claude does its independent pass first (design/UX/architecture)
+2. Dispatch `run-codex-verify.sh` with the step context — Codex
+   focuses on correctness, security, edge cases
 3. Claude synthesizes both sets of findings
 4. Record combined findings in step result
 
@@ -282,115 +200,84 @@ No Codex interaction. Skip this step entirely in codex-dispatch.
 
 ## Skill Injection
 
-When `step.owner == "codex"`, check the step's `skill` field. If it's not
-`"none"`, read the skill's SKILL.md and inject it into the prompt via the
-`{step.skill.content}` placeholder.
+Codex skills are globally installed at `~/.codex/skills/`. When Codex
+runs via `codex exec`, it automatically loads its installed skills
+(`lbyl-verify` and `lbyl-implement`) which provide the verification
+and implementation protocols.
+
+For step-specific skills (TDD, refactoring, etc.), the relevant skill
+guidance is not injected into the prompt — Codex reads plan.json's
+`skill` field and can find the skill files in the plugin directory if
+needed. The minimal prompt approach means Codex explores and reads
+what it needs.
 
 ### Injectable skills (Codex can use these)
 
-| Skill | SKILL.md path |
+| Skill | What Codex does |
 |---|---|
-| `look-before-you-leap:test-driven-development` | `${CLAUDE_PLUGIN_ROOT}/skills/test-driven-development/SKILL.md` |
-| `look-before-you-leap:refactoring` | `${CLAUDE_PLUGIN_ROOT}/skills/refactoring/SKILL.md` |
-| `look-before-you-leap:systematic-debugging` | `${CLAUDE_PLUGIN_ROOT}/skills/systematic-debugging/SKILL.md` |
-| `look-before-you-leap:webapp-testing` | `${CLAUDE_PLUGIN_ROOT}/skills/webapp-testing/SKILL.md` |
-| `look-before-you-leap:mcp-builder` | `${CLAUDE_PLUGIN_ROOT}/skills/mcp-builder/SKILL.md` |
+| `test-driven-development` | Follows red-green-refactor in progress items |
+| `refactoring` | Follows contract-based rename/move protocol |
+| `systematic-debugging` | Follows 4-phase investigation |
+| `webapp-testing` | Follows Playwright test patterns |
+| `mcp-builder` | Follows MCP server development workflow |
 
-### Claude-only skills (never inject)
+### Claude-only skills (never assigned to codex-impl steps)
 
-These require visual taste or user interaction:
-- `frontend-design`
-- `svg-art`
-- `immersive-frontend`
-- `react-native-mobile`
-- `brainstorming`
-- `writing-plans`
-- `doc-coauthoring`
+- `frontend-design`, `svg-art`, `immersive-frontend`, `react-native-mobile`
+- `brainstorming`, `writing-plans`, `doc-coauthoring`
 
 If a step has `owner: "codex"` AND a Claude-only skill, this is a routing
-error. Log it, fall back to `"none"` (engineering-discipline only), and
-note the mismatch in the step's result field.
-
-### Injection format
-
-Wrap the skill content in a clear section:
-
-```
-## Skill guidance for this step
-
-The following skill provides specialized guidance for implementing this
-step. Follow its instructions alongside the engineering discipline rules.
-
----
-{SKILL.md content}
----
-```
+error. Log it, fall back to `"none"`, and note the mismatch.
 
 ---
 
 ## Response Parsing
 
-### Discovery phase
+### Verification result (from `run-codex-verify.sh`)
 
-Extract from Codex's response:
-- List of missed consumers (file paths)
-- Underestimated blast radius items
-- Dangerous assumptions identified
-- Missing patterns or utilities
+Read `.codex-result-step-N.txt` and look for:
+- **"PASS"** — all acceptance criteria verified. Record "Codex: PASS".
+- **Findings list** — structured issues with severity, file, line.
+  Fix each issue, then re-run `run-codex-verify.sh`.
 
-Update `discovery.md` and `plan.json.discovery` with significant findings.
+### Implementation result (from `run-codex-implement.sh`)
 
-### Plan-review phase
+Read `.codex-result-step-N.txt` and extract:
+- **FILES CHANGED**: list of files Codex created or modified
+- **WHAT WAS DONE**: summary per progress item
+- **VERIFICATION**: type checker and test results
+- **ISSUES**: anything that went wrong
 
-Extract from Codex's response:
-- Steps that are too large (IDs + reasoning)
-- Vague acceptance criteria (IDs + suggestion)
-- Missing steps
-- Ordering issues
-- Ownership disagreements
-
-Adjust plan.json and masterPlan.md before Orbit review.
-
-### Execution phase (verify)
-
-Extract from Codex's response:
-- PASS or list of findings
-- Each finding: severity, file, line, category, detail
-
-If PASS: record "Codex: PASS" in step result.
-If findings: fix issues, re-verify via `codex-reply`.
-
-### Execution phase (implement)
-
-Extract from Codex's response:
-- FILES CHANGED list
-- WHAT WAS DONE summary
-- VERIFICATION results
-- ISSUES encountered
-
-Update progress items in plan.json based on the report. Then proceed to
-Claude's verification pass.
+Update progress items in plan.json based on the report. Then proceed
+to Claude's independent verification.
 
 ---
 
 ## Symmetric Error Logging
 
-When Claude verifies Codex-owned steps and finds issues, write findings
-to `usage-errors/claude-findings/` using the same JSON schema as Codex
-uses for `usage-errors/codex-findings/`:
+Findings flow in both directions, logged to separate directories:
 
-### File naming
+### Codex verifies Claude → `usage-errors/codex-findings/`
 
-- `YYYY-MM-DD-{plan.name}-step-{N}-claude-review.json`
-- Re-review: `YYYY-MM-DD-{plan.name}-step-{N}-claude-review-{M}.json`
+Codex auto-logs findings via the `lbyl-verify` skill. You do not
+need to log these manually.
+- Initial: `YYYY-MM-DD-{plan}-step-{N}.json`
+- Re-verify: `YYYY-MM-DD-{plan}-step-{N}-reverify-{M}.json`
 
-### JSON schema
+### Claude verifies Codex → `usage-errors/claude-findings/`
+
+When Claude's verification of a Codex-owned step finds issues, write
+findings manually:
+- Review: `YYYY-MM-DD-{plan}-step-{N}-claude-review.json`
+- Re-review: `YYYY-MM-DD-{plan}-step-{N}-claude-review-{M}.json`
+
+### JSON schema (both directions)
 
 ```json
 {
   "plan": "{plan.name}",
   "project": "{cwd}",
-  "step": {step.id},
+  "step": 0,
   "stepTitle": "{step.title}",
   "acceptanceCriteria": "{step.acceptanceCriteria}",
   "date": "YYYY-MM-DD",
@@ -399,7 +286,7 @@ uses for `usage-errors/codex-findings/`:
     {
       "severity": "HIGH | MEDIUM | LOW",
       "category": "INCOMPLETE_WORK | MISSED_CONSUMER | TYPE_SAFETY | SILENT_SCOPE_CUT | WRONG_PATTERN | MISSING_TEST | MISSING_I18N | OTHER",
-      "file": "relative/path/to/file",
+      "file": "relative/path",
       "line": 0,
       "summary": "One-line description",
       "detail": "Full explanation",
@@ -409,50 +296,68 @@ uses for `usage-errors/codex-findings/`:
 }
 ```
 
-The only difference from Codex's schema is the `"reviewer": "claude"` field.
-This allows the analyzing scripts in codex-verify-template.md to work
-across both directories.
+The `reviewer` field distinguishes direction: `"claude"` for Claude's
+findings on Codex work, absent for Codex's findings on Claude's work.
 
 ### When to log
 
-Log findings when Claude's verification of a Codex-owned step finds issues.
-Do NOT log when the step passes verification — same rule as Codex follows.
+Log when verification finds issues. Do NOT log when the step passes.
+
+---
+
+## Discovery and Plan Review (codex exec directly)
+
+For adversarial discovery challenges and plan attack passes, use
+`codex exec` directly (not via the direction-locked scripts). These
+phases don't have step ownership:
+
+```bash
+# Discovery challenge
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read the discovery findings at <plan-dir>/discovery.md and the plan at <plan.json>. \
+   Challenge: What consumers did the discovery miss? What blast radius was underestimated? \
+   What dangerous assumptions were made?"
+
+# Plan attack pass
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
+   Critique: Which steps are too large? Which acceptance criteria are vague? \
+   What steps are missing? Is the ordering correct?"
+```
+
+These are optional and non-blocking — skip if Codex is not available.
 
 ---
 
 ## Error Handling
 
-### Codex MCP not available
+### Codex CLI not available
 
-If `mcp__codex__codex` tool is not available:
-- Skip all Codex interactions for this plan
-- Note "Codex: skipped — MCP not configured" in each step's result field
-- The plan proceeds as fully Claude-owned (all steps become `claude-solo`)
+If `command -v codex` fails:
+- Skip all Codex interactions
+- Note "Codex: skipped — codex CLI not installed" in each step's result
+- The plan proceeds as fully Claude-owned
 
-### Thread lost mid-plan
+### Codex hangs (no new JSONL lines)
 
-If `codex-reply` returns an error indicating the thread is gone:
-1. Log the error to `usage-errors/` if it's a plugin issue
-2. Follow the Recovery protocol (see Thread Lifecycle above)
-3. Continue with the current phase
+If no new events appear in the stream file for > 3 minutes:
+- Check if the `codex exec` process is still running
+- If hung, kill the process and retry once
+- If it hangs again, skip Codex for this step and note it
 
 ### Codex fails mid-implementation
 
-If Codex returns an error or incomplete response during implementation:
-1. Check `git diff` and `git status` to see what Codex changed
-2. Run tsc/lint/tests to assess the state
-3. Decision:
-   - If mostly complete with minor issues: Claude fixes directly
-   - If partially complete: retry the remaining work via `codex-reply`
-   - If fundamentally broken: ask the user before reverting any changes
-     (do NOT use destructive git operations without user confirmation)
-   - If unclear: ask the user
+If Codex reports ISSUES or exits with errors:
+1. Check `git diff` and `git status` to assess what Codex changed
+2. Run tsc/lint/tests
+3. If mostly complete: Claude fixes the remaining issues
+4. If fundamentally broken: ask the user before reverting changes
 
 ### Codex times out
 
-If the MCP call doesn't return in a reasonable time:
-- The MCP framework handles timeouts
-- Treat as a failed call — follow the mid-implementation failure path
+`codex exec` has its own timeout handling. If it exits non-zero:
+- Read whatever is in the result file
+- Treat as a partial result — Claude assesses and decides
 
 ---
 
@@ -460,20 +365,16 @@ If the MCP call doesn't return in a reasonable time:
 
 After context compaction, codex-dispatch recovers from plan.json:
 
-1. Read `plan.json.codexSession`:
-   - `threadId`: resume via `codex-reply`
-   - `phase`: know which template to use
-   - `interactionCount`: know if overflow is near
-   - `lastInteraction`: detect staleness
-2. If `codexSession` exists and `threadId` is set:
-   - Continue via `codex-reply` on the existing thread
-   - Codex retains all prior context independently of Claude's compaction
-3. If `codexSession` is missing or `threadId` is null:
-   - No Codex thread exists — create one if needed
+1. Read plan.json — find the current step and its status
+2. If a step is `in_progress`:
+   - Check for `.codex-stream-step-N.jsonl` and `.codex-result-step-N.txt`
+   - If result file exists: Codex finished, parse the result
+   - If only stream file: Codex may still be running or may have failed.
+     Check if the process is still running.
+3. Continue the execution loop based on plan state
 
-This is the key advantage of persistent threads: Codex's context is
-independent of Claude's. When Claude compacts, Codex still has the full
-conversation history on its thread.
+No thread state to recover — each `codex exec` call is standalone.
+All context lives on disk (plan.json, discovery.md, source files).
 
 ---
 
@@ -481,16 +382,15 @@ conversation history on its thread.
 
 | Situation | Action |
 |---|---|
-| First Codex interaction in a plan | `mcp__codex__codex` (creates thread) |
-| Every subsequent interaction | `mcp__codex__codex-reply` (uses threadId) |
-| After every Codex call | `plan_utils.py update-codex-session` |
-| Thread lost | Recover with fresh thread + summary |
-| interactionCount >= 10 | Overflow: fresh thread via initialization protocol |
-| Codex not available | Skip gracefully, note in result |
-| `claude-solo` step | Skip entirely |
-| `claude-impl` step done | Verify via codex-verify-template |
-| `codex-impl` step starting | Implement via codex-implement-template |
-| `collab-split` step | Design discussion, then split into sub-tasks |
-| `dual-pass` step | Both pass independently, Claude synthesizes |
+| `claude-impl` step done | Run `run-codex-verify.sh` in background |
+| `codex-impl` step starting | Run `run-codex-implement.sh` in background |
+| Codex returns PASS | Record "Codex: PASS" in result, mark done |
+| Codex returns findings | Fix issues, re-run `run-codex-verify.sh` |
+| Codex implements step | Claude verifies independently (read files, run tests) |
+| `claude-solo` step | Skip Codex entirely |
+| `collab-split` step | Split into sub-tasks, execute each by owner |
+| `dual-pass` step | Claude pass, then Codex pass, synthesize |
+| Codex not installed | Skip, note in result |
+| Codex hangs | Kill after 3 min timeout, retry once |
+| After compaction | Read plan.json, check for result files, continue |
 | Claude finds issues in Codex work | Log to `usage-errors/claude-findings/` |
-| After compaction | Read codexSession from plan.json, continue |

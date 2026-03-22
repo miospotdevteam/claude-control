@@ -24,6 +24,12 @@ source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 PROJECT_ROOT="$(find_project_root)"
 PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
 
+# --- Section 1.3: Install Codex skills ---
+INSTALL_CODEX_SKILLS="${PLUGIN_ROOT}/scripts/install-codex-skills.sh"
+if [ -f "$INSTALL_CODEX_SKILLS" ]; then
+  bash "$INSTALL_CODEX_SKILLS" "$PLUGIN_ROOT" 2>/dev/null || true
+fi
+
 # --- Section 1.5: Project config detection ---
 LIB_DIR="${SCRIPT_DIR}/lib"
 CONFIG_FILE="$PROJECT_ROOT/.claude/look-before-you-leap.local.md"

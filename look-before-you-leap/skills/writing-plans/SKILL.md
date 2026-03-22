@@ -61,8 +61,8 @@ now — they inform how you structure the steps.
 
 | If the task involves... | Read before planning... |
 |---|---|
-| Any plan with Codex integration | `references/routing-matrix.md` (step ownership assignment) |
-| Complex or mixed-domain tasks | `references/scenario-playbook.md` (23-scenario ownership matrix) |
+| **Every plan (mandatory)** | **`references/routing-matrix.md`** (step ownership — read BEFORE Step 3) |
+| Every plan with 3+ steps | `references/scenario-playbook.md` (23-scenario ownership matrix) |
 | Writing or modifying tests | `references/testing-checklist.md` |
 | Building or modifying UI | `references/frontend-design-checklist.md` + `references/ui-consistency-checklist.md` |
 | Auth, input validation, secrets | `references/security-checklist.md` |
@@ -75,7 +75,78 @@ not planning):
 - **git-checklist.md** — applies at every commit step
 - **linting-checklist.md** — applies after any code changes
 
-### 3. Write the plan (dual output)
+### 3. Classify step ownership (mandatory — before writing JSON)
+
+**This step is the #1 defense against all-claude-impl plans.** You MUST
+complete this before writing plan.json. If you skip this, every step
+defaults to `claude-impl` and Codex is reduced to a verification-only
+role — wasting its implementation capacity on mechanical tasks it could
+own.
+
+Read `references/routing-matrix.md` now (you should have already read it
+in Step 2). For each step you plan to create, classify it against the
+routing matrix task categories.
+
+#### Produce a routing classification table
+
+Before writing any JSON, write out this table (in your response, not in
+a file) for every step:
+
+| Step | Title | Category Match | Owner | Mode | Justification |
+|---|---|---|---|---|---|
+| 1 | "Add user CRUD endpoints" | Backend from clear spec | codex | codex-impl | Straightforward CRUD, no external integration |
+| 2 | "Build user profile UI" | Frontend UI / visual design | claude | claude-impl | Requires visual taste |
+| 3 | "Rename UserRole across codebase" | Refactor across many files | codex | codex-impl | Mechanical rename, 15 files |
+| 4 | "Write API integration tests" | Test writing | codex | codex-impl | Gets TDD skill injection |
+
+This table is the auditable artifact that proves routing was considered.
+Copy each row's justification into the step's `routingJustification`
+field in plan.json.
+
+#### Anti-pattern: all-claude-impl plans
+
+**If every step in a multi-step plan (3+ steps) ends up as `claude-impl`,
+re-read the routing matrix — this is almost certainly wrong.** Mechanical
+sweeps, file-wide refactoring, test writing, CI setup, and verification
+steps should route to Codex. The only valid all-claude-impl plan is one
+where every step requires visual taste, creative judgment, or user
+interaction — and even then, test-writing sub-steps should still route
+to Codex.
+
+#### Classification rules
+
+1. For each step, identify its **primary task category** from the routing
+   matrix table (e.g., "Backend from clear spec", "Frontend UI", "Refactor
+   across many files")
+2. Read the **Default Owner** and **Default Mode** columns
+3. Check the **Override Conditions** — if any apply, use the override
+4. Check **skill injection rules** — if the step needs a Claude-only
+   skill (`frontend-design`, `svg-art`, `immersive-frontend`,
+   `react-native-mobile`, `brainstorming`, `doc-coauthoring`), it MUST
+   stay `owner: "claude"` regardless of routing matrix
+5. Set `owner`, `mode`, and `routingJustification` on the step
+
+**The `routingJustification` field is required on every step.** Format:
+`"<category match> → <owner>-<mode> [reason if override]"`. Examples:
+- `"Frontend UI / visual design → claude-impl"`
+- `"Refactor across many files → codex-impl"`
+- `"Backend from clear spec → claude-impl (override: needs MCP tool reasoning)"`
+
+#### Dynamic routing
+
+Some steps can't determine ownership at plan time:
+
+- **Performance optimization**: Investigation step is `owner: "codex"`,
+  `mode: "codex-impl"`. Fix steps default to `owner: "claude"` with a
+  note that ownership will be reassigned after investigation.
+- **Vague requests**: Clarification step is `owner: "claude"`,
+  `mode: "claude-solo"`. Subsequent steps assigned normally after
+  requirements are concrete.
+
+See `references/scenario-playbook.md` for the complete 23-scenario
+ownership matrix with collaboration modes and verification rules.
+
+### 4. Write the plan (dual output)
 
 Produce **both** files in `.temp/plan-mode/active/<plan-name>/`:
 
@@ -86,7 +157,7 @@ read and what Claude updates during execution. Include:
 
 - All discovery findings in the `discovery` object
 - Steps with TDD-granularity progress items
-- Inline sub-plans for large steps (see Step 4 below)
+- Inline sub-plans for large steps (see Step 5 below)
 - Exact skill identifiers in `skill` fields
 
 **Use dep maps to populate step `files` arrays.** If dep maps are
@@ -143,7 +214,8 @@ specific behavior, then implements just enough to pass.
     {"task": "Refactor and final verification", "status": "pending", "files": ["src/lib/validate-email.ts", "tests/lib/validate-email.test.ts"]}
   ],
   "subPlan": null,
-  "result": null
+  "result": null,
+  "routingJustification": "Frontend UI / visual design → claude-impl"
 }
 ```
 
@@ -188,33 +260,12 @@ executor knows which guidance to follow.
 testable behavior. TDD is the default for new logic — only use `"none"`
 when the step has nothing to test (config files, wiring, migrations).
 
-#### Assign step ownership
+#### Apply step ownership from routing classification
 
-For each step, assign `owner` and `mode` based on the routing matrix.
-Read `references/routing-matrix.md` for the canonical task-type routing
-table.
-
-**Classification process:**
-
-1. For each step, identify its **primary task category** from the routing
-   matrix table (e.g., "Backend from clear spec", "Frontend UI", "Refactor
-   across many files")
-2. Read the **Default Owner** and **Default Mode** columns
-3. Check the **Override Conditions** — if any apply, use the override
-4. Set `owner` and `mode` on the step accordingly
-
-**Default values** (when no category matches or task is unclear):
-- `owner: "claude"`, `mode: "claude-impl"`
-
-**Example classification:**
-
-| Step description | Category match | Owner | Mode |
-|---|---|---|---|
-| "Build dashboard UI with charts" | Dashboard with charts | varies | `collab-split` |
-| "Add CRUD endpoints for users" | Backend from clear spec | `codex` | `codex-impl` |
-| "Rename UserRole across codebase" | Refactor across many files | `codex` | `codex-impl` |
-| "Design auth permission model" | Security-sensitive design | `claude` | `claude-impl` |
-| "Write integration tests for API" | Test writing | `codex` | `codex-impl` |
+Use the routing classification table you produced in Step 3. For each
+step, set `owner`, `mode`, and `routingJustification` from that table.
+If you haven't done Step 3 yet, go back — do NOT assign ownership while
+writing JSON.
 
 **Skill injection rules for Codex-owned steps:**
 
@@ -230,21 +281,6 @@ These skills stay Claude-only and MUST NOT have `owner: "codex"`:
 
 If a step needs a Claude-only skill, its owner MUST be `"claude"` regardless
 of what the routing matrix says. This is a hard constraint.
-
-**Dynamic routing:**
-
-Some steps can't determine ownership at plan time. For these, create an
-investigation step with a known owner, followed by placeholder steps:
-
-- **Performance optimization**: Investigation step is `owner: "codex"`,
-  `mode: "codex-impl"`. Fix steps default to `owner: "claude"` with a
-  note that ownership will be reassigned after investigation.
-- **Vague requests**: Clarification step is `owner: "claude"`,
-  `mode: "claude-solo"`. Subsequent steps assigned normally after
-  requirements are concrete.
-
-See `references/scenario-playbook.md` for the complete 23-scenario
-ownership matrix with collaboration modes and verification rules.
 
 #### When to set `simplify: true`
 
@@ -284,11 +320,11 @@ via dep maps. It catches issues Claude might miss due to compaction or
 tunnel vision — bugs found early are cheap to fix.
 
 Only set `codexVerify: false` when the user explicitly opts out, or when
-the Codex MCP server is known to be unavailable. If unavailable at
-runtime, Codex verification is skipped gracefully.
+the `codex` CLI is not available. If unavailable at runtime, Codex
+verification is skipped gracefully.
 
-See `references/codex-verify-template.md` for the prompt templates used
-in the MCP call.
+Codex verification uses `run-codex-verify.sh` (direction-locked, read-only
+sandbox). See the `codex-dispatch` skill for the full flow.
 
 #### Key rules
 
@@ -307,7 +343,7 @@ in the MCP call.
 - **DRY / YAGNI** — cut anything not clearly needed right now
 - **Frequent commits** — after every green test or logical unit of work
 
-### 4. Evaluate sub-plan needs (mandatory checkpoint)
+### 5. Evaluate sub-plan needs (mandatory checkpoint)
 
 **Before saving the plan, evaluate EVERY step against these criteria:**
 
@@ -340,11 +376,11 @@ If ANY criterion is met, restructure the step NOW:
 
 Groups should have 3-8 files each. If a group exceeds 8, split it.
 
-**This is a hard checkpoint.** Do not proceed to Step 5 until every step
+**This is a hard checkpoint.** Do not proceed to Step 6 until every step
 has been evaluated. If you skip this, large steps will fail mid-execution
 when context runs out.
 
-### 5. Present for review via Orbit
+### 6. Present for review via Orbit
 
 After saving both files to disk, present masterPlan.md to the user for
 interactive review using the Orbit MCP:
@@ -360,9 +396,9 @@ interactive review using the Orbit MCP:
 
 `orbit_await_review` returns JSON with `status` and `threads`.
 
-- **`approved`, no threads** → proceed to step 6 (plan mode handoff).
+- **`approved`, no threads** → proceed to step 7 (plan mode handoff).
 - **`approved`, with threads** → read each thread, reply as `agent`
-  acknowledging the feedback, resolve threads, then proceed to step 6.
+  acknowledging the feedback, resolve threads, then proceed to step 7.
 - **`changes_requested`** → read all threads. Update both masterPlan.md
   and plan.json to address the feedback. Reply to each thread explaining
   what changed. Resolve threads. Call `orbit_await_review` again for
@@ -370,7 +406,7 @@ interactive review using the Orbit MCP:
 - **`timeout`** → tell the user the review timed out and ask them to
   review when ready.
 
-### 6. Plan mode handoff (post-approval)
+### 7. Plan mode handoff (post-approval)
 
 After the plan is approved via Orbit:
 
@@ -420,7 +456,8 @@ This skill must NOT:
 - **Skip the plan mode handoff** — after Orbit approval, every plan must
   go through plan mode handoff before execution begins.
 - **Write implementation code** — this skill produces plans, not code files.
-- **Skip the sub-plan evaluation** — Step 4 is mandatory for every plan.
+- **Skip the routing classification** — Step 3 is mandatory for every plan.
+- **Skip the sub-plan evaluation** — Step 5 is mandatory for every plan.
 
 **Autonomy limits**: reading discovery, reading checklists, writing plan
 files, and writing sub-plans are autonomous. Overwriting an existing plan

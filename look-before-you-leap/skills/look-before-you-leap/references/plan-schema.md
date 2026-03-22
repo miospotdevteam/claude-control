@@ -30,12 +30,6 @@ human-facing presentation document — it does NOT contain execution state.
     "blastRadius": "What could break if you get this wrong.",
     "confidence": "high"
   },
-  "codexSession": {
-    "threadId": "abc-123",
-    "phase": "discovery",
-    "interactionCount": 1,
-    "lastInteraction": "2026-03-22T10:30:00Z"
-  },
   "steps": [
     {
       "id": 1,
@@ -54,7 +48,8 @@ human-facing presentation document — it does NOT contain execution state.
         {"task": "Another sub-task", "status": "pending", "files": ["src/bar.ts"]}
       ],
       "subPlan": null,
-      "result": null
+      "result": null,
+      "routingJustification": "Frontend UI / visual design → claude-impl"
     },
     {
       "id": 2,
@@ -78,7 +73,8 @@ human-facing presentation document — it does NOT contain execution state.
           {"name": "Modal components", "files": ["c.tsx", "d.tsx"], "status": "pending", "notes": null}
         ]
       },
-      "result": null
+      "result": null,
+      "routingJustification": "Refactor across many files → codex-impl"
     }
   ],
   "blocked": [],
@@ -100,22 +96,11 @@ human-facing presentation document — it does NOT contain execution state.
 | `requiredSkills` | string[] | yes | Exact skill identifiers (empty array if none) |
 | `disciplines` | string[] | yes | Checklist filenames that apply |
 | `discovery` | object | yes | All 8 exploration sections |
-| `codexSession` | object | no | Persistent Codex MCP thread state (null/absent if no Codex involvement). See Codex Session fields below. |
+| `codexSession` | object | no | **Deprecated.** Legacy field for MCP-based Codex threads. New plans do not use this — Codex interactions use `codex exec` CLI via direction-locked scripts. Ignored by current tooling. |
 | `steps` | Step[] | yes | Ordered list of execution steps |
 | `blocked` | string[] | yes | Blocked step descriptions (empty if none) |
 | `completedSummary` | string[] | yes | Running log of completed steps |
 | `deviations` | string[] | yes | Where implementation deviated from plan |
-
-### Codex Session fields
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `threadId` | string | yes | Codex MCP thread ID. Set after first `mcp__codex__codex` call. Used for all subsequent `mcp__codex__codex-reply` calls. |
-| `phase` | string | yes | Current lifecycle phase: `"discovery"`, `"plan-review"`, `"execution"`, `"completed"` |
-| `interactionCount` | number | yes | Number of Codex interactions on this thread. When >= 10, trigger overflow: start a fresh thread via the initialization protocol in `codex-dispatch`. Threshold is conservative — timeouts observed at ~15. |
-| `lastInteraction` | string | yes | ISO 8601 timestamp of the last Codex interaction. Used for staleness detection. |
-
-The `codexSession` object is absent or `null` for plans with no Codex involvement (backward compatible). Created during discovery when the first Codex call is made. Updated after every Codex interaction via `plan_utils.py update-codex-session`.
 
 ### Step fields
 
@@ -129,13 +114,14 @@ The `codexSession` object is absent or `null` for plans with no Codex involvemen
 | `skill` | string | yes | Skill to invoke, or `"none"` |
 | `simplify` | boolean | yes | Whether to run simplification after step |
 | `qa` | boolean | no | Whether to run fresh-eyes QA sub-agent after step (default false) |
-| `codexVerify` | boolean | no | Whether to run Codex MCP verification after step (default true — set on every step unless user opts out). Requires Codex MCP server configured globally. See `references/codex-verify-template.md` for prompt templates. |
+| `codexVerify` | boolean | no | Whether to run Codex verification after step (default true — set on every step unless user opts out). Uses `run-codex-verify.sh` (read-only sandbox) for claude-impl steps. For codex-impl steps, Claude verifies independently. |
 | `files` | string[] | yes | Files involved in this step |
 | `description` | string | yes | What to do — self-contained for fresh context |
 | `acceptanceCriteria` | string | yes | How to know the step is done |
 | `progress` | Progress[] | yes | Sub-task checklist (empty array for simple steps) |
 | `subPlan` | SubPlan? | no | Inline sub-plan for large steps (null if none) |
 | `result` | string? | no | Filled after completion (null before) |
+| `routingJustification` | string | no | Why this step was assigned to this owner/mode — routing matrix category and justification. Format: `"<category> → <mode> [override reason]"`. Required by writing-plans skill for auditability. Example: `"Refactor across many files → codex-impl"` |
 
 ### Progress item fields
 
@@ -194,19 +180,6 @@ python3 /path/to/plan_utils.py status /path/to/plan.json
 python3 /path/to/plan_utils.py next-step /path/to/plan.json
 ```
 
-## Codex Session Management
-
-```bash
-# Set/update codex session (all fields at once)
-python3 /path/to/plan_utils.py update-codex-session /path/to/plan.json <threadId> <phase>
-
-# Read current codex session state
-python3 /path/to/plan_utils.py get-codex-session /path/to/plan.json
-
-# Clear codex session (thread lost, plan complete, etc.)
-python3 /path/to/plan_utils.py clear-codex-session /path/to/plan.json
-```
-
 ## Collaboration Modes
 
 Five distinct collaboration patterns determine how Claude and Codex interact
@@ -216,7 +189,7 @@ on each step. The `mode` field on each step selects the pattern:
 |---|---|---|
 | `claude-solo` | `claude` | Claude handles everything. No Codex involvement for this step. Use for vague/ambiguous tasks requiring user interaction. |
 | `claude-impl` | `claude` | Claude implements, Codex verifies afterward. The default mode — matches the existing codexVerify flow. |
-| `codex-impl` | `codex` | Codex implements via MCP, Claude verifies afterward. For backend, refactoring, debugging, CI. |
+| `codex-impl` | `codex` | Codex implements via `codex exec`, Claude verifies afterward independently. For backend, refactoring, debugging, CI. |
 | `collab-split` | mixed | Both discuss approach first, then execution splits into sub-steps with mixed ownership. For complex features, migrations, integrations. |
 | `dual-pass` | both | Both agents work independently, Claude synthesizes findings. For security review, PR review. |
 

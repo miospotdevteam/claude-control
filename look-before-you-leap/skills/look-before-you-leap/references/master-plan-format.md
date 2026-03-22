@@ -78,6 +78,9 @@ disciplines.">
 ## Steps
 
 ### Step 1: <Title>
+- **Owner**: claude | codex
+- **Mode**: claude-solo | claude-impl | codex-impl | collab-split | dual-pass
+- **Routing**: <category from routing matrix> → <justification>
 - **Skill**: `look-before-you-leap:refactoring` | none
 - **Simplify**: true/false
 - **QA**: true/false
@@ -159,6 +162,9 @@ High — issue is clear, fix is straightforward.
 ## Steps
 
 ### Step 1: Fix button alignment
+- **Owner**: claude
+- **Mode**: claude-impl
+- **Routing**: Frontend UI / visual design → claude-impl
 - **Skill**: none
 - **Simplify**: false
 - **QA**: false
