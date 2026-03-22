@@ -61,6 +61,8 @@ now — they inform how you structure the steps.
 
 | If the task involves... | Read before planning... |
 |---|---|
+| Any plan with Codex integration | `references/routing-matrix.md` (step ownership assignment) |
+| Complex or mixed-domain tasks | `references/scenario-playbook.md` (23-scenario ownership matrix) |
 | Writing or modifying tests | `references/testing-checklist.md` |
 | Building or modifying UI | `references/frontend-design-checklist.md` + `references/ui-consistency-checklist.md` |
 | Auth, input validation, secrets | `references/security-checklist.md` |
@@ -123,6 +125,8 @@ specific behavior, then implements just enough to pass.
   "id": 1,
   "title": "Email validation utility",
   "status": "pending",
+  "owner": "claude",
+  "mode": "claude-impl",
   "skill": "look-before-you-leap:test-driven-development",
   "simplify": false,
   "codexVerify": true,
@@ -183,6 +187,64 @@ executor knows which guidance to follow.
 **When in doubt, prefer TDD over `"none"`** for any step that creates
 testable behavior. TDD is the default for new logic — only use `"none"`
 when the step has nothing to test (config files, wiring, migrations).
+
+#### Assign step ownership
+
+For each step, assign `owner` and `mode` based on the routing matrix.
+Read `references/routing-matrix.md` for the canonical task-type routing
+table.
+
+**Classification process:**
+
+1. For each step, identify its **primary task category** from the routing
+   matrix table (e.g., "Backend from clear spec", "Frontend UI", "Refactor
+   across many files")
+2. Read the **Default Owner** and **Default Mode** columns
+3. Check the **Override Conditions** — if any apply, use the override
+4. Set `owner` and `mode` on the step accordingly
+
+**Default values** (when no category matches or task is unclear):
+- `owner: "claude"`, `mode: "claude-impl"`
+
+**Example classification:**
+
+| Step description | Category match | Owner | Mode |
+|---|---|---|---|
+| "Build dashboard UI with charts" | Dashboard with charts | varies | `collab-split` |
+| "Add CRUD endpoints for users" | Backend from clear spec | `codex` | `codex-impl` |
+| "Rename UserRole across codebase" | Refactor across many files | `codex` | `codex-impl` |
+| "Design auth permission model" | Security-sensitive design | `claude` | `claude-impl` |
+| "Write integration tests for API" | Test writing | `codex` | `codex-impl` |
+
+**Skill injection rules for Codex-owned steps:**
+
+When `owner: "codex"`, the step's `skill` field determines what guidance
+Codex receives in its prompt (via `{step.skill.content}` in the implement
+template). These skills CAN be injected into Codex:
+- `test-driven-development`, `refactoring`, `systematic-debugging`,
+  `webapp-testing`, `mcp-builder`
+
+These skills stay Claude-only and MUST NOT have `owner: "codex"`:
+- `frontend-design`, `svg-art`, `immersive-frontend`, `react-native-mobile`,
+  `brainstorming`, `writing-plans`, `doc-coauthoring`
+
+If a step needs a Claude-only skill, its owner MUST be `"claude"` regardless
+of what the routing matrix says. This is a hard constraint.
+
+**Dynamic routing:**
+
+Some steps can't determine ownership at plan time. For these, create an
+investigation step with a known owner, followed by placeholder steps:
+
+- **Performance optimization**: Investigation step is `owner: "codex"`,
+  `mode: "codex-impl"`. Fix steps default to `owner: "claude"` with a
+  note that ownership will be reassigned after investigation.
+- **Vague requests**: Clarification step is `owner: "claude"`,
+  `mode: "claude-solo"`. Subsequent steps assigned normally after
+  requirements are concrete.
+
+See `references/scenario-playbook.md` for the complete 23-scenario
+ownership matrix with collaboration modes and verification rules.
 
 #### When to set `simplify: true`
 

@@ -1,15 +1,18 @@
 # Codex Verification Template
 
-Prompt templates for calling the Codex MCP tool (`mcp__codex__codex`) to
-independently verify a completed plan step. Claude assembles these templates
-by interpolating values from plan.json before making the MCP call.
+Prompt templates for verifying a completed plan step via Codex MCP. When a
+persistent Codex thread exists (`plan.json.codexSession.threadId`), use
+`mcp__codex__codex-reply` on the existing thread. Otherwise, fall back to
+a fresh `mcp__codex__codex` call. Claude assembles these templates by
+interpolating values from plan.json before making the MCP call.
 
 ---
 
-## Developer Instructions
+## Developer Instructions (fresh thread only)
 
-Pass this as the `developer-instructions` parameter. It sets Codex's role
-and injects plan context so it knows what to verify against.
+Used ONLY when creating a fresh thread via `mcp__codex__codex` (fallback
+path). When using the persistent thread via `codex-reply`, these
+instructions are embedded in the prompt instead (see Prompt section).
 
 ```
 You are a verification agent reviewing work done by another AI (Claude).
@@ -102,7 +105,83 @@ Description: {step.description}
 
 ## Prompt
 
-Pass this as the `prompt` parameter. It tells Codex what to do.
+### Persistent thread path (preferred)
+
+When a persistent thread exists, the prompt includes role context because
+`codex-reply` has no `developer-instructions` parameter.
+
+```
+ROLE SWITCH: You are now a verification agent reviewing work done by me
+(Claude). Do NOT modify project source files — you are a reviewer only.
+
+Pre-existing failures are NOT exempt. If the acceptance criteria say "tsc
+passes" and tsc does not pass, report it — regardless of whether this
+step introduced the failure.
+
+## Findings log
+
+When you find issues (anything other than PASS), write a JSON findings
+report to ~/Projects/claude-code-setup/usage-errors/codex-findings/ BEFORE
+returning your response. Create the directory if it doesn't exist.
+
+Filename: YYYY-MM-DD-{plan.name}-step-{step.id}.json
+Re-verify: YYYY-MM-DD-{plan.name}-step-{step.id}-reverify-{N}.json
+
+JSON structure:
+{
+  "plan": "{plan.name}",
+  "project": "{cwd}",
+  "step": {step.id},
+  "stepTitle": "{step.title}",
+  "acceptanceCriteria": "{step.acceptanceCriteria}",
+  "date": "YYYY-MM-DD",
+  "findings": [
+    {
+      "severity": "HIGH | MEDIUM | LOW",
+      "category": "INCOMPLETE_WORK | MISSED_CONSUMER | TYPE_SAFETY | SILENT_SCOPE_CUT | WRONG_PATTERN | MISSING_TEST | MISSING_I18N | OTHER",
+      "file": "path",
+      "line": 0,
+      "summary": "...",
+      "detail": "...",
+      "preventable": "..."
+    }
+  ]
+}
+
+If PASS, do not write a findings file.
+
+## Step to verify
+
+Step {step.id}: "{step.title}"
+Scope: {discovery.scope}
+Consumers: {discovery.consumers}
+Blast radius: {discovery.blastRadius}
+Acceptance criteria: {step.acceptanceCriteria}
+Files: {step.files}
+Description: {step.description}
+
+## Your task
+
+1. Run `git diff` to see what changed
+2. Check every acceptance criterion — was it implemented correctly?
+3. Run the project's type checker and relevant tests
+4. Use deps-query on any modified shared files to check consumer integrity
+5. Look for bugs, type safety holes, and silent scope cuts
+
+Report each issue as:
+- Severity: HIGH (blocks shipping) / MEDIUM (should fix) / LOW (nit)
+- File and line
+- What's wrong and why
+- Suggested fix
+- Failure category
+
+If everything checks out: "PASS — all acceptance criteria verified."
+```
+
+### Fresh thread path (fallback)
+
+When no persistent thread exists, use the shorter prompt (role context is
+in the developer-instructions parameter instead):
 
 ```
 Verify step {step.id}: "{step.title}"
@@ -128,6 +207,30 @@ If everything checks out: "PASS — all acceptance criteria verified."
 
 ## MCP Tool Call Parameters
 
+### When a persistent thread exists (preferred)
+
+If `plan.json.codexSession.threadId` is set, use `mcp__codex__codex-reply`
+on the existing thread. Codex retains all context from discovery and
+earlier steps.
+
+```json
+{
+  "threadId": "<from plan.json.codexSession.threadId>",
+  "prompt": "<assembled prompt above>"
+}
+```
+
+After the call, update the session:
+```bash
+python3 plan_utils.py update-codex-session <plan.json> <threadId> execution
+```
+
+### When no persistent thread exists (fallback)
+
+If `codexSession` is absent or `threadId` is null (e.g., Codex was not
+used during discovery, or the thread was lost), create a fresh thread
+with `mcp__codex__codex`:
+
 ```json
 {
   "prompt": "<assembled prompt above>",
@@ -139,7 +242,10 @@ If everything checks out: "PASS — all acceptance criteria verified."
 ```
 
 The tool returns `{ threadId, content }`. Save the `threadId` for
-re-verification follow-ups.
+re-verification follow-ups and to `plan.json.codexSession`:
+```bash
+python3 plan_utils.py update-codex-session <plan.json> <threadId> execution
+```
 
 ---
 

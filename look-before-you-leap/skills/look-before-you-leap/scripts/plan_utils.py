@@ -17,6 +17,9 @@ CLI usage:
     python3 plan-utils.py is-fresh <plan.json>
     python3 plan-utils.py is-complete <plan.json>
     python3 plan-utils.py find-active <project_root>
+    python3 plan-utils.py update-codex-session <plan.json> <threadId> <phase>
+    python3 plan-utils.py get-codex-session <plan.json>
+    python3 plan-utils.py clear-codex-session <plan.json>
 """
 
 import json
@@ -164,6 +167,53 @@ def add_deviation(plan_path, text):
     """Append to the deviations array."""
     plan = read_plan(plan_path)
     plan.setdefault("deviations", []).append(text)
+    write_plan(plan_path, plan)
+    return True
+
+
+def update_codex_session(plan_path, thread_id, phase):
+    """Set or update the codexSession object in plan.json.
+
+    Creates the codexSession if it doesn't exist. Increments
+    interactionCount and updates lastInteraction timestamp.
+    """
+    from datetime import datetime, timezone
+
+    plan = read_plan(plan_path)
+    session = plan.get("codexSession")
+    if not isinstance(session, dict):
+        # Missing, null, or malformed — initialize fresh
+        session = {
+            "threadId": thread_id,
+            "phase": phase,
+            "interactionCount": 1,
+            "lastInteraction": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+    else:
+        session["threadId"] = thread_id
+        session["phase"] = phase
+        prev_count = session.get("interactionCount", 0)
+        session["interactionCount"] = (prev_count if isinstance(prev_count, int) else 0) + 1
+        session["lastInteraction"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    plan["codexSession"] = session
+    write_plan(plan_path, plan)
+    return True
+
+
+def get_codex_session(plan_path):
+    """Read and return the codexSession object. Returns None if absent."""
+    plan = read_plan(plan_path)
+    return plan.get("codexSession")
+
+
+def clear_codex_session(plan_path):
+    """Remove the codexSession object from plan.json.
+
+    Used when a thread is lost, a plan completes, or a fresh thread
+    is needed. Safe to call even if codexSession doesn't exist.
+    """
+    plan = read_plan(plan_path)
+    plan.pop("codexSession", None)
     write_plan(plan_path, plan)
     return True
 
@@ -320,9 +370,41 @@ def cli_next_step(plan_path):
         print(json.dumps({"id": None, "title": None, "message": "No pending steps"}))
 
 
+def print_help():
+    """Print usage information with all available commands."""
+    print("""Usage: plan_utils.py <command> <plan.json|project_root> [args...]
+
+Plan state commands:
+  status <plan.json>                              Show plan status summary
+  next-step <plan.json>                           Show next step to work on
+  is-fresh <plan.json>                            Check if plan is untouched
+  is-complete <plan.json>                         Check if all steps are done
+
+Plan update commands:
+  update-step <plan.json> <step_id> <status>      Update step status
+  update-progress <plan.json> <step_id> <idx> <s> Update progress item status
+  set-result <plan.json> <step_id> <text>         Set step result text
+  add-summary <plan.json> <text>                  Append to completedSummary
+  add-deviation <plan.json> <text>                Append to deviations
+
+Codex session commands:
+  update-codex-session <plan.json> <threadId> <phase>  Set/update codex session
+  get-codex-session <plan.json>                        Read codex session state
+  clear-codex-session <plan.json>                      Remove codex session
+
+Plan discovery commands:
+  find-active <project_root>                      Find most recent active plan
+  find-for-session <project_root> <ppid>          Find plan for a session PID
+  find-unclaimed <project_root>                   Find plans with dead locks""")
+
+
 def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("--help", "-h"):
+        print_help()
+        sys.exit(0)
+
     if len(sys.argv) < 3:
-        print("Usage: plan-utils.py <command> <plan.json|project_root> [args...]", file=sys.stderr)
+        print("Usage: plan_utils.py <command> <plan.json|project_root> [args...]", file=sys.stderr)
         sys.exit(1)
 
     command = sys.argv[1]
@@ -408,6 +490,26 @@ def main():
             sys.exit(1)
         text = sys.argv[3]
         add_deviation(plan_path, text)
+
+    elif command == "update-codex-session":
+        if len(sys.argv) < 5:
+            print("Usage: plan-utils.py update-codex-session <plan.json> <threadId> <phase>", file=sys.stderr)
+            sys.exit(1)
+        thread_id = sys.argv[3]
+        phase = sys.argv[4]
+        if not update_codex_session(plan_path, thread_id, phase):
+            sys.exit(1)
+
+    elif command == "get-codex-session":
+        session = get_codex_session(plan_path)
+        if session:
+            print(json.dumps(session))
+        else:
+            print(json.dumps(None))
+
+    elif command == "clear-codex-session":
+        if not clear_codex_session(plan_path):
+            sys.exit(1)
 
     elif command == "is-fresh":
         plan = read_plan(plan_path)

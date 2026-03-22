@@ -173,10 +173,17 @@ look-before-you-leap/
     │   │   ├── debugging-defense-in-depth.md        # Layer 3: Multi-layer validation
     │   │   ├── debugging-condition-based-waiting.md  # Layer 3: Replace timeouts with polling
     │   │   ├── verification-commands.md # tsc/lint/test commands by ecosystem
-    │   │   ├── codex-verify-template.md # Prompt templates for Codex MCP verification
-    │   │   └── anti-slop.md             # Shared anti-AI-slop banlist for creative skills
+    │   │   ├── codex-verify-template.md     # Codex: step verification (persistent thread + fallback)
+    │   │   ├── codex-discover-template.md  # Codex: adversarial discovery challenge
+    │   │   ├── codex-plan-review-template.md # Codex: plan attack pass review
+    │   │   ├── codex-implement-template.md # Codex: implementation for codex-owned steps
+    │   │   ├── routing-matrix.md          # Task-type routing table for step ownership
+    │   │   ├── scenario-playbook.md       # 23-scenario ownership matrix
+    │   │   ├── plan-schema.md             # Full plan.json schema (incl. codexSession, owner, mode)
+    │   │   └── anti-slop.md               # Shared anti-AI-slop banlist for creative skills
     │   └── scripts/
     │       ├── init-plan-dir.sh         # Sets up .temp/plan-mode/
+    │       ├── plan_utils.py            # Plan state management (incl. codex session commands)
     │       ├── plan-status.sh           # Shows all plan statuses
     │       └── resume.sh               # Finds what to resume
     ├── engineering-discipline/
@@ -234,6 +241,8 @@ look-before-you-leap/
     │       ├── mcp-best-practices.md    # Tool design, responses, security
     │       ├── mcp-typescript.md        # McpServer, Zod, transports
     │       └── mcp-python.md            # FastMCP, Pydantic, async
+    ├── codex-dispatch/
+    │   └── SKILL.md                     # Codex MCP orchestration: thread lifecycle, 5 collaboration modes
     └── doc-coauthoring/
         └── SKILL.md                     # 3-stage document co-authoring
 ```

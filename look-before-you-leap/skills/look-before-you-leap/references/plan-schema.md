@@ -30,11 +30,19 @@ human-facing presentation document — it does NOT contain execution state.
     "blastRadius": "What could break if you get this wrong.",
     "confidence": "high"
   },
+  "codexSession": {
+    "threadId": "abc-123",
+    "phase": "discovery",
+    "interactionCount": 1,
+    "lastInteraction": "2026-03-22T10:30:00Z"
+  },
   "steps": [
     {
       "id": 1,
       "title": "Step title",
       "status": "pending",
+      "owner": "claude",
+      "mode": "claude-impl",
       "skill": "none",
       "simplify": false,
       "codexVerify": true,
@@ -52,6 +60,8 @@ human-facing presentation document — it does NOT contain execution state.
       "id": 2,
       "title": "Large sweep step",
       "status": "pending",
+      "owner": "codex",
+      "mode": "codex-impl",
       "skill": "none",
       "simplify": false,
       "codexVerify": true,
@@ -90,10 +100,22 @@ human-facing presentation document — it does NOT contain execution state.
 | `requiredSkills` | string[] | yes | Exact skill identifiers (empty array if none) |
 | `disciplines` | string[] | yes | Checklist filenames that apply |
 | `discovery` | object | yes | All 8 exploration sections |
+| `codexSession` | object | no | Persistent Codex MCP thread state (null/absent if no Codex involvement). See Codex Session fields below. |
 | `steps` | Step[] | yes | Ordered list of execution steps |
 | `blocked` | string[] | yes | Blocked step descriptions (empty if none) |
 | `completedSummary` | string[] | yes | Running log of completed steps |
 | `deviations` | string[] | yes | Where implementation deviated from plan |
+
+### Codex Session fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `threadId` | string | yes | Codex MCP thread ID. Set after first `mcp__codex__codex` call. Used for all subsequent `mcp__codex__codex-reply` calls. |
+| `phase` | string | yes | Current lifecycle phase: `"discovery"`, `"plan-review"`, `"execution"`, `"completed"` |
+| `interactionCount` | number | yes | Number of Codex interactions on this thread. When >= 10, trigger overflow: start a fresh thread via the initialization protocol in `codex-dispatch`. Threshold is conservative — timeouts observed at ~15. |
+| `lastInteraction` | string | yes | ISO 8601 timestamp of the last Codex interaction. Used for staleness detection. |
+
+The `codexSession` object is absent or `null` for plans with no Codex involvement (backward compatible). Created during discovery when the first Codex call is made. Updated after every Codex interaction via `plan_utils.py update-codex-session`.
 
 ### Step fields
 
@@ -102,6 +124,8 @@ human-facing presentation document — it does NOT contain execution state.
 | `id` | number | yes | Sequential step number (1-based) |
 | `title` | string | yes | Step title |
 | `status` | string | yes | One of: `pending`, `in_progress`, `done`, `blocked` |
+| `owner` | string | no | Who implements this step: `"claude"` (default) or `"codex"`. Assigned by writing-plans skill based on routing matrix. Claude-owned steps are verified by Codex; Codex-owned steps are verified by Claude. |
+| `mode` | string | no | Collaboration mode for this step. One of: `"claude-solo"`, `"claude-impl"` (default), `"codex-impl"`, `"collab-split"`, `"dual-pass"`. Determines how Claude and Codex interact. See collaboration modes below. |
 | `skill` | string | yes | Skill to invoke, or `"none"` |
 | `simplify` | boolean | yes | Whether to run simplification after step |
 | `qa` | boolean | no | Whether to run fresh-eyes QA sub-agent after step (default false) |
@@ -169,6 +193,36 @@ python3 /path/to/plan_utils.py status /path/to/plan.json
 # Get next step to work on
 python3 /path/to/plan_utils.py next-step /path/to/plan.json
 ```
+
+## Codex Session Management
+
+```bash
+# Set/update codex session (all fields at once)
+python3 /path/to/plan_utils.py update-codex-session /path/to/plan.json <threadId> <phase>
+
+# Read current codex session state
+python3 /path/to/plan_utils.py get-codex-session /path/to/plan.json
+
+# Clear codex session (thread lost, plan complete, etc.)
+python3 /path/to/plan_utils.py clear-codex-session /path/to/plan.json
+```
+
+## Collaboration Modes
+
+Five distinct collaboration patterns determine how Claude and Codex interact
+on each step. The `mode` field on each step selects the pattern:
+
+| Mode | `owner` | Description |
+|---|---|---|
+| `claude-solo` | `claude` | Claude handles everything. No Codex involvement for this step. Use for vague/ambiguous tasks requiring user interaction. |
+| `claude-impl` | `claude` | Claude implements, Codex verifies afterward. The default mode — matches the existing codexVerify flow. |
+| `codex-impl` | `codex` | Codex implements via MCP, Claude verifies afterward. For backend, refactoring, debugging, CI. |
+| `collab-split` | mixed | Both discuss approach first, then execution splits into sub-steps with mixed ownership. For complex features, migrations, integrations. |
+| `dual-pass` | both | Both agents work independently, Claude synthesizes findings. For security review, PR review. |
+
+The `owner` field is the primary dispatch signal during execution. The
+`mode` field provides additional context about HOW the owner interacts
+with the other agent. `codex-dispatch` skill reads both fields.
 
 ## masterPlan.md (companion file)
 
