@@ -86,6 +86,12 @@ This skill must NOT:
 progress are autonomous. Deleting plans, skipping blocked steps, and
 deviating from the plan require user confirmation.
 
+Reinterpreting or narrowing an accepted step after verification has failed
+also counts as a deviation. If Codex says a criterion was not met, you may
+not redefine terms like "panel", "sync", or "complete" on your own. Ask
+the user to approve the narrower scope and record it in `plan.json.deviations`
+before proceeding.
+
 **Prerequisites**: this skill is always invoked via the `look-before-you-leap`
 conductor. `${CLAUDE_PLUGIN_ROOT}` must resolve for reference file paths. All
 referenced templates live under `skills/look-before-you-leap/` relative to

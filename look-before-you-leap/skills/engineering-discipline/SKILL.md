@@ -47,6 +47,15 @@ When you open a file to change it, also read:
 - **Sibling files** — how do adjacent files in the same directory solve
   similar problems? If there's already a pattern (naming, error handling,
   return types), follow it.
+- **State producers / message emitters** — if your change depends on a
+  state value, derived state, navigation mode, or postMessage event, list
+  EVERY code path that can produce it before editing. Do not assume the
+  click handler you are reading is the only producer. Trace wizard buttons,
+  URL initialization, effects, imperative setters, and iframe/script
+  emitters. Before writing any event listener, message handler, postMessage
+  listener, webhook handler, or callback: read the code that SENDS the
+  event/message. Verify: what triggers it, what payload it sends, under
+  what conditions it fires.
 - **Project conventions** — check CLAUDE.md, agents.md, README.md, or
   similar docs for project-specific guidance before making assumptions.
 
@@ -300,11 +309,16 @@ exists elsewhere in the codebase (e.g., a new page that replaces an old
 one, a unified flow that wraps existing operations), **read the source
 you're replacing and verify parity**:
 
-1. Open the existing implementation
-2. List what it does: validation rules, error handling, edge cases, save
-   paths, precondition checks
-3. Verify your new implementation covers each item
-4. If you intentionally omit something, document why
+1. Open the existing implementation and keep it open while you implement
+2. List what it does: data sources, mappings, defaults/fallbacks, validation
+   rules, error handling, edge cases, emitted messages, save paths, and
+   precondition checks
+3. Verify your new implementation covers each item line by line
+4. Explicitly compare source-of-truth fields (for example template vs palette,
+   page config vs menu config) instead of assuming one pattern implies the rest
+5. If you intentionally omit something, document why before verification
+6. Before marking the progress item done, write a short parity checklist in
+   your scratch summary so the comparison is auditable after compaction
 
 The pattern to watch for: you read the old code during exploration, then
 write the new code from memory hours later. Memory drifts. The old code
@@ -433,6 +447,13 @@ If any verification step fails, **invoke
 Do not guess at fixes or stack speculative changes. The debugging skill's
 four-phase process (investigate → analyze → hypothesize → implement)
 prevents the thrashing that comes from random fix attempts.
+
+For heuristic, layout, timing, and threshold bugs, changing a constant is
+NOT evidence of understanding. Do not bump margins, delays, widths, retry
+counts, or safety factors until you have recorded:
+1. what concrete behavior is wrong,
+2. what assumption in the current code is false,
+3. what measurement, trace, or source proves your new value is justified.
 
 This step is not optional. It is not something you do when asked. It is
 something you do EVERY TIME, automatically, as the final step of every task.
@@ -592,3 +613,8 @@ If you catch yourself doing any of these, stop and reconsider:
 | Rendering editable fields without tracing the save path | For every editable field: trace onChange → state → mutation → API → DB |
 | Writing simpler preconditions than the operation you're wrapping | Read the handler, list its gates, replicate them exactly |
 | Starting to code a step without listing its deliverables | Extract every deliverable from description + acceptance criteria first |
+| Writing an event listener without reading the code that sends the event | Read the producer: what triggers it, what payload, under what conditions |
+| Depending on a state value without listing all its producers | List EVERY code path that can set it: handlers, effects, URL params, wizard nav |
+| Bumping a margin/threshold/constant to fix a Codex finding | Not evidence of understanding — record what's wrong, what assumption is false, and what proves the new value |
+| Reinterpreting acceptance criteria after a failed Codex round | This is a plan deviation — ask the user to approve the narrower scope first |
+| Fixing one part of a multi-part Codex finding and re-verifying | Number every distinct issue, address ALL before re-verifying |

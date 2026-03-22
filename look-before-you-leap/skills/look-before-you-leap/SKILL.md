@@ -479,16 +479,40 @@ gracefully and note it in the step's result field.
 5. **Read Codex's response** (`content` field). If it reports issues:
    - Codex auto-logs findings to `~/Projects/claude-code-setup/usage-errors/codex-findings/`
      (initial: `*-step-N.json`, re-verify: `*-step-N-reverify-M.json`)
+   - Do NOT dismiss a Codex finding as "pre-existing," "out of scope,"
+     or "my interpretation is different." If you believe the finding is
+     wrong, you have exactly two options:
+     1. Quote the exact code path or plan text that proves it is wrong.
+     2. Ask the user to approve a plan / acceptance-criteria change
+        before continuing.
+     You may NOT dismiss, reinterpret, or partially address findings on
+     your own. Narrowing an acceptance criterion after a failed Codex
+     round counts as a plan deviation, not a normal fix.
+   - **Investigate before fixing.** Before editing any code:
+     1. Read the file(s) and line(s) Codex cited — do not fix from the
+        finding description alone.
+     2. State the root cause in one sentence.
+     3. If the finding has multiple parts, number each one and confirm
+        you will address ALL of them.
+     For heuristic, layout, timing, and threshold bugs, changing a
+     constant is NOT evidence of understanding. Do not bump margins,
+     delays, widths, retry counts, or safety factors until you have
+     recorded: (a) what concrete behavior is wrong, (b) what assumption
+     in the current code is false, (c) what measurement, trace, or
+     source proves your new value is justified.
    - Fix each issue (follow engineering-discipline, not quick patches)
    - **You MUST re-verify after fixing.** Call `mcp__codex__codex-reply`
      with the saved `threadId` and the re-verify prompt from the template.
      Do NOT skip this — `tsc --noEmit` passing is not the same as Codex
-     confirming your fixes are correct.
+     confirming your fixes are correct. Include root-cause rationale in
+     the re-verify prompt so Codex can evaluate whether the fix addresses
+     the actual cause, not just the symptom.
    - Repeat the fix → re-verify loop until Codex reports PASS
 6. **THEN mark the step done** with the Codex verdict in the result
    field: "Codex: PASS" or a summary of issues found and how they were
    resolved. The verdict must come from Codex (the final PASS or
-   remaining issues), not from your own assessment.
+   remaining issues), not from your own assessment. Do NOT plan to
+   "mark done" before Codex runs — Codex is a gate, not a formality.
 
 Codex verification is **on by default for every step** — the
 `writing-plans` skill sets `codexVerify: true` on all steps unless the
