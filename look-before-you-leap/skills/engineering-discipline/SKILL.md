@@ -470,6 +470,32 @@ This applies to all verification: type checker errors, lint failures,
 test failures, and Codex findings. If the criteria require it to pass
 and it doesn't, that's a finding — full stop.
 
+### Verify against closed sets
+
+Before declaring a step done, if your work produces values that must
+conform to a closed set — enum values, schema fields, function signatures,
+API contracts, mode/status strings — **re-read the source definition** and
+verify your values match character-for-character.
+
+Do NOT verify from memory. Open the file that defines the enum, schema, or
+contract. Compare your output against it. If you wrote `"dynamic"` and the
+enum only allows 5 specific values, you have a bug — even if `"dynamic"`
+seems like a reasonable value.
+
+Common closed sets to verify against:
+
+- **Enum/union type values** — mode, status, category, and role strings.
+  Re-read the type definition; do not recall it.
+- **Schema field names and types** — plan.json fields, API response shapes,
+  database columns. Grep for the source and match exactly.
+- **Function/tool signatures** — parameter names, types, return types. For
+  MCP tools, use `ToolSearch` to read the schema before calling. For
+  internal functions, read the declaration.
+- **File paths** — resolve from the directory where the file will be read
+  or written, not from where you happen to be editing. A path like
+  `references/foo.md` is wrong if the consumer lives in a different
+  subdirectory than the references folder.
+
 ### Self-audit after corrections
 
 When the user points out a mistake, do not just fix that one instance.
@@ -509,6 +535,7 @@ Before declaring a task done, every item must be checked:
 - [ ] Plan steps all marked done (if a plan exists)
 - [ ] Verification commands pass (types, lint, tests)
 - [ ] Consumers of modified shared code re-verified after changes
+- [ ] Closed-set values verified against source definitions (enums, schemas, signatures, tool params, file paths)
 - [ ] No pending plan items remain
 - [ ] Gaps, risks, and skipped items communicated explicitly
 
@@ -608,7 +635,9 @@ If you catch yourself doing any of these, stop and reconsider:
 | Broad `try/catch` that resolves successfully on failure | Catch at the narrowest scope — let failures propagate or degrade visibly |
 | Adding a new API endpoint without an integration test | Every new endpoint lands with at least one happy-path test — no exceptions |
 | Adding a new API endpoint without updating project docs | Update the API inventory (api.md, OpenAPI spec) in the same step — not later |
-| Typing an API response shape from memory | Grep for the endpoint, read the handler's return statement, then type |
+| Writing any closed-set value from memory (enum, schema field, API shape, signature) | Re-read the source definition and copy the exact value — memory drifts, source files don't |
+| Assuming a tool/function accepts a parameter without reading its schema | Use `ToolSearch` for MCP tools; read the function declaration for internal code |
+| Writing a file path without resolving from the target directory | Resolve relative to where the consumer reads/writes, not where you're editing |
 | Reimplementing existing behavior without reading the source | Open the original, list what it does, verify parity in your new code |
 | Rendering editable fields without tracing the save path | For every editable field: trace onChange → state → mutation → API → DB |
 | Writing simpler preconditions than the operation you're wrapping | Read the handler, list its gates, replicate them exactly |

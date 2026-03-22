@@ -792,7 +792,7 @@ pipeline — not in memory.
 **Workflow**: After a session where Codex found genuine bugs, analyze the
 root causes. If a bug reveals a gap in engineering-discipline rules (a
 habit that would have prevented it), write a proposal to
-`usage-errors/codex-lessons/proposals/`. During periodic review, proposals
+`codex-lessons/proposals/`. During periodic review, proposals
 are either promoted to plugin rules or discarded.
 
 This is distinct from error logging (which tracks plugin bugs) and memory
