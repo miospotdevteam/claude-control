@@ -769,3 +769,4 @@ If you catch yourself doing any of these, stop and reconsider:
 | Constructing a plausible-looking value instead of reading the real one | Trace to the actual data source — fabricated values pass type checks but break at runtime |
 | Verifying acceptance criteria by recall ("I added idempotency keys") instead of mechanically | Run the grep, read the file, execute the command — recall drifts, mechanical checks don't |
 | Implementing a codex-impl step yourself because it seems "trivially small" | Dispatch Codex via `run-codex-implement.sh` — ownership exists for independent verification, not complexity |
+| Implementing a codex-owned sub-plan group yourself in a collab-split step | Check `group.owner` — dispatch codex-owned groups via `run-codex-implement.sh`, never implement them directly |

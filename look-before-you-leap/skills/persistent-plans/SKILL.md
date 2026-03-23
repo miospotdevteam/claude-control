@@ -370,9 +370,17 @@ This is a loop. Follow it mechanically.
 ```
 ┌─ EXECUTION LOOP ────────────────────────────────────────┐
 │                                                         │
+│  0. IF first loop entry (or after compaction):          │
+│     Create/recreate tasks from plan.json steps:         │
+│     TaskCreate for each step:                           │
+│       subject: "[Step N/total: owner] title"            │
+│       Set completed steps to status: "completed"        │
+│       Set in_progress step to status: "in_progress"     │
+│                                                         │
 │  1. Read plan.json from disk                            │
 │  2. Find the next pending or in_progress step           │
 │  3. Mark it in_progress — write to disk NOW             │
+│     → TaskUpdate(status: "in_progress") on matching task│
 │  3b. EXTRACT DELIVERABLES CHECKLIST:                    │
 │      - Re-read step description + acceptanceCriteria    │
 │      - List every deliverable as a numbered checklist   │
@@ -380,14 +388,21 @@ This is a loop. Follow it mechanically.
 │                                                         │
 │  4. IF step has a subPlan:                              │
 │     a. Find next pending group                          │
-│     b. Execute the group                                │
-│     c. Mark group done in plan.json                     │
-│     d. Checkpoint: update progress items                │
-│     e. IF all groups complete:                          │
+│     b. Check group.owner (defaults to step.owner):      │
+│        - owner=="claude": Claude implements group files  │
+│          → run-codex-verify.sh scoped to group files    │
+│          → fix/re-verify loop until PASS                │
+│        - owner=="codex": dispatch run-codex-implement.sh│
+│          → Claude verifies independently after          │
+│     c. Record per-group verdict in group.notes          │
+│     d. Mark group done in plan.json                     │
+│     e. Checkpoint: update progress items                │
+│     f. IF all groups complete:                          │
 │        - Verify deliverables checklist (every item)     │
 │        - Run own verification (tsc, lint, tests)        │
-│        - IF codexVerify: true → Codex gate (see below)  │
-│        - Mark step done (with Codex verdict in result)  │
+│        - Step result = accumulated group verdicts       │
+│        - Mark step done                                 │
+│        - TaskUpdate(status: "completed") on matching task│
 │        - Add to completedSummary                        │
 │                                                         │
 │  5. IF step has no subPlan:                             │
@@ -399,7 +414,8 @@ This is a loop. Follow it mechanically.
 │     d. Run own verification (tsc, lint, tests)          │
 │     e. IF codexVerify: true → Codex gate (see below)    │
 │     f. Mark step done (with Codex verdict in result)    │
-│     g. Add to completedSummary                          │
+│     g. TaskUpdate(status: "completed") on matching task │
+│     h. Add to completedSummary                          │
 │                                                         │
 │  CODEX GATE (for steps with codexVerify: true):         │
 │     a. Run run-codex-verify.sh (claude-impl steps)      │

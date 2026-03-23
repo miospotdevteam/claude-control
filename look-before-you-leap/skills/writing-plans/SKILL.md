@@ -379,14 +379,37 @@ If ANY criterion is met, restructure the step NOW:
 {
   "subPlan": {
     "groups": [
-      {"name": "Dashboard pages", "files": ["a.tsx", "b.tsx", "c.tsx"], "status": "pending", "notes": null},
-      {"name": "Modal components", "files": ["d.tsx", "e.tsx"], "status": "pending", "notes": null}
+      {"name": "Dashboard pages", "owner": "claude", "files": ["a.tsx", "b.tsx", "c.tsx"], "status": "pending", "notes": null},
+      {"name": "Modal components", "owner": "codex", "files": ["d.tsx", "e.tsx"], "status": "pending", "notes": null}
     ]
   }
 }
 ```
 
 Groups should have 3-8 files each. If a group exceeds 8, split it.
+
+#### Group ownership for collab-split steps
+
+When the step's `mode` is `"collab-split"`, each group MUST have an
+`owner` field. Classify each group against the routing matrix the same
+way you classified steps in Step 3:
+
+1. For each group, identify its primary task category from the routing
+   matrix (e.g., "Frontend UI", "Backend from clear spec", "Refactor")
+2. Set `owner` to `"claude"` or `"codex"` based on the routing matrix
+3. The executor dispatches each group to the correct agent based on
+   `group.owner` — Claude-owned groups get Codex verification,
+   Codex-owned groups get Claude verification
+
+For non-collab-split steps, `group.owner` is optional and defaults to
+the parent step's `owner`. But for collab-split steps, making ownership
+explicit on every group prevents the failure mode where Claude implements
+all groups (including Codex-owned ones) because ownership was only hinted
+in group names, not enforced by schema.
+
+**Progress item naming**: include the owner designation for readability:
+`"Group 3 (Codex): Account hooks"`. But the formal `owner` field on
+the group object is what the executor reads — the name is informational.
 
 **This is a hard checkpoint.** Do not proceed to Step 6 until every step
 has been evaluated. If you skip this, large steps will fail mid-execution

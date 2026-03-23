@@ -34,13 +34,13 @@ installed" in the step's result field.
 ## Script Selection
 
 Two direction-locked scripts enforce the ownership model. Neither script
-can be used for the wrong direction — they validate the step's `owner`
-field and exit with an error if mismatched.
+can be used for the wrong direction — they validate the effective owner
+(step-level or group-level) and exit with an error if mismatched.
 
-| Step owner | Script | Sandbox | What happens |
+| Effective owner | Script | Sandbox | What happens |
 |---|---|---|---|
 | `claude` | `run-codex-verify.sh` | `read-only` | Codex reviews Claude's work, cannot modify files |
-| `codex` | `run-codex-implement.sh` | `workspace-write` | Codex implements the step, can edit files |
+| `codex` | `run-codex-implement.sh` | `workspace-write` | Codex implements the target, can edit files |
 
 Both scripts live at:
 ```
@@ -50,12 +50,22 @@ ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-implement.sh
 
 Usage:
 ```bash
+# Step-scoped (validates step.owner)
 bash <script> <plan.json-path> <step-number>
+
+# Group-scoped (validates group.owner ?? step.owner)
+bash <script> <plan.json-path> <step-number> <group-index>
 ```
 
+The optional third argument (`group-index`, 0-based) scopes the dispatch
+to a single sub-plan group. The script validates the effective owner
+(`group.owner`, falling back to `step.owner`) and builds a prompt scoped
+to that group's files. Use this for `collab-split` steps where groups
+have mixed ownership.
+
 Output files (in the plan directory):
-- `.codex-stream-step-N.jsonl` — JSONL event stream (live progress)
-- `.codex-result-step-N.txt` — final result text
+- Step-scoped: `.codex-stream-step-N.jsonl` / `.codex-result-step-N.txt`
+- Group-scoped: `.codex-stream-step-N-group-G.jsonl` / `.codex-result-step-N-group-G.txt`
 
 ---
 
@@ -72,13 +82,15 @@ Output files (in the plan directory):
      run_in_background: true
    )
    ```
-3. **Monitor JSONL** — periodically read `.codex-stream-step-N.jsonl`
-   (see Monitoring section)
-4. **When Codex finishes** — read `.codex-result-step-N.txt`
+3. **Monitor JSONL** — periodically read the stream file
+   (`.codex-stream-step-N.jsonl` or `.codex-stream-step-N-group-G.jsonl`
+   for group-scoped runs; see Monitoring section)
+4. **When Codex finishes** — read the result file
+   (`.codex-result-step-N.txt` or `.codex-result-step-N-group-G.txt`)
 5. **If PASS**: record "Codex: PASS" in step result, mark done
 6. **If findings**: fix issues, then re-run verification:
    ```bash
-   bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh <plan.json> <step-number>
+   bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh <plan.json> <step-number> [group-index]
    ```
    Repeat until PASS.
 
@@ -87,12 +99,13 @@ Output files (in the plan directory):
 1. **Dispatch Codex implementation:**
    ```
    Bash(
-     command: "bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-implement.sh <plan.json> <step-number>",
+     command: "bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-implement.sh <plan.json> <step-number> [group-index]",
      run_in_background: true
    )
    ```
 2. **Monitor JSONL** — watch for file changes, commands, issues
-3. **When Codex finishes** — read `.codex-result-step-N.txt`
+3. **When Codex finishes** — read the result file
+   (`.codex-result-step-N.txt` or `.codex-result-step-N-group-G.txt`)
 4. **Claude verifies independently** (see Independent Verification below)
 5. Record "Claude: verified" in step result, mark done
 
@@ -104,7 +117,7 @@ While Codex runs in the background, periodically read the stream file
 to report progress to the user:
 
 ```bash
-# Read latest events
+# Read latest events (use step-N-group-G suffix for group-scoped runs)
 tail -20 <plan-dir>/.codex-stream-step-N.jsonl
 ```
 
@@ -177,12 +190,25 @@ The `verify-step-completion` hook enforces this:
 
 ### `collab-split`
 
-1. Claude proposes an approach (notes in plan.json or discovery.md)
-2. Split the step into sub-tasks with mixed ownership
-3. Execute each sub-task based on its owner:
-   - Claude-owned: Claude implements, then `run-codex-verify.sh`
-   - Codex-owned: `run-codex-implement.sh`, then Claude verifies
-4. Record the split and outcomes in step result
+Collab-split steps use sub-plan groups as the unit of ownership. Each
+group has an `owner` field; the effective owner is `group.owner ?? step.owner`.
+
+1. Read `step.subPlan.groups` — each group has `owner`, `files`, `status`
+2. For each pending group, check effective owner and dispatch with group index:
+   - **Claude-owned group**: Claude implements the group's files, then:
+     ```bash
+     bash run-codex-verify.sh <plan.json> <step> <group-idx>
+     ```
+     Fix findings → re-verify → repeat until PASS.
+     Record `"Group N (Claude): Codex: PASS"` in `group.notes`.
+   - **Codex-owned group**: dispatch implementation:
+     ```bash
+     bash run-codex-implement.sh <plan.json> <step> <group-idx>
+     ```
+     Claude verifies independently after (read group files, run tests).
+     Record `"Group N (Codex): Claude: verified"` in `group.notes`.
+3. After all groups complete, accumulate per-group verdicts into step result
+   (e.g., `"Groups 1-4 (Claude): Codex: PASS. Groups 5,7 (Codex): Claude: verified."`)
 
 ### `dual-pass`
 
@@ -310,7 +336,7 @@ direction-locked scripts) since there is no step ownership yet.
 **Phase 1 — Parallel exploration (background):**
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Explore the codebase for the task: <task-description>. Focus on: \
    1. All consumers of files in scope (trace import chains) \
    2. Blast radius — what breaks if these files change? \
@@ -328,7 +354,7 @@ Run in the background while Claude explores simultaneously.
 After both agents finish, dispatch Codex for a convergence review:
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Read ALL findings in <plan-dir>/discovery.md. The other agent (Claude) \
    explored patterns, conventions, and architecture. You explored consumers \
    and blast radius. Now: \
@@ -352,7 +378,7 @@ reach consensus through structured debate before Orbit review. Uses
 **Round 1 — Codex reviews the plan:**
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For EACH step, return a structured proposal: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -368,7 +394,7 @@ reasoning / COUNTER-PROPOSE). Update plan files with accepted changes.
 **Round 3 (if needed) — Final resolution:**
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For each remaining disagreement: \
    - ACCEPT Claude's reasoning, or \
@@ -420,7 +446,8 @@ After context compaction, codex-dispatch recovers from plan.json:
 
 1. Read plan.json — find the current step and its status
 2. If a step is `in_progress`:
-   - Check for `.codex-stream-step-N.jsonl` and `.codex-result-step-N.txt`
+   - Check for result/stream files (use `step-N-group-G` suffix for
+     collab-split steps with group-scoped dispatch)
    - If result file exists: Codex finished, parse the result
    - If only stream file: Codex may still be running or may have failed.
      Check if the process is still running.
@@ -442,7 +469,7 @@ All context lives on disk (plan.json, discovery.md, source files).
 | Codex implements step | Claude verifies independently (read files, run tests) |
 | Co-exploration (discovery) | Dispatch Phase 1 in background, Phase 2 after |
 | Plan consensus (planning) | Max 3 rounds of structured debate |
-| `collab-split` step | Split into sub-tasks, execute each by owner |
+| `collab-split` step | Dispatch per-group with group-idx arg, verify by owner |
 | `dual-pass` step | Claude pass, then Codex pass, synthesize |
 | Codex not installed | Skip, note in result |
 | Codex hangs | Kill after 3 min timeout, retry once |

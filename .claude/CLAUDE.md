@@ -21,6 +21,10 @@ Single Claude Code plugin: `look-before-you-leap`. Enforces structured explorati
 - When adding new skills, reference files, or hooks, update the Repo Structure tree in `README.md`.
 - Keep PACKAGES.md and README.md accurate — they are user-facing docs that must reflect the current state.
 
+## Codex Findings Location
+
+`usage-errors/codex-findings/` lives in THIS repo (claude-code-setup), not in the project being verified. This is intentional — findings feed back into plugin improvement (rule gaps, behavioral patterns) rather than being disposable per-project artifacts. Do NOT "fix" the path to point at the project repo.
+
 ## Codex Lessons Pipeline
 
 `codex-lessons/` (repo root) tracks behavioral rules derived from Codex verification findings. When Codex catches a pattern that existing engineering-discipline rules should have prevented, the lesson is captured as a proposal and eventually promoted to a plugin rule.

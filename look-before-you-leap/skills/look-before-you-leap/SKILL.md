@@ -124,7 +124,7 @@ workflow, it is **forbidden**. If you catch yourself reaching for
 ```bash
 # CORRECT — always use this:
 codex exec -C <project-root> --sandbox read-only \
-  --dangerously-bypass-approvals-and-sandbox "..."
+  --dangerously-bypass-approvals-and-sandbox --enable fast_mode "..."
 
 # WRONG — never do this:
 # mcp__codex__codex(prompt: "...", sandbox: "read-only")
@@ -208,7 +208,7 @@ At the START of exploration (before writing discovery.md), dispatch Codex
 in the background to explore in parallel with Claude:
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Explore the codebase for the task: <task-description>. Focus on: \
    1. All consumers of files in scope (trace import chains) \
    2. Blast radius — what breaks if these files change? \
@@ -233,7 +233,7 @@ After both agents finish, Claude reads all of discovery.md, then
 dispatches Codex for a convergence review:
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Read ALL findings in <plan-dir>/discovery.md. The other agent (Claude) \
    explored patterns, conventions, and architecture. You explored consumers \
    and blast radius. Now: \
@@ -334,7 +334,7 @@ the one-shot attack pass — both agents must agree on the plan.
 **Round 1 — Codex reviews the plan:**
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For EACH step, return a structured proposal: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -360,7 +360,7 @@ Update the plan files with accepted changes.
 If disagreements remain after Round 2, dispatch Codex one more time:
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For each remaining disagreement: \
    - ACCEPT Claude's reasoning, or \
@@ -401,6 +401,33 @@ obvious single-line change.
 Follow **persistent-plans Phase 2** (Execute the Plan) for the execution
 loop, checkpointing, and result tracking. Follow **engineering-discipline
 Phase 2** (Make Changes Carefully) for the rules applied during execution.
+
+### Visual progress tracking (mandatory)
+
+At the **start of execution** (first time entering the loop, or after
+compaction when resuming), create a task for each step using `TaskCreate`.
+This gives the user a live visual progress display in the terminal.
+
+**Format**: `[Step N/total: owner] step title`
+
+```
+TaskCreate for each step in plan.steps:
+  subject: "[Step {id}/{total}: {owner}] {title}"
+  description: step.description (truncated to 200 chars)
+  activeForm: "[Step {id}/{total}] {title}"
+```
+
+**During execution**, update tasks to match plan.json state:
+- When marking a step `in_progress` → `TaskUpdate(status: "in_progress")`
+- When marking a step `done` → `TaskUpdate(status: "completed")`
+- When a step is `blocked` → keep as `pending` (no blocked status in tasks)
+
+**After compaction**: if tasks don't exist (compaction clears them), re-create
+them from plan.json with correct statuses (completed for done steps, pending
+for the rest).
+
+This is not optional — the task list is how the user tracks progress visually.
+Skip only if the plan has a single step.
 
 ### Execution ordering: definitions before consumers
 
@@ -487,9 +514,20 @@ plan.json. The execution flow differs based on ownership:
 ```
 FOR each step in plan.steps:
   IF step.mode == "collab-split":
-    Claude proposes approach
-    Split into sub-tasks with mixed ownership
-    Execute each sub-task via its owner's flow below
+    REQUIRE step.subPlan with groups
+    FOR each group in step.subPlan.groups:
+      effective_owner = group.owner ?? step.owner   # defaults to step.owner
+      IF effective_owner == "claude":
+        Claude implements the group's files
+        → run-codex-verify.sh scoped to group files (read-only sandbox)
+        → If findings: Claude fixes → re-run verify → repeat until PASS
+        → Record "Group N (Claude): Codex: PASS" in group.notes
+      ELSE IF effective_owner == "codex":
+        → run-codex-implement.sh scoped to group files (workspace-write sandbox)
+        → Claude verifies INDEPENDENTLY: read files, tsc/lint/tests, deps-query
+        → If issues: Claude fixes directly, log to usage-errors/claude-findings/
+        → Record "Group N (Codex): Claude: verified" in group.notes
+    Step result accumulates per-group verdicts
 
   ELSE IF step.mode == "dual-pass":
     Claude does design/UX/architecture pass
@@ -547,11 +585,29 @@ step, you lose that independence. Do not work around the verification
 rejection by calling `codex exec` directly; the direction-locked scripts
 exist for a reason.
 
-**`mode: "collab-split"` (collaborative design, then split execution):**
+**`mode: "collab-split"` (collaborative design, per-group ownership execution):**
 
-1. Claude proposes an approach (notes in plan.json or discovery.md)
-2. Split the step into sub-tasks with mixed ownership
-3. Each sub-task executes via its owner's flow (claude-impl or codex-impl)
+Collab-split steps use sub-plan groups as the unit of ownership. Each group
+has an `owner` field (`"claude"` or `"codex"`) assigned by writing-plans
+using the routing matrix. The executor dispatches each group to the correct
+agent — **never implement a codex-owned group yourself**.
+
+1. Read the step's `subPlan.groups` — each group has `owner`, `files`,
+   `status`, `notes`
+2. For each pending group, check `group.owner`:
+   - **Claude-owned group**: Claude implements the group's files, then runs
+     `run-codex-verify.sh <plan.json> <step> <group-idx>` (the third arg
+     scopes verification to the group's files). Fix findings → re-verify
+     → repeat until PASS. Record `"Group N (Claude): Codex: PASS"` in
+     `group.notes`.
+   - **Codex-owned group**: Dispatch via
+     `run-codex-implement.sh <plan.json> <step> <group-idx>` (third arg
+     scopes implementation to the group's files). After Codex completes,
+     Claude verifies independently (read files, tsc/lint/tests, deps-query).
+     Record `"Group N (Codex): Claude: verified"` in `group.notes`.
+3. After all groups complete, accumulate per-group verdicts into the step's
+   `result` field (e.g., `"Groups 1-4 (Claude): Codex: PASS. Groups 5,7
+   (Codex): Claude: verified."`)
 
 **`mode: "dual-pass"` (both agents work independently):**
 

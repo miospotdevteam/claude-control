@@ -48,10 +48,18 @@ The plugin doesn't just give instructions — it enforces them:
 | **PreToolUse** (Edit\|Write) | `check-api-contracts.sh` | Warns when editing API boundary files |
 | **PreToolUse** (Bash) | `enforce-plan-bash.sh` | Blocks Bash file-write bypasses (redirects, sed -i, tee) without an active plan |
 | **PreToolUse** (Bash) | `guard-plan-completion.sh` | Blocks moving a plan to completed/ if it has unchecked steps |
+| **PreToolUse** (Grep) | `remind-deps-query.sh` | Blocks import/consumer greps when dependency maps are configured and redirects Claude to `deps-query.py` |
 | **PreToolUse** (Task) | `inject-subagent-context.sh` | Injects discipline rules into every sub-agent, creates shared discovery file for cross-agent findings |
 | **PostToolUse** (Edit\|Write) | `remind-plan-update.sh` | Reminds to checkpoint the plan after 3 code edits without a plan update |
 | **PostToolUse** (Edit\|Write) | `auto-complete-plan.sh` | Detects when all plan steps are complete and prompts finalization |
+| **PostToolUse** (Edit\|Write) | `mark-deps-stale.sh` | Marks configured TypeScript dependency maps stale after source edits so they can be regenerated lazily |
+| **PostToolUse** (Edit\|Write) | `enforce-plan-handoff.sh` | Marks fresh plans for Orbit review handoff and injects the review workflow before execution begins |
+| **PostToolUse** (`orbit_await_review`\|`EnterPlanMode`) | `clear-handoff-on-approval.sh` | Clears the pending handoff marker after Orbit approval or when plan mode is entered |
+| **PostToolUse** (Edit\|Write\|Bash) | `verify-step-completion.sh` | Blocks step-done transitions until the required Codex or Claude verification verdict is recorded |
+| **PostToolUse** (Bash) | `log-script-errors.sh` | Logs plugin-script crashes and warnings to `usage-errors/script-errors/` for later debugging |
+| **PostCompact** | `post-compact.sh` | Rehydrates the active plan and resumption context after Claude compacts |
 | **Stop** | `verify-plan-on-stop.sh` | Blocks stopping if the active plan has unfinished steps |
+| **Stop** | `refresh-deps-on-stop.sh` | Regenerates stale dependency maps before the session ends so the next session starts fresh |
 
 ### First-run onboarding
 
@@ -72,6 +80,28 @@ This only happens once per project. The config file is never overwritten after c
 The auto-generated `.claude/look-before-you-leap.local.md` contains YAML frontmatter with your detected stack. Hooks use this to adapt behavior — for example, `check-api-contracts.sh` only fires if your stack includes a backend framework.
 
 To customize, edit the file directly. Add it to `.gitignore` if you don't want it committed.
+
+### Codex integration
+
+When a step needs independent verification, Claude dispatches Codex via
+`codex exec` through direction-locked scripts. Claude-owned work gets a
+read-only Codex review; Codex-owned work is implemented by Codex and then
+verified independently by Claude. This keeps the verification gate symmetric
+and prevents either agent from rubber-stamping its own work.
+
+### Dependency maps
+
+If you configure `dep_maps`, the plugin builds per-module import graphs with
+`deps-generate.py` and queries them with `deps-query.py`. Hooks mark maps
+stale after TypeScript edits and refresh them lazily, so Claude can check
+blast radius and consumers without grepping the codebase every time.
+
+### Commands
+
+The repo also ships three slash commands: `/commit-msg` generates a 1-line
+commit message from the current diff, `/generate-deps` sets up or refreshes
+dependency maps, and `/tangent` loads discovery context from another active
+plan so a new session can explore a related thread without starting from zero.
 
 ## Prerequisites
 
@@ -125,129 +155,169 @@ claude plugin install --source ~/claude-code-setup/look-before-you-leap
 ```
 look-before-you-leap/
 ├── PACKAGES.md                            # Recommended npm packages for skills
-├── usage-errors/                          # Plugin error logs (auto-documented by Claude)
 ├── .claude-plugin/
-│   └── plugin.json
+│   ├── plugin.json                        # Claude plugin manifest
+│   └── settings.json                      # Plugin-local UI/settings toggles
+├── codex-skills/
+│   ├── lbyl-implement/
+│   │   └── SKILL.md                       # Codex protocol for codex-owned plan steps
+│   └── lbyl-verify/
+│       └── SKILL.md                       # Codex protocol for verifying Claude's work
+├── commands/
+│   ├── commit-msg.md                      # Slash command: generate a 1-line commit message
+│   ├── generate-deps.md                   # Slash command: configure and build dep maps
+│   └── tangent.md                         # Slash command: load discovery from another session
 ├── hooks/
-│   ├── hooks.json                       # Hook lifecycle configuration
-│   ├── session-start.sh                 # SessionStart: skill injection + plan detection + config
-│   ├── onboarding.sh                    # UserPromptSubmit: first-run setup walkthrough
-│   ├── enforce-plan.sh                  # PreToolUse: blocks edits without an active plan
-│   ├── enforce-plan-bash.sh             # PreToolUse: blocks Bash file-write bypasses
-│   ├── check-api-contracts.sh           # PreToolUse: API boundary warnings
-│   ├── guard-plan-completion.sh         # PreToolUse: blocks moving incomplete plans
-│   ├── inject-subagent-context.sh       # PreToolUse: discipline injection for sub-agents
-│   ├── remind-plan-update.sh            # PostToolUse: checkpoint reminder after 3 edits
-│   ├── auto-complete-plan.sh            # PostToolUse: detects plan completion
-│   ├── verify-plan-on-stop.sh           # Stop: blocks stopping with unfinished plans
+│   ├── auto-complete-plan.sh              # PostToolUse: migrates discovery + detects plan completion
+│   ├── check-api-contracts.sh             # PreToolUse: API boundary warnings
+│   ├── clear-handoff-on-approval.sh       # PostToolUse: clears pending handoff on approval
+│   ├── enforce-plan-bash.sh               # PreToolUse: blocks Bash file-write bypasses
+│   ├── enforce-plan-handoff.sh            # PostToolUse: requires Orbit review for fresh plans
+│   ├── enforce-plan.sh                    # PreToolUse: blocks edits without an active plan
+│   ├── guard-plan-completion.sh           # PreToolUse: blocks moving incomplete plans
+│   ├── hooks.json                         # Hook lifecycle configuration
+│   ├── inject-subagent-context.sh         # PreToolUse: discipline injection for sub-agents
+│   ├── log-script-errors.sh               # PostToolUse: logs plugin-script errors and warnings
+│   ├── mark-deps-stale.sh                 # PostToolUse: marks dep maps stale after TS edits
+│   ├── onboarding.sh                      # UserPromptSubmit: first-run setup walkthrough
+│   ├── post-compact.sh                    # PostCompact: restores active-plan context after compaction
+│   ├── refresh-deps-on-stop.sh            # Stop: refreshes stale dep maps before exit
+│   ├── remind-deps-query.sh               # PreToolUse: blocks grep-based import discovery
+│   ├── remind-plan-update.sh              # PostToolUse: checkpoint reminder after 3 edits
+│   ├── session-start.sh                   # SessionStart: skill injection + plan detection + config
+│   ├── verify-plan-on-stop.sh             # Stop: blocks stopping with unfinished plans
+│   ├── verify-step-completion.sh          # PostToolUse: verification gate for step completion
 │   └── lib/
-│       ├── read-config.py               # YAML frontmatter → JSON config reader
-│       ├── detect-stack.py              # Auto-detects project stack
-│       └── find-root.sh                 # Finds project root directory
-└── skills/
-    ├── look-before-you-leap/
-    │   ├── SKILL.md                     # Layer 1: The conductor
-    │   ├── evals/
-    │   │   └── evals.json               # Skill evaluation definitions
-    │   ├── references/
-    │   │   ├── exploration-protocol.md  # 8-question exploration checklist
-    │   │   ├── exploration-guide.md     # Deep exploration techniques
-    │   │   ├── master-plan-format.md    # Plan template with structured discovery
-    │   │   ├── sub-plan-format.md       # Sub-plan and sweep templates
-    │   │   ├── claude-md-snippet.md     # Recommended CLAUDE.md addition
-    │   │   ├── recommended-plugins.md   # Official plugin suggestions for onboarding
-    │   │   ├── testing-checklist.md     # Layer 2: Testing discipline
-    │   │   ├── testing-strategy.md      # Layer 3: TDD-lite, test pyramid
-    │   │   ├── ui-consistency-checklist.md  # Layer 2: Design tokens, components
-    │   │   ├── ui-consistency-guide.md  # Layer 3: Drift detection
-    │   │   ├── frontend-design-checklist.md # Layer 2: Accessibility, responsive, performance
-    │   │   ├── frontend-design-guide.md # Layer 3: Aesthetic axes, fonts, animation
-    │   │   ├── security-checklist.md    # Layer 2: Auth, input, secrets
-    │   │   ├── security-guide.md        # Layer 3: OWASP, slopsquatting
-    │   │   ├── git-checklist.md         # Layer 2: Commits, branches
-    │   │   ├── linting-checklist.md     # Layer 2: Linter discipline
-    │   │   ├── dependency-checklist.md  # Layer 2: Package management
-    │   │   ├── api-contracts-checklist.md   # Layer 2: Shared schemas
-    │   │   ├── api-contracts-guide.md   # Layer 3: API boundary discipline
-    │   │   ├── debugging-root-cause-tracing.md      # Layer 3: Trace bugs to source
-    │   │   ├── debugging-defense-in-depth.md        # Layer 3: Multi-layer validation
-    │   │   ├── debugging-condition-based-waiting.md  # Layer 3: Replace timeouts with polling
-    │   │   ├── verification-commands.md # tsc/lint/test commands by ecosystem
-    │   │   ├── codex-verify-template.md     # Codex: step verification (persistent thread + fallback)
-    │   │   ├── codex-discover-template.md  # Codex: adversarial discovery challenge
-    │   │   ├── codex-plan-review-template.md # Codex: plan attack pass review
-    │   │   ├── codex-implement-template.md # Codex: implementation for codex-owned steps
-    │   │   ├── routing-matrix.md          # Task-type routing table for step ownership
-    │   │   ├── scenario-playbook.md       # 23-scenario ownership matrix
-    │   │   ├── plan-schema.md             # Full plan.json schema (incl. codexSession, owner, mode)
-    │   │   └── anti-slop.md               # Shared anti-AI-slop banlist for creative skills
-    │   └── scripts/
-    │       ├── init-plan-dir.sh         # Sets up .temp/plan-mode/
-    │       ├── plan_utils.py            # Plan state management (incl. codex session commands)
-    │       ├── plan-status.sh           # Shows all plan statuses
-    │       └── resume.sh               # Finds what to resume
-    ├── engineering-discipline/
-    │   └── SKILL.md                     # Companion: behavioral rules
-    ├── persistent-plans/
-    │   └── SKILL.md                     # Companion: plan management rules
-    ├── brainstorming/
-    │   └── SKILL.md                     # Collaborative design exploration
-    ├── writing-plans/
-    │   └── SKILL.md                     # Plan generation with TDD-granularity steps
-    ├── frontend-design/
-    │   └── SKILL.md                     # Frontend UI design with aesthetic axes
-    ├── immersive-frontend/
-    │   ├── SKILL.md                     # WebGL, Three.js, GSAP, scroll-driven 3D
-    │   └── references/
-    │       ├── architecture.md          # Preloader, canvas+DOM layering, perf budgets
-    │       ├── three-js-patterns.md     # Scene setup, cameras, materials, R3F, disposal
-    │       ├── shader-recipes.md        # GLSL: noise, chromatic aberration, distortion
-    │       ├── effects-cookbook.md       # 8 complete implementations (preloader, marquee, etc.)
-    │       ├── gsap-core-patterns.md    # context, matchMedia, quickTo, utils, CSS vars
-    │       ├── gsap-scroll-patterns.md  # Core tweens, timelines, ScrollTrigger, Lenis
-    │       ├── gsap-scroll-advanced.md  # ScrollSmoother, Observer patterns
-    │       ├── gsap-scroll-to-plugin.md # Animated scroll-to navigation
-    │       ├── gsap-layout-plugins.md   # Flip, Draggable, Observer
-    │       ├── gsap-text-plugins.md     # SplitText, ScrambleText, TextPlugin
-    │       ├── gsap-svg-plugins.md      # MorphSVG, DrawSVG, SVG transforms
-    │       ├── gsap-motion-physics.md   # MotionPath, Physics2D, PhysicsProps
-    │       ├── gsap-easing-advanced.md  # CustomEase, CustomBounce, CustomWiggle, EasePack
-    │       ├── gsap-value-plugins.md    # InertiaPlugin, Modifiers, Snap, roundProps
-    │       ├── gsap-helpers-cheatsheet.md # Dense all-in-one GSAP quick reference
-    │       └── gsap-common-mistakes.md  # Gotchas, debugging, FOUC prevention
-    ├── refactoring/
-    │   └── SKILL.md                     # Post-execution code simplification
-    ├── systematic-debugging/
-    │   └── SKILL.md                     # Root cause investigation before fixes
-    ├── skill-review-standard/
-    │   ├── SKILL.md                     # Post-creation quality gate
-    │   └── scripts/
-    │       ├── validate-structure.sh    # Structural validation
-    │       ├── utils.py                 # Skill frontmatter parser
-    │       ├── run_eval.py              # Trigger skill evaluation runs
-    │       ├── aggregate_benchmark.py   # Stats from grading results
-    │       ├── improve_description.py   # LLM-based description optimizer
-    │       └── generate_report.py       # HTML report with pass/fail
-    ├── webapp-testing/
-    │   ├── SKILL.md                     # E2E/browser testing with Playwright
-    │   ├── scripts/
-    │   │   └── with_server.py           # Dev server lifecycle for E2E tests
-    │   └── references/
-    │       ├── playwright-patterns.md   # Selectors, assertions, waits, POM
-    │       └── server-recipes.md        # Dev server configs by framework
-    ├── mcp-builder/
-    │   ├── SKILL.md                     # 4-phase MCP server development
-    │   └── references/
-    │       ├── mcp-best-practices.md    # Tool design, responses, security
-    │       ├── mcp-typescript.md        # McpServer, Zod, transports
-    │       └── mcp-python.md            # FastMCP, Pydantic, async
-    ├── codex-dispatch/
-    │   └── SKILL.md                     # Codex MCP orchestration: thread lifecycle, 5 collaboration modes
-    └── doc-coauthoring/
-        └── SKILL.md                     # 3-stage document co-authoring
+│       ├── detect-stack.py                # Auto-detects project stack
+│       ├── find-root.sh                   # Finds project root directory
+│       └── read-config.py                 # YAML frontmatter -> JSON config reader
+├── scripts/
+│   └── install-codex-skills.sh            # Keeps ~/.codex/skills/ synced on session start
+├── skills/
+│   ├── brainstorming/
+│   │   └── SKILL.md                       # Collaborative design exploration
+│   ├── codex-dispatch/
+│   │   └── SKILL.md                       # Codex CLI orchestration via codex exec: direction-locked scripts, 4 collaboration modes
+│   ├── doc-coauthoring/
+│   │   └── SKILL.md                       # 3-stage document co-authoring
+│   ├── engineering-discipline/
+│   │   └── SKILL.md                       # Companion: behavioral rules
+│   ├── frontend-design/
+│   │   └── SKILL.md                       # Frontend UI design with aesthetic axes
+│   ├── immersive-frontend/
+│   │   ├── SKILL.md                       # WebGL, Three.js, GSAP, scroll-driven 3D
+│   │   └── references/
+│   │       ├── architecture.md            # Preloader, canvas+DOM layering, perf budgets
+│   │       ├── effects-cookbook.md        # 8 complete implementations (preloader, marquee, etc.)
+│   │       ├── gsap-common-mistakes.md    # Gotchas, debugging, FOUC prevention
+│   │       ├── gsap-core-patterns.md      # context, matchMedia, quickTo, utils, CSS vars
+│   │       ├── gsap-easing-advanced.md    # CustomEase, CustomBounce, CustomWiggle, EasePack
+│   │       ├── gsap-helpers-cheatsheet.md # Dense all-in-one GSAP quick reference
+│   │       ├── gsap-layout-plugins.md     # Flip, Draggable, Observer
+│   │       ├── gsap-motion-physics.md     # MotionPath, Physics2D, PhysicsProps
+│   │       ├── gsap-scroll-advanced.md    # ScrollSmoother, Observer patterns
+│   │       ├── gsap-scroll-patterns.md    # Core tweens, timelines, ScrollTrigger, Lenis
+│   │       ├── gsap-scroll-to-plugin.md   # Animated scroll-to navigation
+│   │       ├── gsap-svg-plugins.md        # MorphSVG, DrawSVG, SVG transforms
+│   │       ├── gsap-text-plugins.md       # SplitText, ScrambleText, TextPlugin
+│   │       ├── gsap-value-plugins.md      # InertiaPlugin, Modifiers, Snap, roundProps
+│   │       ├── shader-recipes.md          # GLSL: noise, chromatic aberration, distortion
+│   │       └── three-js-patterns.md       # Scene setup, cameras, materials, R3F, disposal
+│   ├── look-before-you-leap/
+│   │   ├── SKILL.md                       # Layer 1: The conductor
+│   │   ├── references/
+│   │   │   ├── anti-slop.md               # Shared anti-AI-slop banlist for creative skills
+│   │   │   ├── api-contracts-checklist.md # Layer 2: Shared schemas
+│   │   │   ├── api-contracts-guide.md     # Layer 3: API boundary discipline
+│   │   │   ├── claude-md-snippet.md       # Recommended CLAUDE.md addition
+│   │   │   ├── color-palettes.md          # Curated palette systems for frontend skills
+│   │   │   ├── debugging-condition-based-waiting.md # Layer 3: Replace timeouts with polling
+│   │   │   ├── debugging-defense-in-depth.md # Layer 3: Multi-layer validation
+│   │   │   ├── debugging-root-cause-tracing.md # Layer 3: Trace bugs to source
+│   │   │   ├── dependency-checklist.md    # Layer 2: Package management
+│   │   │   ├── dependency-mapping.md      # Dep-map workflow: generate, stale marking, query
+│   │   │   ├── exploration-guide.md       # Deep exploration techniques
+│   │   │   ├── exploration-protocol.md    # 8-question exploration checklist
+│   │   │   ├── frontend-design-checklist.md # Layer 2: Accessibility, responsive, performance
+│   │   │   ├── frontend-design-guide.md   # Layer 3: Aesthetic axes, fonts, animation
+│   │   │   ├── git-checklist.md           # Layer 2: Commits, branches
+│   │   │   ├── linting-checklist.md       # Layer 2: Linter discipline
+│   │   │   ├── master-plan-format.md      # Plan template with structured discovery
+│   │   │   ├── plan-schema.md             # Full plan.json schema (incl. codexSession, owner, mode)
+│   │   │   ├── recommended-plugins.md     # Official plugin suggestions for onboarding
+│   │   │   ├── routing-matrix.md          # Task-type routing table for step ownership
+│   │   │   ├── scenario-playbook.md       # 23-scenario ownership matrix
+│   │   │   ├── security-checklist.md      # Layer 2: Auth, input, secrets
+│   │   │   ├── security-guide.md          # Layer 3: OWASP, slopsquatting
+│   │   │   ├── sub-plan-format.md         # Sub-plan and sweep templates
+│   │   │   ├── testing-checklist.md       # Layer 2: Testing discipline
+│   │   │   ├── testing-strategy.md        # Layer 3: TDD-lite, test pyramid
+│   │   │   ├── ui-consistency-checklist.md # Layer 2: Design tokens, components
+│   │   │   ├── ui-consistency-guide.md    # Layer 3: Drift detection
+│   │   │   └── verification-commands.md   # tsc/lint/test commands by ecosystem
+│   │   └── scripts/
+│   │       ├── deps-generate.py           # Builds normalized dep maps with madge
+│   │       ├── deps-query.py              # Queries dep maps for dependencies and dependents
+│   │       ├── init-plan-dir.sh           # Sets up .temp/plan-mode/
+│   │       ├── plan-status.sh             # Shows all plan statuses
+│   │       ├── plan_utils.py              # Plan state management (incl. codex session commands)
+│   │       ├── resume.sh                  # Finds what to resume
+│   │       ├── run-codex-implement.sh     # Direction-locked Codex implementation entrypoint
+│   │       └── run-codex-verify.sh        # Direction-locked Codex verification entrypoint
+│   ├── mcp-builder/
+│   │   ├── SKILL.md                       # 4-phase MCP server development
+│   │   └── references/
+│   │       ├── mcp-best-practices.md      # Tool design, responses, security
+│   │       ├── mcp-python.md              # FastMCP, Pydantic, async
+│   │       └── mcp-typescript.md          # McpServer, Zod, transports
+│   ├── persistent-plans/
+│   │   └── SKILL.md                       # Companion: plan management rules
+│   ├── react-native-mobile/
+│   │   ├── SKILL.md                       # React Native mobile app implementation guide
+│   │   └── references/
+│   │       ├── animation-patterns.md      # Reanimated transitions and motion patterns
+│   │       ├── architecture.md            # Feature slices, data flow, navigation boundaries
+│   │       ├── component-recipes.md       # Lists, forms, empty states, and async UI recipes
+│   │       ├── gesture-cookbook.md        # Gesture Handler + Reanimated interaction patterns
+│   │       ├── performance-patterns.md    # FlatList, rendering, and profiling guidance
+│   │       └── platform-patterns.md       # iOS/Android divergence and native capability patterns
+│   ├── refactoring/
+│   │   └── SKILL.md                       # Post-execution code simplification
+│   ├── skill-review-standard/
+│   │   ├── SKILL.md                       # Post-creation quality gate
+│   │   └── scripts/
+│   │       ├── aggregate_benchmark.py     # Stats from grading results
+│   │       ├── generate_report.py         # HTML report with pass/fail
+│   │       ├── improve_description.py     # LLM-based description optimizer
+│   │       ├── run_eval.py                # Trigger skill evaluation runs
+│   │       ├── utils.py                   # Skill frontmatter parser
+│   │       └── validate-structure.sh      # Structural validation
+│   ├── svg-art/
+│   │   ├── SKILL.md                       # SVG illustration and graphics generation
+│   │   └── references/
+│   │       ├── decorative-backgrounds.md  # Blobs, meshes, waves, and layered scenes
+│   │       ├── filter-recipes.md          # Blur, noise, displacement, and lighting filters
+│   │       ├── generative-patterns.md     # Tiling, grids, noise, and algorithmic motifs
+│   │       ├── illustration-techniques.md # Shape language, masks, and depth tricks
+│   │       ├── micro-animations.md        # Lightweight SVG motion patterns
+│   │       └── svg-gotchas.md             # ViewBox, IDs, transforms, and perf pitfalls
+│   ├── systematic-debugging/
+│   │   └── SKILL.md                       # Root cause investigation before fixes
+│   ├── test-driven-development/
+│   │   └── SKILL.md                       # Red-green-refactor testing discipline
+│   ├── webapp-testing/
+│   │   ├── SKILL.md                       # E2E/browser testing with Playwright
+│   │   ├── references/
+│   │   │   ├── playwright-patterns.md     # Selectors, assertions, waits, POM
+│   │   │   └── server-recipes.md          # Dev server configs by framework
+│   │   └── scripts/
+│   │       └── with_server.py             # Dev server lifecycle for E2E tests
+│   └── writing-plans/
+│       └── SKILL.md                       # Plan generation with TDD-granularity steps
+└── usage-errors/
+    └── .gitkeep                           # Keeps the log directory committed
 ```
 
 ## Origin Story
 
 This plugin was built iteratively through real-world testing on production codebases. Each rule exists because Claude actually made that specific mistake. The sub-plan triggers, checkpoint frequency, auto-compaction survival logic, and discipline checklists were all calibrated based on actual failures during real tasks.
-

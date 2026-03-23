@@ -69,8 +69,8 @@ human-facing presentation document — it does NOT contain execution state.
       ],
       "subPlan": {
         "groups": [
-          {"name": "Dashboard pages", "files": ["a.tsx", "b.tsx"], "status": "pending", "notes": null},
-          {"name": "Modal components", "files": ["c.tsx", "d.tsx"], "status": "pending", "notes": null}
+          {"name": "Dashboard pages", "owner": "claude", "files": ["a.tsx", "b.tsx"], "status": "pending", "notes": null},
+          {"name": "Modal components", "owner": "codex", "files": ["c.tsx", "d.tsx"], "status": "pending", "notes": null}
         ]
       },
       "result": null,
@@ -142,6 +142,7 @@ human-facing presentation document — it does NOT contain execution state.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | yes | Logical cluster name |
+| `owner` | string | no | Who implements this group: `"claude"` or `"codex"`. Defaults to the parent step's `owner` if omitted. For `collab-split` steps, each group gets its own owner — the executor checks the effective owner (`group.owner ?? step.owner`) to dispatch to the correct agent. Assigned by writing-plans skill using the routing matrix. |
 | `files` | string[] | yes | Files in this group |
 | `status` | string | yes | One of: `pending`, `in_progress`, `done` |
 | `notes` | string? | no | Execution notes (null before, filled during) |

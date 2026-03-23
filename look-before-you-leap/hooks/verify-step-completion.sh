@@ -258,8 +258,28 @@ if os.path.isfile(plan_json_path):
                 continue
             result = step.get("result") or ""
             owner = step.get("owner", "claude")
+            mode = step.get("mode", "claude-impl")
 
-            if owner == "codex":
+            if mode == "collab-split":
+                # collab-split: inspect groups to determine required verdicts
+                has_codex = re.search(r"Codex:\s*(PASS|FAIL|skipped)", result, re.IGNORECASE)
+                has_claude = re.search(r"Claude:\s*verified", result, re.IGNORECASE)
+                # Check which owner types exist in the groups
+                sub_plan = step.get("subPlan") or {}
+                groups = sub_plan.get("groups", [])
+                has_claude_groups = any(g.get("owner", owner) == "claude" for g in groups)
+                has_codex_groups = any(g.get("owner", owner) == "codex" for g in groups)
+                # Require matching verdicts for each owner type present
+                missing = False
+                if has_claude_groups and not has_codex:
+                    missing = True  # Claude groups need Codex verification
+                if has_codex_groups and not has_claude:
+                    missing = True  # Codex groups need Claude verification
+                if not has_codex and not has_claude:
+                    missing = True  # No verdicts at all
+                if missing:
+                    codex_blocked_steps.append(sid)
+            elif owner == "codex":
                 # codex-impl: Claude must verify independently
                 has_claude_verified = re.search(r"Claude:\s*verified", result, re.IGNORECASE)
                 has_codex_pass = re.search(r"Codex:\s*PASS", result, re.IGNORECASE)
