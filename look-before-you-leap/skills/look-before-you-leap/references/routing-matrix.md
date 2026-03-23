@@ -22,7 +22,7 @@ which the default should be overridden. Steps may span multiple categories
 | **Frontend UI / visual design / UX polish** | `claude` | `claude-impl` | — |
 | **Product copy / UX text / content** | `claude` | `claude-impl` | — |
 | **Creative / landing page / marketing** | `claude` | `claude-impl` | — |
-| **Brainstorming / requirements shaping** | `claude` | `claude-solo` | — |
+| **Brainstorming / requirements shaping** | `claude` | `claude-impl` | Codex co-explores codebase in parallel and reviews design.md before writing-plans |
 | **Documentation / API docs / specs** | `claude` | `claude-impl` | Codex verifies technical accuracy |
 | **MCP / DB / API / external integration** | `claude` | `claude-impl` | If internal service layer is separable, use `collab-split` (Claude: external-facing, Codex: internal services) |
 | **Cross-domain integration** | varies | `collab-split` | Claude: external-facing / frontend. Codex: internal services / backend. |
@@ -47,7 +47,7 @@ which the default should be overridden. Steps may span multiple categories
 | **Real-time / collaborative features** | varies | `collab-split` | Both design architecture. Claude: frontend. Codex: backend |
 | **Stripe / payment integration** | varies | `collab-split` | Claude: external API. Codex: internal services |
 | **Plugin / MCP development** | varies | `collab-split` | Claude: skills + MCP. Codex: hooks + scripts + manifest |
-| **Vague / ambiguous request** | `claude` | `claude-solo` | Clarification step is `claude-solo`. Once concrete, subsequent steps are assigned normally via the routing matrix. See Dynamic Routing. |
+| **Vague / ambiguous request** | `claude` | `claude-impl` | Clarification step is `claude-impl`. Once concrete, subsequent steps are assigned normally via the routing matrix. See Dynamic Routing. |
 
 ---
 
@@ -85,7 +85,7 @@ Some steps cannot determine their owner at plan time:
 | Pattern | How It Works |
 |---|---|
 | **Performance optimization** | Codex investigates bottlenecks first. Based on findings, fix steps are assigned: backend → Codex, frontend → Claude. |
-| **Vague requests** | Claude clarifies with user first. Once requirements are concrete, steps are assigned normally. |
+| **Vague requests** | Claude clarifies with user first (`claude-impl`). Once requirements are concrete, steps are assigned normally. |
 | **collab-split design phase** | Collaborative discussion may reveal the split should differ from initial assumption. |
 
 For these, `writing-plans` creates an investigation step (owner determined
@@ -114,6 +114,6 @@ Skills that stay Claude-only (never injected):
 - `svg-art` — creative direction
 - `immersive-frontend` — experiential judgment
 - `react-native-mobile` — native-feel taste
-- `brainstorming` — Claude-only by definition
-- `writing-plans` — Claude-only by definition
+- `brainstorming` — Claude leads dialogue, Codex co-explores and reviews
+- `writing-plans` — Claude leads, Codex participates in plan consensus
 - `doc-coauthoring` — Claude writes, Codex verifies accuracy

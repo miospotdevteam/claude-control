@@ -110,11 +110,11 @@ human-facing presentation document — it does NOT contain execution state.
 | `title` | string | yes | Step title |
 | `status` | string | yes | One of: `pending`, `in_progress`, `done`, `blocked` |
 | `owner` | string | no | Who implements this step: `"claude"` (default) or `"codex"`. Assigned by writing-plans skill based on routing matrix. Claude-owned steps are verified by Codex; Codex-owned steps are verified by Claude. |
-| `mode` | string | no | Collaboration mode for this step. One of: `"claude-solo"`, `"claude-impl"` (default), `"codex-impl"`, `"collab-split"`, `"dual-pass"`. Determines how Claude and Codex interact. See collaboration modes below. |
+| `mode` | string | no | Collaboration mode for this step. One of: `"claude-impl"` (default), `"codex-impl"`, `"collab-split"`, `"dual-pass"`. Determines how Claude and Codex interact. See collaboration modes below. |
 | `skill` | string | yes | Skill to invoke, or `"none"` |
 | `simplify` | boolean | yes | Whether to run simplification after step |
 | `qa` | boolean | no | Whether to run fresh-eyes QA sub-agent after step (default false) |
-| `codexVerify` | boolean | no | Whether to run Codex verification after step (default true — set on every step unless user opts out). Uses `run-codex-verify.sh` (read-only sandbox) for claude-impl steps. For codex-impl steps, Claude verifies independently. |
+| `codexVerify` | boolean | no | Always true — no exceptions, no mode-based exemptions. Codex verification is structural. Uses `run-codex-verify.sh` (read-only sandbox) for claude-impl steps. For codex-impl steps, Claude verifies independently. |
 | `files` | string[] | yes | Files involved in this step |
 | `description` | string | yes | What to do — self-contained for fresh context |
 | `acceptanceCriteria` | string | yes | How to know the step is done |
@@ -182,12 +182,11 @@ python3 /path/to/plan_utils.py next-step /path/to/plan.json
 
 ## Collaboration Modes
 
-Five distinct collaboration patterns determine how Claude and Codex interact
+Four distinct collaboration patterns determine how Claude and Codex interact
 on each step. The `mode` field on each step selects the pattern:
 
 | Mode | `owner` | Description |
 |---|---|---|
-| `claude-solo` | `claude` | Claude handles everything. No Codex involvement for this step. Use for vague/ambiguous tasks requiring user interaction. |
 | `claude-impl` | `claude` | Claude implements, Codex verifies afterward. The default mode — matches the existing codexVerify flow. |
 | `codex-impl` | `codex` | Codex implements via `codex exec`, Claude verifies afterward independently. For backend, refactoring, debugging, CI. |
 | `collab-split` | mixed | Both discuss approach first, then execution splits into sub-steps with mixed ownership. For complex features, migrations, integrations. |

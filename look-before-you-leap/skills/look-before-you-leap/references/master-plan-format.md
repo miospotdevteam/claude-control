@@ -79,7 +79,7 @@ disciplines.">
 
 ### Step 1: <Title>
 - **Owner**: claude | codex
-- **Mode**: claude-solo | claude-impl | codex-impl | collab-split | dual-pass
+- **Mode**: claude-impl | codex-impl | collab-split | dual-pass
 - **Routing**: <category from routing matrix> → <justification>
 - **Skill**: `look-before-you-leap:refactoring` | none
 - **Simplify**: true/false

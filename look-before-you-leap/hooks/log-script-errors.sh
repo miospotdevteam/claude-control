@@ -9,7 +9,7 @@
 # - Crashes: non-zero exit (tool_response contains "Exit code")
 # - Warnings: exit 0 but output contains "Warning:"
 #
-# Logs to ~/Projects/claude-code-setup/usage-errors/script-errors/
+# Logs to <project-root>/usage-errors/script-errors/
 # and injects context telling Claude to stop and fix the issue.
 #
 # Input: JSON on stdin with tool_input.command, tool_response
@@ -28,6 +28,17 @@ case "$INPUT" in
     ;;
 esac
 
+# Find project root for dynamic log path
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+
+CWD=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('cwd', ''))
+" <<< "$INPUT" 2>/dev/null) || true
+
+PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
+
 # Plugin script detected — use Python for structured parsing and logging.
 # Write input to temp file to avoid env var size limits and heredoc conflicts.
 # Fail-open: if mktemp or python fails, exit 0 so we don't break the
@@ -37,6 +48,7 @@ trap 'rm -f "$TMPFILE"' EXIT
 printf '%s' "$INPUT" > "$TMPFILE" 2>/dev/null || exit 0
 
 export HOOK_TMPFILE="$TMPFILE"
+export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
 
 python3 << 'PYEOF' || exit 0
 import json, os, sys
@@ -48,10 +60,22 @@ try:
 except (json.JSONDecodeError, KeyError, FileNotFoundError):
     sys.exit(0)
 
-LOG_BASE = os.path.expanduser("~/Projects/claude-code-setup/usage-errors/script-errors")
+LOG_BASE = os.path.join(os.environ.get("HOOK_PROJECT_ROOT", "."), "usage-errors", "script-errors")
 
 command = data.get("tool_input", {}).get("command", "")
 response = str(data.get("tool_response", ""))
+
+# Guard: verify the COMMAND itself (not the response) references a plugin script.
+# The bash fast-path matches against the full JSON (command + response), so grep
+# output containing script names would pass. This Python guard ensures the command
+# is actually invoking a plugin script before we check for crashes/warnings.
+PLUGIN_SCRIPT_MARKERS = [
+    "plan_utils.py", "deps-query.py", "deps-generate.py",
+    "init-plan-dir.sh", "plan-status.sh", "resume.sh",
+    "look-before-you-leap/scripts/",
+]
+if not any(marker in command for marker in PLUGIN_SCRIPT_MARKERS):
+    sys.exit(0)
 
 # Detect error type from response content
 has_crash = any(marker in response for marker in [

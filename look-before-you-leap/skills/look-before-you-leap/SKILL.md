@@ -87,6 +87,49 @@ Before exploring, classify the task:
   config change, or the implementation path is unambiguous (e.g., "add
   field X to existing type Y and propagate").
 
+### Obey the user's explicit instructions — no freelancing
+
+**When the user tells you HOW to explore, you do it THAT way. Period.**
+
+If the user says "explore with Codex", "use Codex to find X", or "have
+Codex investigate" — you dispatch to Codex FIRST. You do NOT explore on
+your own, form your own hypothesis, propose a fix, and THEN belatedly
+ask Codex to rubber-stamp your conclusion. That is not "exploring with
+Codex" — that is ignoring the user and using Codex as a yes-man.
+
+The same applies to any explicit tool routing instruction: "use grep",
+"check with the linter", "ask the user", "look at git blame". If the
+user specifies the tool or method, that is what you use. Your job is to
+execute the instruction, not to substitute your preferred approach and
+then retroactively involve the requested tool for validation theater.
+
+**Failure mode to watch for**: you read the user's instruction, mentally
+classify it as "I can do this faster myself", do the work solo, and only
+remember the instruction when the user complains. This is the #1 trust
+destroyer. The user chose a tool for a reason — respect that choice even
+if you think you can do it alone.
+
+### Codex CLI only — NEVER use MCP tools for Codex
+
+**All Codex interactions MUST go through `codex exec` via Bash.** NEVER
+use `mcp__codex__codex` or any Codex MCP server tool. The MCP tool
+bypasses the direction-locked scripts (`run-codex-verify.sh`,
+`run-codex-implement.sh`), JSONL monitoring, structured result parsing,
+sandbox enforcement, and error logging that the plugin provides.
+
+The Codex MCP tool exists for other purposes. Within this plugin's
+workflow, it is **forbidden**. If you catch yourself reaching for
+`mcp__codex__codex`, stop — use `codex exec` via Bash instead.
+
+```bash
+# CORRECT — always use this:
+codex exec -C <project-root> --sandbox read-only \
+  --dangerously-bypass-approvals-and-sandbox "..."
+
+# WRONG — never do this:
+# mcp__codex__codex(prompt: "...", sandbox: "read-only")
+```
+
 ### Exploration protocol
 
 Follow **engineering-discipline Phase 1** (Orient Before You Touch Anything).
@@ -153,23 +196,64 @@ This file survives compaction and feeds directly into the plan's
 discovery section. If you skip this, your future compacted self starts
 from zero.
 
-### Codex adversarial discovery challenge
+### Co-exploration protocol (Claude + Codex explore in parallel)
 
-After writing discovery.md, run a Codex adversarial discovery challenge
-via `codex exec`:
+Instead of Claude exploring alone and Codex reviewing after, both agents
+explore simultaneously. This produces broader coverage and catches blind
+spots neither agent would find solo.
+
+**Phase 1 — Parallel exploration:**
+
+At the START of exploration (before writing discovery.md), dispatch Codex
+in the background to explore in parallel with Claude:
 
 ```bash
 codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
-  "Read the discovery findings at <plan-dir>/discovery.md and the plan at <plan.json>. \
-   Challenge: What consumers did the discovery miss? What blast radius was underestimated? \
-   What dangerous assumptions were made? What existing patterns or utilities should be used?"
+  "Explore the codebase for the task: <task-description>. Focus on: \
+   1. All consumers of files in scope (trace import chains) \
+   2. Blast radius — what breaks if these files change? \
+   3. Test infrastructure — what tests cover this code? \
+   4. Edge cases and error paths in the current implementation \
+   5. Cross-module dependencies that might be missed \
+   Write your findings to <plan-dir>/discovery.md using append (>>). \
+   Use the format: ## [Codex: <topic>]\n- **finding** (evidence: ...)"
 ```
 
-Incorporate significant findings into discovery.md and plan.json's
-discovery object.
+While Codex runs, Claude explores simultaneously — focusing on:
+- Patterns, conventions, existing solutions
+- UI architecture and component structure
+- Project config, sibling files, CLAUDE.md
+- State producers and message emitters
 
-If `codex` CLI is not available, skip this step and proceed to planning.
-Note "Codex: skipped — codex CLI not installed" in the discovery notes.
+Both write to the shared `discovery.md` using append (`>>`).
+
+**Phase 2 — Convergence round:**
+
+After both agents finish, Claude reads all of discovery.md, then
+dispatches Codex for a convergence review:
+
+```bash
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read ALL findings in <plan-dir>/discovery.md. The other agent (Claude) \
+   explored patterns, conventions, and architecture. You explored consumers \
+   and blast radius. Now: \
+   1. What did the other agent miss? \
+   2. What do you disagree with? \
+   3. What blast radius was underestimated? \
+   4. What cross-cutting concerns connect both sets of findings? \
+   Append your convergence notes to discovery.md under ## [Codex: Convergence]"
+```
+
+Claude then reconciles: merge complementary findings, flag disagreements
+as open questions for the user, and update the discovery object in
+plan.json.
+
+**Exit criterion:** Both agents' findings are merged into discovery.md,
+disagreements are flagged, and the discovery object in plan.json reflects
+the combined understanding.
+
+If `codex` CLI is not available, Claude explores solo and notes
+"Codex: skipped — codex CLI not installed" in the discovery notes.
 
 ---
 
@@ -212,8 +296,8 @@ compaction recovery depends on them. Do NOT invent your own schema:
 - **Each step**: `id`, `title`, `status`, `skill`, `simplify`, `files`,
   `description`, `acceptanceCriteria`, `progress`. Optional: `owner`
   (`"claude"` default or `"codex"`), `mode` (collaboration mode, default
-  `"claude-impl"`), `qa` (default false), `codexVerify` (default true —
-  set by writing-plans on every step unless user opts out), `subPlan`
+  `"claude-impl"`), `qa` (default false), `codexVerify` (always true —
+  no exceptions, no mode-based exemptions), `subPlan`
   (null if none), `result` (null until completion),
   `routingJustification` (why this owner/mode was assigned — required by
   writing-plans for auditability)
@@ -241,27 +325,57 @@ compaction recovery depends on them. Do NOT invent your own schema:
 See `references/plan-schema.md` for the complete schema with all optional
 fields. But the fields above are non-negotiable.
 
-### Codex plan attack pass
+### Plan consensus protocol (multi-round debate before Orbit)
 
-After writing-plans produces the plan (plan.json + masterPlan.md), run
-a Codex plan attack pass before presenting to the user via Orbit:
+After writing-plans produces the plan, Claude and Codex reach consensus
+through structured debate before presenting to the user. This replaces
+the one-shot attack pass — both agents must agree on the plan.
+
+**Round 1 — Codex reviews the plan:**
 
 ```bash
 codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
-   Critique: Which steps are too large? Which acceptance criteria are vague? \
-   What steps are missing? Is the ordering correct? Are ownership assignments correct?"
+   For EACH step, return a structured proposal: \
+   - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
+   - REJECT <reason>: step should be removed or fundamentally rethought \
+   - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering) \
+   Also flag: missing steps, wrong ordering, vague acceptance criteria, \
+   ownership assignments that contradict the routing matrix."
 ```
 
-Adjust the plan based on Codex's findings (fix step sizing, sharpen
-criteria, add missing steps, correct ordering). Then proceed to Orbit
-review.
+**Round 2 — Claude responds:**
 
-If `codex` CLI is not available, skip and proceed directly to Orbit review.
+For each Codex proposal:
+- **ACCEPT**: incorporate the change into plan.json and masterPlan.md
+- **REJECT with reasoning**: explain why the current plan is correct
+  (cite specific evidence — code paths, patterns, constraints)
+- **COUNTER-PROPOSE**: offer an alternative that addresses Codex's
+  concern differently
+
+Update the plan files with accepted changes.
+
+**Round 3 (if needed) — Final resolution:**
+
+If disagreements remain after Round 2, dispatch Codex one more time:
+
+```bash
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
+   to your proposals. For each remaining disagreement: \
+   - ACCEPT Claude's reasoning, or \
+   - ESCALATE with both positions stated (for the user to decide in Orbit)"
+```
+
+**Max 3 rounds.** Unresolved items go to Orbit review with both
+positions clearly stated so the user can make the final call.
+
+If `codex` CLI is not available, skip consensus and proceed directly to
+Orbit review.
 
 ### Plan review via Orbit
 
-After Codex attack pass (or directly after writing-plans if Codex is
+After plan consensus (or directly after writing-plans if Codex is
 unavailable), present masterPlan.md to the user for review using the
 Orbit MCP. The `writing-plans` skill handles the details, but the flow is:
 
@@ -372,9 +486,15 @@ plan.json. The execution flow differs based on ownership:
 
 ```
 FOR each step in plan.steps:
-  IF step.mode == "claude-solo":
-    Claude implements
-    Skip Codex entirely (no verification)
+  IF step.mode == "collab-split":
+    Claude proposes approach
+    Split into sub-tasks with mixed ownership
+    Execute each sub-task via its owner's flow below
+
+  ELSE IF step.mode == "dual-pass":
+    Claude does design/UX/architecture pass
+    Codex does correctness/security pass via run-codex-verify.sh
+    Claude synthesizes both sets of findings
 
   ELSE IF step.owner == "claude":           # claude-impl
     Claude implements
@@ -389,25 +509,12 @@ FOR each step in plan.steps:
     → If issues: Claude fixes directly
     → Log findings to usage-errors/claude-findings/
     → Mark done with "Claude: verified"
-
-  ELSE IF step.mode == "collab-split":
-    Claude proposes approach
-    Split into sub-tasks with mixed ownership
-    Execute each sub-task via its owner's flow above
-
-  ELSE IF step.mode == "dual-pass":
-    Claude does design/UX/architecture pass
-    Codex does correctness/security pass via run-codex-verify.sh
-    Claude synthesizes both sets of findings
 ```
 
 **`owner: "claude"` (default — Claude implements, Codex verifies):**
 
 Claude implements the step, then Codex verifies via `run-codex-verify.sh`.
-Applies to modes `claude-solo` and `claude-impl`.
-
-- For `claude-solo`: no Codex interaction at all (skip codexVerify)
-- For `claude-impl`: standard flow — implement, then run Codex verification
+Standard flow — implement, then run Codex verification.
 
 **`owner: "codex"` (Codex implements, Claude verifies):**
 
@@ -601,9 +708,13 @@ multiple steps into a single call.
 
 **Prerequisites**: The Codex CLI must be installed (`npm install -g
 @openai/codex`). Codex skills must be installed at `~/.codex/skills/`
-(done automatically by the SessionStart hook). If `codex` is not
-available, skip verification and note "Codex: skipped — codex CLI not
-installed" in the step's result field.
+(done automatically by the SessionStart hook).
+
+**You MUST run `command -v codex` before claiming Codex is unavailable.**
+Do NOT write "Codex: skipped — codex CLI not installed" without proof.
+The default assumption is that Codex IS installed. If `command -v codex`
+fails, THEN and only then may you skip verification and note the skip
+in the result field.
 
 **Flow:**
 
@@ -638,10 +749,9 @@ installed" in the step's result field.
    resolved. The verdict must come from Codex, not from your own
    assessment.
 
-Codex verification is **on by default for every step** — the
-`writing-plans` skill sets `codexVerify: true` on all steps unless the
-user explicitly opts out. Do not dispatch for steps with
-`codexVerify: false`.
+Codex verification is **on for every step — no exceptions.** The
+`writing-plans` skill sets `codexVerify: true` on all steps. There are
+no mode-based exemptions. The field is structural, not opt-in.
 
 The `verify-step-completion` hook enforces this gate with direction
 awareness:

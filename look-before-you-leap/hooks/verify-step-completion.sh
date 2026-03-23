@@ -254,7 +254,7 @@ if os.path.isfile(plan_json_path):
             sid = str(step["id"])
             if sid not in step_list:
                 continue
-            if not step.get("codexVerify", False):
+            if not step.get("codexVerify", True):
                 continue
             result = step.get("result") or ""
             owner = step.get("owner", "claude")

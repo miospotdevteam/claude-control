@@ -628,7 +628,7 @@ If you catch yourself doing any of these, stop and reconsider:
 | Ignoring a warning from plan_utils.py or a hook script | Stop and fix the issue — warnings mean something is wrong, not "proceed with caution" |
 | Reacting to IDE/LSP diagnostics mid-edit without running the real type checker | LSP diagnostics go stale during edits — run `tsc --noEmit` (or equivalent) to confirm before "fixing" phantom errors |
 | Writing plan.json directly after brainstorming (skipping writing-plans skill) | Brainstorming produces design.md, then you MUST call `Skill(skill: "look-before-you-leap:writing-plans")` — do not shortcut |
-| Fixing Codex findings then moving on without re-verifying via codex-reply | Call `mcp__codex__codex-reply` with the threadId after fixes — tsc passing is not the same as Codex confirming |
+| Fixing Codex findings then moving on without re-verifying | Re-run `run-codex-verify.sh` after fixes — tsc passing is not the same as Codex confirming your fixes are correct |
 | Dismissing a failure as "pre-existing" when acceptance criteria require it to pass | Fix the failure or change the acceptance criteria — "pre-existing" is not an exemption |
 | Marking a step done before Codex verification passes (for codexVerify steps) | Codex is a gate — complete the fix → re-verify loop until PASS, then mark done |
 | Writing `.catch(() => {})` or `.catch(() => null)` | Handle the error, rethrow, or comment why ignoring is safe |
@@ -647,3 +647,9 @@ If you catch yourself doing any of these, stop and reconsider:
 | Bumping a margin/threshold/constant to fix a Codex finding | Not evidence of understanding — record what's wrong, what assumption is false, and what proves the new value |
 | Reinterpreting acceptance criteria after a failed Codex round | This is a plan deviation — ask the user to approve the narrower scope first |
 | Fixing one part of a multi-part Codex finding and re-verifying | Number every distinct issue, address ALL before re-verifying |
+| User said "explore with Codex" but you explored alone first | Dispatch to Codex FIRST — do not explore solo then ask Codex to rubber-stamp your conclusion. The user chose a tool; respect the choice |
+| Calling `mcp__codex__codex` or any Codex MCP tool | ALL Codex interactions go through `codex exec` via Bash — the MCP tool bypasses direction-locked scripts, sandbox enforcement, and error logging |
+| Using `codex exec` directly for plan step execution instead of invoking `codex-dispatch` skill | Invoke `Skill(skill: "look-before-you-leap:codex-dispatch")` — it handles direction-locked scripts, JSONL monitoring, result parsing, and error logging |
+| Setting `codexVerify: false` | `codexVerify` is always `true` — no exceptions, no mode-based exemptions. The field is structural, not opt-in |
+| Running `run-codex-verify.sh` on a `codex-impl` step | Codex must not verify its own work — for `owner: "codex"` steps, Claude verifies independently (read files, run tsc/lint/tests, check consumers) |
+| Writing "Codex: skipped — codex CLI not installed" without running `command -v codex` | **This is LYING.** You do not know whether Codex is installed until you check. Run `command -v codex` FIRST. The default assumption is Codex IS installed — you must PROVE it is absent before claiming so. Every time you fabricate "not installed" to avoid verification, you are deceiving the user and shipping unreviewed work. No exceptions, no guessing, no "I think it's not installed" — run the command or do not claim anything about its availability |

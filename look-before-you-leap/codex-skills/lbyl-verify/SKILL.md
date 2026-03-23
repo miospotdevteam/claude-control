@@ -106,8 +106,9 @@ Report each finding with this structure:
 ### Findings log
 
 When you find issues (anything other than PASS), write a JSON findings
-report to `~/Projects/claude-code-setup/usage-errors/codex-findings/`
-BEFORE returning your response. Create the directory if it does not exist.
+report to the `usage-errors/codex-findings/` directory at the project root
+(derive from the plan.json path: go up from `.temp/plan-mode/active/<plan>/`
+to the project root). Create the directory if it does not exist.
 
 **Filename**: `YYYY-MM-DD-{plan-name}-step-{N}.json`
 **Re-verify rounds**: `YYYY-MM-DD-{plan-name}-step-{N}-reverify-{M}.json`

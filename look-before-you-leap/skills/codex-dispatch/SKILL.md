@@ -1,6 +1,6 @@
 ---
 name: codex-dispatch
-description: "Orchestrates all Codex interactions for the look-before-you-leap plugin via codex exec CLI. Routes to direction-locked scripts (run-codex-verify.sh for claude-impl, run-codex-implement.sh for codex-impl), monitors JSONL streaming output, parses results, and enforces independent verification. Handles all 5 collaboration modes (claude-solo, claude-impl, codex-impl, collab-split, dual-pass) and symmetric error logging. Use whenever a plan step requires Codex interaction: verification of Claude's work, or Codex-owned implementation. Do NOT use for: plans with no Codex involvement, claude-solo steps, or discovery/plan-review phases (use codex exec directly for those)."
+description: "Orchestrates all Codex interactions for the look-before-you-leap plugin via codex exec CLI. Routes to direction-locked scripts (run-codex-verify.sh for claude-impl, run-codex-implement.sh for codex-impl), monitors JSONL streaming output, parses results, and enforces independent verification. Handles all 4 collaboration modes (claude-impl, codex-impl, collab-split, dual-pass), co-exploration dispatch, plan consensus dispatch, and symmetric error logging. Use whenever a plan step requires Codex interaction: verification of Claude's work, Codex-owned implementation, co-exploration during discovery, or plan consensus during planning. Do NOT use for: plans with no Codex involvement."
 ---
 
 # Codex Dispatch
@@ -161,10 +161,6 @@ The `verify-step-completion` hook enforces this:
 
 ## Collaboration Mode Execution
 
-### `claude-solo`
-
-No Codex interaction. Skip this step entirely in codex-dispatch.
-
 ### `claude-impl` (default)
 
 1. Claude implements the step
@@ -305,27 +301,84 @@ Log when verification finds issues. Do NOT log when the step passes.
 
 ---
 
-## Discovery and Plan Review (codex exec directly)
+## Co-Exploration Dispatch
 
-For adversarial discovery challenges and plan attack passes, use
-`codex exec` directly (not via the direction-locked scripts). These
-phases don't have step ownership:
+During discovery (conductor Step 1), Codex explores the codebase in
+parallel with Claude. This uses `codex exec` directly (not the
+direction-locked scripts) since there is no step ownership yet.
+
+**Phase 1 — Parallel exploration (background):**
 
 ```bash
-# Discovery challenge
 codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
-  "Read the discovery findings at <plan-dir>/discovery.md and the plan at <plan.json>. \
-   Challenge: What consumers did the discovery miss? What blast radius was underestimated? \
-   What dangerous assumptions were made?"
-
-# Plan attack pass
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
-  "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
-   Critique: Which steps are too large? Which acceptance criteria are vague? \
-   What steps are missing? Is the ordering correct?"
+  "Explore the codebase for the task: <task-description>. Focus on: \
+   1. All consumers of files in scope (trace import chains) \
+   2. Blast radius — what breaks if these files change? \
+   3. Test infrastructure — what tests cover this code? \
+   4. Edge cases and error paths in the current implementation \
+   5. Cross-module dependencies that might be missed \
+   Write findings to <plan-dir>/discovery.md using append (>>). \
+   Format: ## [Codex: <topic>]\n- **finding** (evidence: ...)"
 ```
 
-These are optional and non-blocking — skip if Codex is not available.
+Run in the background while Claude explores simultaneously.
+
+**Phase 2 — Convergence (foreground):**
+
+After both agents finish, dispatch Codex for a convergence review:
+
+```bash
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read ALL findings in <plan-dir>/discovery.md. The other agent (Claude) \
+   explored patterns, conventions, and architecture. You explored consumers \
+   and blast radius. Now: \
+   1. What did the other agent miss? \
+   2. What do you disagree with? \
+   3. What blast radius was underestimated? \
+   4. What cross-cutting concerns connect both sets of findings? \
+   Append convergence notes to discovery.md under ## [Codex: Convergence]"
+```
+
+Claude reconciles after this round — merge findings, flag disagreements.
+
+---
+
+## Plan Consensus Dispatch
+
+After writing-plans produces the plan (conductor Step 2), Codex and Claude
+reach consensus through structured debate before Orbit review. Uses
+`codex exec` directly (not direction-locked scripts).
+
+**Round 1 — Codex reviews the plan:**
+
+```bash
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
+   For EACH step, return a structured proposal: \
+   - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
+   - REJECT <reason>: step should be removed or fundamentally rethought \
+   - MODIFY <changes>: step needs specific changes \
+   Also flag: missing steps, wrong ordering, vague acceptance criteria, \
+   ownership assignments that contradict the routing matrix."
+```
+
+**Round 2 — Claude responds** to each proposal (ACCEPT / REJECT with
+reasoning / COUNTER-PROPOSE). Update plan files with accepted changes.
+
+**Round 3 (if needed) — Final resolution:**
+
+```bash
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
+   to your proposals. For each remaining disagreement: \
+   - ACCEPT Claude's reasoning, or \
+   - ESCALATE with both positions stated (for the user to decide in Orbit)"
+```
+
+**Max 3 rounds.** Unresolved items go to Orbit with both positions stated.
+
+Both co-exploration and plan consensus are optional — skip if Codex is
+not available.
 
 ---
 
@@ -387,7 +440,8 @@ All context lives on disk (plan.json, discovery.md, source files).
 | Codex returns PASS | Record "Codex: PASS" in result, mark done |
 | Codex returns findings | Fix issues, re-run `run-codex-verify.sh` |
 | Codex implements step | Claude verifies independently (read files, run tests) |
-| `claude-solo` step | Skip Codex entirely |
+| Co-exploration (discovery) | Dispatch Phase 1 in background, Phase 2 after |
+| Plan consensus (planning) | Max 3 rounds of structured debate |
 | `collab-split` step | Split into sub-tasks, execute each by owner |
 | `dual-pass` step | Claude pass, then Codex pass, synthesize |
 | Codex not installed | Skip, note in result |

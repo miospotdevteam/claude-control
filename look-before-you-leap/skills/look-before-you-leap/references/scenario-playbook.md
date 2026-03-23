@@ -9,18 +9,16 @@ Consumed by `writing-plans` (for step ownership assignment) and
 
 ## Collaboration Modes
 
-Five distinct modes. Each plan step is assigned one mode (not just an owner).
+Four distinct modes. Each plan step is assigned one mode (not just an owner).
 
 | Mode | Code | Description |
 |---|---|---|
-| Claude-only | `claude-solo` | Claude handles everything. No Codex involvement. |
 | Claude implements, Codex verifies | `claude-impl` | Claude implements, Codex does verification pass. Default mode. |
 | Codex implements, Claude verifies | `codex-impl` | Codex implements, Claude does full verification pass. |
 | Collaborative design, split execution | `collab-split` | Both discuss the approach, then execution splits by domain/layer. |
 | Dual-pass (independent) | `dual-pass` | Both agents work independently, then Claude synthesizes findings. |
 
 The `owner` field in plan.json maps to these:
-- `claude-solo` → `owner: "claude"`, no Codex interaction for this step
 - `claude-impl` → `owner: "claude"`, Codex verifies after
 - `codex-impl` → `owner: "codex"`, Claude verifies after
 - `collab-split` → step is split into sub-steps with mixed ownership
@@ -101,7 +99,7 @@ The `owner` field in plan.json maps to these:
 |---|---|---|---|---|
 | 21 | Plugin/MCP development | `collab-split` | Collaborative design with Codex. Implements skills + MCP server. | Collaborative design with Claude. Implements hooks, scripts, manifest. |
 | 22 | Test writing | `codex-impl` | Verifies tests are meaningful and cover all cases | Writes tests. Gets TDD skill injected into prompt. |
-| 23 | Vague request ("make it better") | `claude-solo` | Clarifies requirements with user, shapes into concrete task (`claude-solo`). Once concrete, subsequent steps are assigned normally via routing matrix. | After Claude has concrete requirements: audits codebase for relevant improvements |
+| 23 | Vague request ("make it better") | `claude-impl` | Clarifies requirements with user, shapes into concrete task. Once concrete, subsequent steps are assigned normally via routing matrix. | After Claude has concrete requirements: audits codebase for relevant improvements |
 
 ---
 
@@ -111,10 +109,10 @@ These apply regardless of step-level ownership:
 
 | Phase | Owner | Codex Role | Notes |
 |---|---|---|---|
-| Intent capture (vague ask) | Claude | None | Codex enters only after requirements are concrete |
-| Brainstorming | Claude | None (unless collab-split) | For collab-split: Codex joins the design discussion |
-| Discovery | Claude | Adversarial challenger | "What did Claude miss? What assumptions are dangerous?" |
-| Plan writing | Claude | Attack pass reviewer | "Which steps are too big? What's missing? What will break?" |
+| Intent capture (vague ask) | Claude | Codex verifies after | Codex enters only after requirements are concrete |
+| Brainstorming | Claude | Co-explores codebase, reviews design.md | Codex explores consumers/blast-radius in parallel, reviews design before planning |
+| Discovery | Claude + Codex | Co-exploration partner | Both explore in parallel (Phase 1), then converge (Phase 2) |
+| Plan writing | Claude | Consensus partner | Multi-round debate (max 3 rounds) until both agree or escalate to user |
 | Plan review (Orbit) | User | N/A | User approves via Orbit |
 | Execution | Per-step | Per-step | Based on step.owner and step.mode |
 | Final summary | Claude | None | Claude always owns user communication |
@@ -128,8 +126,8 @@ Some scenarios don't know the correct owner at plan time:
 - **Performance optimization** (scenario 12): Codex investigates first.
   Based on findings, fix steps are assigned to Claude (frontend) or Codex
   (backend). The plan may need mid-execution adjustment.
-- **Vague requests** (scenario 23): Claude clarifies first. Once concrete,
-  steps are assigned normally.
+- **Vague requests** (scenario 23): Claude clarifies first (`claude-impl`).
+  Once concrete, steps are assigned normally.
 - **collab-split design phase**: The collaborative design discussion may
   reveal that the split should be different from what was initially assumed.
 
@@ -159,8 +157,8 @@ Skills that stay Claude-only (never injected into Codex):
 - `svg-art` — requires creative direction
 - `immersive-frontend` — requires experiential judgment
 - `react-native-mobile` — requires native-feel taste
-- `brainstorming` — Claude-only by definition
-- `writing-plans` — Claude-only by definition
+- `brainstorming` — Claude leads dialogue, Codex co-explores and reviews design
+- `writing-plans` — Claude leads, Codex participates in plan consensus
 - `doc-coauthoring` — Claude writes, Codex verifies accuracy
 
 ---

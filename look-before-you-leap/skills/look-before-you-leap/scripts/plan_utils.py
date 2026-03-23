@@ -85,6 +85,22 @@ def is_complete(plan):
     return all(s["status"] == "done" for s in steps)
 
 
+VALID_MODES = {"claude-impl", "codex-impl", "collab-split", "dual-pass"}
+VALID_SKILLS = {
+    "none",
+    "look-before-you-leap:test-driven-development",
+    "look-before-you-leap:frontend-design",
+    "look-before-you-leap:svg-art",
+    "look-before-you-leap:immersive-frontend",
+    "look-before-you-leap:react-native-mobile",
+    "look-before-you-leap:systematic-debugging",
+    "look-before-you-leap:refactoring",
+    "look-before-you-leap:webapp-testing",
+    "look-before-you-leap:mcp-builder",
+    "look-before-you-leap:doc-coauthoring",
+}
+
+
 def update_step_status(plan_path, step_id, new_status):
     """Update a step's status and write back to disk.
 
@@ -97,6 +113,22 @@ def update_step_status(plan_path, step_id, new_status):
     if step is None:
         print(f"Error: step {step_id} not found", file=sys.stderr)
         return False
+
+    # Validate mode and skill values
+    mode = step.get("mode")
+    if mode and mode not in VALID_MODES:
+        print(
+            f"Warning: step {step_id} has invalid mode \"{mode}\" — "
+            f"valid values: {', '.join(sorted(VALID_MODES))}",
+            file=sys.stderr,
+        )
+    skill = step.get("skill")
+    if skill and skill not in VALID_SKILLS:
+        print(
+            f"Warning: step {step_id} has invalid skill \"{skill}\" — "
+            f"valid values: none, look-before-you-leap:<skill-name>",
+            file=sys.stderr,
+        )
 
     if new_status == "done":
         # Warn about incomplete progress items
@@ -122,6 +154,15 @@ def update_step_status(plan_path, step_id, new_status):
                 file=sys.stderr,
             )
 
+        # Warn about progress items missing files field
+        for i, p in enumerate(step.get("progress", [])):
+            if "files" not in p:
+                print(
+                    f"Warning: progress item {i} of step {step_id} has no "
+                    f"files field — resumption after compaction will be degraded",
+                    file=sys.stderr,
+                )
+
     step["status"] = new_status
     write_plan(plan_path, plan)
     return True
@@ -138,7 +179,14 @@ def update_progress_item(plan_path, step_id, progress_index, new_status):
     if progress_index < 0 or progress_index >= len(progress):
         print(f"Error: progress index {progress_index} out of range", file=sys.stderr)
         return False
-    progress[progress_index]["status"] = new_status
+    item = progress[progress_index]
+    if "files" not in item:
+        print(
+            f"Warning: progress item {progress_index} of step {step_id} has no "
+            f"files field — resumption after compaction will be degraded",
+            file=sys.stderr,
+        )
+    item["status"] = new_status
     write_plan(plan_path, plan)
     return True
 

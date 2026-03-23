@@ -24,15 +24,45 @@ waste the most time.
 ### 1. Understand the context
 
 Follow engineering-discipline Phase 1 (Orient Before You Touch Anything)
-to build a picture of the relevant codebase:
+to build a picture of the relevant codebase.
 
+**For existing codebases** — use the co-exploration protocol. First,
+initialize the plan directory so discovery.md has a place to live:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
+mkdir -p .temp/plan-mode/active/<plan-name>
+```
+
+Then dispatch Codex in the background to explore in parallel:
+
+```bash
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Explore the codebase for the task: <task-description>. Focus on: \
+   1. All consumers of files in the feature area \
+   2. Blast radius — what breaks if these files change? \
+   3. Test infrastructure covering this area \
+   4. Edge cases and constraints in the current implementation \
+   5. Cross-module dependencies \
+   Write findings to <plan-dir>/discovery.md using append (>>)."
+```
+
+While Codex explores consumers and blast radius, Claude focuses on:
 - Read CLAUDE.md / README for project conventions
 - Read files in the feature area and their imports
 - Check recent commits touching relevant modules
 - Find sibling files to learn existing patterns
 
-If this is a **greenfield project** with no existing codebase, skip the
-reads and note the greenfield context — proceed directly to questions.
+Write your findings to the same `discovery.md` using append (`>>`),
+under `## [Claude: <topic>]` headings — both agents share the file.
+
+After both finish, read all of discovery.md and run a convergence round
+(see conductor's co-exploration protocol for the full flow).
+
+If `codex` CLI is not available, Claude explores solo.
+
+**For greenfield projects** with no existing codebase, skip the reads and
+note the greenfield context — proceed directly to questions.
 
 ### 2. Challenge the framing
 
@@ -177,7 +207,7 @@ each section, check: does this look right?
 Cover what's relevant: architecture, components, data flow, error
 handling, testing. Skip sections that don't apply.
 
-### 7. Save and transition
+### 7. Save, review with Codex, and transition
 
 Once approved:
 
@@ -188,7 +218,24 @@ Once approved:
    ```
 2. Write the design to `.temp/plan-mode/active/<plan-name>/design.md`
    using the structure below
-3. **Call `Skill(skill: "look-before-you-leap:writing-plans")` to produce
+3. **Run a mandatory Codex review of design.md** before writing-plans:
+   ```bash
+   codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+     "Read the design at <plan-dir>/design.md and the discovery at <plan-dir>/discovery.md. \
+      Review for: \
+      1. Technical feasibility — can this actually be built as described? \
+      2. Missed constraints — what does the design not account for? \
+      3. Blast radius — does the design underestimate what will break? \
+      4. Existing patterns — does the design conflict with codebase conventions? \
+      5. Failure modes — are the listed failure modes complete? \
+      Return specific, actionable findings."
+   ```
+   If Codex raises issues, address them: fix the design or document why
+   the concern doesn't apply. This ensures even creative work gets a
+   technical sanity check before planning begins.
+
+   If `codex` CLI is not available, skip the review and proceed.
+4. **Call `Skill(skill: "look-before-you-leap:writing-plans")` to produce
    the plan.** Do NOT write plan.json or masterPlan.md yourself — the
    writing-plans skill sets `codexVerify: true` on every step and applies
    rules you cannot replicate by hand. The design.md feeds directly into

@@ -103,6 +103,18 @@ This table is the auditable artifact that proves routing was considered.
 Copy each row's justification into the step's `routingJustification`
 field in plan.json.
 
+#### Aggressive Codex routing — the default stance
+
+The routing matrix defaults most task types to `codex-impl`. Claude keeps
+only: frontend UI / visual design, creative / marketing, product copy,
+documentation, and security-sensitive design. **Everything mechanical goes
+to Codex**: backend, refactoring, testing, debugging, CI/CD, performance,
+i18n, migrations, dependency upgrades.
+
+When classifying steps, start by asking: "Does this step require visual
+taste, creative judgment, or direct user interaction?" If no, it likely
+belongs to Codex.
+
 #### Anti-pattern: all-claude-impl plans
 
 **If every step in a multi-step plan (3+ steps) ends up as `claude-impl`,
@@ -140,7 +152,7 @@ Some steps can't determine ownership at plan time:
   `mode: "codex-impl"`. Fix steps default to `owner: "claude"` with a
   note that ownership will be reassigned after investigation.
 - **Vague requests**: Clarification step is `owner: "claude"`,
-  `mode: "claude-solo"`. Subsequent steps assigned normally after
+  `mode: "claude-impl"`. Subsequent steps assigned normally after
   requirements are concrete.
 
 See `references/scenario-playbook.md` for the complete 23-scenario
@@ -310,18 +322,18 @@ to see: inconsistencies, missing edge cases, unclear code, broken patterns.
 Default to `false` for backend logic, config changes, and steps already
 covered by automated tests.
 
-#### `codexVerify` — default to `true` on every step
+#### `codexVerify` — always `true`, no exceptions
 
-**Set `codexVerify: true` on every step by default.** Codex runs as an
-independent MCP agent (GPT-5.4 with its own engineering discipline plugin)
-that independently verifies the diff against the step's acceptance criteria,
-runs the project's type checker and tests, and checks consumer integrity
-via dep maps. It catches issues Claude might miss due to compaction or
-tunnel vision — bugs found early are cheap to fix.
+**Set `codexVerify: true` on every step. No exceptions. No mode-based
+exemptions.** Codex verification is structural — every step gets verified
+by the other agent, regardless of mode. Codex runs as an independent agent
+with its own engineering discipline plugin that independently verifies the
+diff against the step's acceptance criteria, runs the project's type
+checker and tests, and checks consumer integrity via dep maps. It catches
+issues Claude might miss due to compaction or tunnel vision.
 
-Only set `codexVerify: false` when the user explicitly opts out, or when
-the `codex` CLI is not available. If unavailable at runtime, Codex
-verification is skipped gracefully.
+If the `codex` CLI is unavailable at runtime, Codex verification is
+skipped gracefully (noted as "Codex: skipped" in the result field).
 
 Codex verification uses `run-codex-verify.sh` (direction-locked, read-only
 sandbox). See the `codex-dispatch` skill for the full flow.
@@ -380,10 +392,40 @@ Groups should have 3-8 files each. If a group exceeds 8, split it.
 has been evaluated. If you skip this, large steps will fail mid-execution
 when context runs out.
 
-### 6. Present for review via Orbit
+### 6. Plan consensus with Codex (before Orbit)
 
-After saving both files to disk, present masterPlan.md to the user for
-interactive review using the Orbit MCP:
+After saving both files to disk, run the plan consensus protocol with
+Codex before presenting to the user. Both agents must agree on the plan.
+
+**Round 1 — Codex reviews:**
+
+```bash
+codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+  "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
+   For EACH step, return a structured proposal: \
+   - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
+   - REJECT <reason>: step should be removed or fundamentally rethought \
+   - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering) \
+   Also flag: missing steps, wrong ordering, vague acceptance criteria, \
+   ownership assignments that contradict the routing matrix."
+```
+
+**Round 2 — Claude responds** to each proposal (ACCEPT / REJECT with
+reasoning / COUNTER-PROPOSE). Update plan files with accepted changes.
+
+**Round 3 (if needed)** — Codex reviews remaining disagreements. Either
+accepts Claude's reasoning or escalates with both positions stated.
+
+**Max 3 rounds.** Unresolved items go to Orbit with both positions clearly
+stated so the user can decide.
+
+If `codex` CLI is not available, skip consensus and proceed to Orbit.
+
+### 7. Present for review via Orbit
+
+After plan consensus (or directly after saving if Codex is unavailable),
+present masterPlan.md to the user for interactive review using the Orbit
+MCP:
 
 1. Discover the Orbit tool: `ToolSearch query: "+orbit await_review"`
 2. Tell the user: *"The plan is open in VS Code for review. Add inline
@@ -396,9 +438,9 @@ interactive review using the Orbit MCP:
 
 `orbit_await_review` returns JSON with `status` and `threads`.
 
-- **`approved`, no threads** → proceed to step 7 (plan mode handoff).
+- **`approved`, no threads** → proceed to step 8 (plan mode handoff).
 - **`approved`, with threads** → read each thread, reply as `agent`
-  acknowledging the feedback, resolve threads, then proceed to step 7.
+  acknowledging the feedback, resolve threads, then proceed to step 8.
 - **`changes_requested`** → read all threads. Update both masterPlan.md
   and plan.json to address the feedback. Reply to each thread explaining
   what changed. Resolve threads. Call `orbit_await_review` again for
@@ -406,7 +448,7 @@ interactive review using the Orbit MCP:
 - **`timeout`** → tell the user the review timed out and ask them to
   review when ready.
 
-### 7. Plan mode handoff (post-approval)
+### 8. Plan mode handoff (post-approval)
 
 After the plan is approved via Orbit:
 
