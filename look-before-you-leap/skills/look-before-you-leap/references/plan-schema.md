@@ -114,13 +114,13 @@ human-facing presentation document — it does NOT contain execution state.
 | `skill` | string | yes | Skill to invoke, or `"none"` |
 | `simplify` | boolean | yes | Whether to run simplification after step |
 | `qa` | boolean | no | Whether to run fresh-eyes QA sub-agent after step (default false) |
-| `codexVerify` | boolean | no | Always true — no exceptions, no mode-based exemptions. Codex verification is structural. Uses `run-codex-verify.sh` (read-only sandbox) for claude-impl steps. For codex-impl steps, Claude verifies independently. |
+| `codexVerify` | boolean | no | Always true — no exceptions, no mode-based exemptions. Codex verification is structural. Uses `run-codex-verify.sh` for claude-impl steps. For codex-impl steps, Claude verifies independently. |
 | `files` | string[] | yes | Files involved in this step |
 | `description` | string | yes | What to do — self-contained for fresh context |
 | `acceptanceCriteria` | string | yes | How to know the step is done |
 | `progress` | Progress[] | yes | Sub-task checklist (empty array for simple steps) |
 | `subPlan` | SubPlan? | no | Inline sub-plan for large steps (null if none) |
-| `result` | string? | no | Filled after completion (null before) |
+| `result` | string? | no | Structured completion evidence using `### Criterion:` template (null before). See Result Field Format below. |
 | `routingJustification` | string | no | Why this step was assigned to this owner/mode — routing matrix category and justification. Format: `"<category> → <mode> [override reason]"`. Required by writing-plans skill for auditability. Example: `"Refactor across many files → codex-impl"` |
 
 ### Progress item fields
@@ -146,6 +146,52 @@ human-facing presentation document — it does NOT contain execution state.
 | `files` | string[] | yes | Files in this group |
 | `status` | string | yes | One of: `pending`, `in_progress`, `done` |
 | `notes` | string? | no | Execution notes (null before, filled during) |
+
+## Result Field Format
+
+When a step is completed, its `result` field must use this structured template.
+The `### Criterion:` markers are stable tokens that hooks can count and match
+against `acceptanceCriteria`. The `### Verdict` section contains the Codex/Claude
+verdict.
+
+### Template
+
+```
+### Criterion: "<quoted text from acceptanceCriteria>"
+→ <what was done: file:line, function, behavior>
+→ <how verified: command run, output observed>
+
+### Criterion: "<next criterion>"
+→ ...
+
+### Verdict
+Codex: PASS
+```
+
+### Good example
+
+```
+### Criterion: "python3 -m py_compile plan_utils.py succeeds"
+→ Ran python3 -m py_compile plan_utils.py: exit 0, no output
+
+### Criterion: "plan_utils.py exits non-zero when marking step done with empty result"
+→ Added sys.exit(1) at plan_utils.py:152 in update_step()
+→ Tested: python3 plan_utils.py update-step fixture.json 1 done → exit 1 with error message
+
+### Verdict
+Codex: PASS
+```
+
+### Bad examples
+
+- `"Done."` — no evidence, no criterion mapping
+- `"Created the files and updated imports."` — no criterion mapping, no verification evidence
+- `"Codex: PASS"` — verdict without criterion evidence
+
+Every acceptance criterion must appear as a `### Criterion:` entry. If the step
+has 5 criteria, the result must have 5 `### Criterion:` markers. The
+`verify-step-completion` hook will count these markers and warn on mismatches
+once the enforcement is implemented.
 
 ## Status Values
 

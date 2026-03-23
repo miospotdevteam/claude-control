@@ -445,8 +445,9 @@ any step `done`:
 4. If `codexVerify: true`: Codex has reported PASS via `run-codex-verify.sh`
    (for claude-impl steps) or Claude has independently verified (for
    codex-impl steps)
-5. You've written meaningful notes in the result field, including the
-   Codex verdict (e.g., "Codex: PASS") for codexVerify steps
+5. You've written a structured result using the `### Criterion:` template,
+   mapping each acceptance criterion to evidence, with the Codex/Claude
+   verdict in a `### Verdict` section
 
 **A plan with all steps `done` but unverified work is a lie on disk.** A
 hook guards the `mv` command — you cannot move an incomplete plan to
@@ -472,16 +473,30 @@ Rules:
 
 ### Result fields matter
 
-When you complete a step, write the result via plan_utils or direct JSON
-update. The result should capture what you actually did:
-- Files created/modified
-- Decisions made and why
-- Anything unexpected that the next context window needs to know
+When you complete a step, write the result using the **structured template**
+that maps each acceptance criterion to evidence. This is not optional prose —
+the `verify-step-completion` hook will count `### Criterion:` markers and
+warn if they don't match the number of acceptance criteria.
 
-Bad: `"Done."`
-Good: `"Created apiClient.ts in src/lib/ with typed wrappers for all 5
-endpoints. Used the existing AuthContext for token injection. Updated
-imports in 3 consumer files."`
+**Template:**
+```
+### Criterion: "<quoted text from acceptanceCriteria>"
+→ <what was done: file:line, function, behavior>
+→ <how verified: command run, output observed>
+
+### Criterion: "<next criterion>"
+→ ...
+
+### Verdict
+Codex: PASS
+```
+
+Every acceptance criterion gets its own `### Criterion:` entry with 1-2
+evidence lines. The `### Verdict` section contains the Codex/Claude verdict.
+
+Bad: `"Done."` — no evidence, no criterion mapping
+Bad: `"Created apiClient.ts with typed wrappers."` — no criterion mapping
+Good: The structured template above — each criterion mapped to file:line evidence
 
 ---
 

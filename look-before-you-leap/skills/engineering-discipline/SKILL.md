@@ -301,8 +301,11 @@ the test and the doc update as progress items.
 
 **When Codex flags MISSING_TEST, treat it as equal priority to code bugs.**
 Do not fix a code finding and ignore the test finding in the same reverify
-cycle. A test gap flagged twice across verification rounds is a pattern
-failure — it means you are systematically deprioritizing test coverage.
+cycle. When Codex flags both code issues and MISSING_TEST in the same
+reverify round, you MUST address BOTH before re-verifying. Fixing code
+findings while ignoring test findings is the #1 test-debt pattern. A test
+gap flagged twice across verification rounds is a pattern failure — it
+means you are systematically deprioritizing test coverage.
 
 ### Install before import
 
@@ -338,9 +341,9 @@ The check:
    do not write it
 
 Wrong documentation is worse than no documentation — it teaches incorrect
-patterns that propagate. Documenting `--sandbox read-only` when the actual
-flag combination disables the sandbox entirely is not a typo — it's a
-behavioral contract violation that misleads every reader.
+patterns that propagate. Documenting a flag that doesn't exist or was
+removed is not a typo — it's a behavioral contract violation that misleads
+every reader.
 
 ### Read API handlers before typing response shapes
 
@@ -645,6 +648,7 @@ Before declaring a task done, every item must be checked:
 - [ ] Closed-set values verified against source definitions (enums, schemas, signatures, tool params, file paths)
 - [ ] Edge states checked (null, empty, error, single-item) for every conditional path
 - [ ] No pending plan items remain
+- [ ] Result field uses `### Criterion:` template — each acceptance criterion mapped to file:line evidence
 - [ ] Gaps, risks, and skipped items communicated explicitly
 
 ---
@@ -770,3 +774,5 @@ If you catch yourself doing any of these, stop and reconsider:
 | Verifying acceptance criteria by recall ("I added idempotency keys") instead of mechanically | Run the grep, read the file, execute the command — recall drifts, mechanical checks don't |
 | Implementing a codex-impl step yourself because it seems "trivially small" | Dispatch Codex via `run-codex-implement.sh` — ownership exists for independent verification, not complexity |
 | Implementing a codex-owned sub-plan group yourself in a collab-split step | Check `group.owner` — dispatch codex-owned groups via `run-codex-implement.sh`, never implement them directly |
+| Writing result field as "Done" or "Created X" without mapping each criterion | Use the `### Criterion:` template — map every acceptance criterion to file:line evidence |
+| Fixing a type error with the same approach that failed last reverify round | After the same category appears in 2 consecutive reverify logs, invoke `look-before-you-leap:systematic-debugging` |

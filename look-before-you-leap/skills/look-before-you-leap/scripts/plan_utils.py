@@ -104,9 +104,9 @@ VALID_SKILLS = {
 def update_step_status(plan_path, step_id, new_status):
     """Update a step's status and write back to disk.
 
-    When setting to 'done', warns if progress items are incomplete or
-    result field is empty. These are soft warnings — the guard hook
-    (guard-plan-completion.sh) is the hard gate that blocks mv.
+    When setting to 'done', warns if progress items are incomplete and
+    errors if the result field is empty. A step cannot be marked done
+    without a result.
     """
     plan = read_plan(plan_path)
     step = get_step(plan, step_id)
@@ -145,14 +145,9 @@ def update_step_status(plan_path, step_id, new_status):
                 file=sys.stderr,
             )
 
-        # Warn about missing result
+        # Error on missing result
         result = step.get("result")
-        if not result or (isinstance(result, str) and not result.strip()):
-            print(
-                f"Warning: step {step_id} marked done with no result. "
-                f"Fill in the result field describing what was implemented.",
-                file=sys.stderr,
-            )
+        missing_result = not result or (isinstance(result, str) and not result.strip())
 
         # Warn about progress items missing files field
         for i, p in enumerate(step.get("progress", [])):
@@ -162,6 +157,14 @@ def update_step_status(plan_path, step_id, new_status):
                     f"files field — resumption after compaction will be degraded",
                     file=sys.stderr,
                 )
+
+        if missing_result:
+            print(
+                f"Error: step {step_id} cannot be marked done with no result. "
+                f"Fill in the result field describing what was implemented.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     step["status"] = new_status
     write_plan(plan_path, plan)

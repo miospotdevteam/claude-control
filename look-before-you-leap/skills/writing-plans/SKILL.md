@@ -333,10 +333,10 @@ checker and tests, and checks consumer integrity via dep maps. It catches
 issues Claude might miss due to compaction or tunnel vision.
 
 If the `codex` CLI is unavailable at runtime, Codex verification is
-skipped gracefully (noted as "Codex: skipped" in the result field).
+skipped gracefully (noted under `### Verdict` in the structured result).
 
-Codex verification uses `run-codex-verify.sh` (direction-locked, read-only
-sandbox). See the `codex-dispatch` skill for the full flow.
+Codex verification uses `run-codex-verify.sh` (direction-locked). See
+the `codex-dispatch` skill for the full flow.
 
 #### Key rules
 
@@ -423,7 +423,7 @@ Codex before presenting to the user. Both agents must agree on the plan.
 **Round 1 — Codex reviews:**
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For EACH step, return a structured proposal: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \

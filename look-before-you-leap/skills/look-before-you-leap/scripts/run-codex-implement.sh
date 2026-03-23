@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Direction-locked Codex implementation script.
 #
-# Runs `codex exec` in workspace-write sandbox for Codex-owned steps
+# Runs `codex exec` for Codex-owned steps
 # or Codex-owned groups within a collab-split step.
 # Validates that the effective owner is Codex (rejects claude-owned targets).
 #
@@ -161,10 +161,9 @@ Report your results as:
 - ISSUES: anything that did not go as expected, or 'none'"
 fi
 
-# Run codex exec with workspace-write sandbox
+# Run codex exec
 codex exec \
   -C "$PROJECT_ROOT" \
-  --sandbox workspace-write \
   --dangerously-bypass-approvals-and-sandbox \
   --enable fast_mode \
   --json \

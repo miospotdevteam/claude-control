@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Direction-locked Codex verification script.
 #
-# Runs `codex exec` in read-only sandbox to verify a Claude-implemented step
+# Runs `codex exec` to verify a Claude-implemented step
 # or a Claude-owned group within a collab-split step.
 # Validates that the effective owner is Claude (rejects codex-owned targets).
 #
@@ -157,10 +157,9 @@ Report PASS if all criteria are met, or report structured findings with:
 - Failure category: INCOMPLETE_WORK, MISSED_CONSUMER, TYPE_SAFETY, SILENT_SCOPE_CUT, WRONG_PATTERN, MISSING_TEST, MISSING_I18N, or OTHER"
 fi
 
-# Run codex exec with read-only sandbox
+# Run codex exec
 codex exec \
   -C "$PROJECT_ROOT" \
-  --sandbox read-only \
   --dangerously-bypass-approvals-and-sandbox \
   --enable fast_mode \
   --json \

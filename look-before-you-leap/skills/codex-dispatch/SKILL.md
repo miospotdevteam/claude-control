@@ -26,8 +26,8 @@ by the SessionStart hook via `install-codex-skills.sh`):
 - `lbyl-implement` — teaches Codex the implementation protocol
 
 If `codex` is not available (`command -v codex` fails), skip Codex
-interactions gracefully and note "Codex: skipped — codex CLI not
-installed" in the step's result field.
+interactions gracefully and note the skip in the step's `### Verdict`
+section (e.g., `### Verdict\nCodex: skipped — codex CLI not installed`).
 
 ---
 
@@ -37,10 +37,10 @@ Two direction-locked scripts enforce the ownership model. Neither script
 can be used for the wrong direction — they validate the effective owner
 (step-level or group-level) and exit with an error if mismatched.
 
-| Effective owner | Script | Sandbox | What happens |
-|---|---|---|---|
-| `claude` | `run-codex-verify.sh` | `read-only` | Codex reviews Claude's work, cannot modify files |
-| `codex` | `run-codex-implement.sh` | `workspace-write` | Codex implements the target, can edit files |
+| Effective owner | Script | What happens |
+|---|---|---|
+| `claude` | `run-codex-verify.sh` | Codex reviews Claude's work |
+| `codex` | `run-codex-implement.sh` | Codex implements the target, can edit files |
 
 Both scripts live at:
 ```
@@ -87,7 +87,9 @@ Output files (in the plan directory):
    for group-scoped runs; see Monitoring section)
 4. **When Codex finishes** — read the result file
    (`.codex-result-step-N.txt` or `.codex-result-step-N-group-G.txt`)
-5. **If PASS**: record "Codex: PASS" in step result, mark done
+5. **If PASS**: write the step result using the `### Criterion:` template
+   (map each acceptance criterion to evidence), add `### Verdict\nCodex: PASS`,
+   then mark done
 6. **If findings**: fix issues, then re-run verification:
    ```bash
    bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh <plan.json> <step-number> [group-index]
@@ -107,7 +109,7 @@ Output files (in the plan directory):
 3. **When Codex finishes** — read the result file
    (`.codex-result-step-N.txt` or `.codex-result-step-N-group-G.txt`)
 4. **Claude verifies independently** (see Independent Verification below)
-5. Record "Claude: verified" in step result, mark done
+5. Write step result using the `### Criterion:` template, add `### Verdict\nClaude: verified`, mark done
 
 ---
 
@@ -154,8 +156,8 @@ which is exactly the failure mode this architecture prevents.
    step's `acceptanceCriteria` from plan.json and verify each one
 5. **Check consumers**: if Codex modified shared code, run deps-query on
    modified files (if dep maps configured) or grep for import statements
-6. **Write result**: "Claude: verified — read N files, checked M criteria,
-   [all pass | found issues: ...]"
+6. **Write result** using the `### Criterion:` template — map each acceptance
+   criterion to evidence, then add `### Verdict\nClaude: verified`
 
 ### If Claude finds issues
 
@@ -179,14 +181,14 @@ The `verify-step-completion` hook enforces this:
 1. Claude implements the step
 2. After own verification passes: dispatch `run-codex-verify.sh`
 3. Fix findings, re-verify until PASS
-4. Record "Codex: PASS" in step result
+4. Write step result using `### Criterion:` template, add `### Verdict\nCodex: PASS`
 
 ### `codex-impl`
 
 1. Dispatch `run-codex-implement.sh`
 2. After Codex reports completion: Claude verifies independently
 3. Fix issues, re-verify
-4. Record "Claude: verified" in step result
+4. Write step result using `### Criterion:` template, add `### Verdict\nClaude: verified`
 
 ### `collab-split`
 
@@ -207,8 +209,10 @@ group has an `owner` field; the effective owner is `group.owner ?? step.owner`.
      ```
      Claude verifies independently after (read group files, run tests).
      Record `"Group N (Codex): Claude: verified"` in `group.notes`.
-3. After all groups complete, accumulate per-group verdicts into step result
-   (e.g., `"Groups 1-4 (Claude): Codex: PASS. Groups 5,7 (Codex): Claude: verified."`)
+3. After all groups complete, write the step result using the `### Criterion:`
+   template — map each acceptance criterion to evidence from the accumulated
+   group verdicts. Add `### Verdict` with combined per-group verdicts
+   (e.g., `Groups 1-4 (Claude): Codex: PASS. Groups 5,7 (Codex): Claude: verified.`)
 
 ### `dual-pass`
 
@@ -258,7 +262,7 @@ error. Log it, fall back to `"none"`, and note the mismatch.
 ### Verification result (from `run-codex-verify.sh`)
 
 Read `.codex-result-step-N.txt` and look for:
-- **"PASS"** — all acceptance criteria verified. Record "Codex: PASS".
+- **"PASS"** — all acceptance criteria verified. Write result using `### Criterion:` template, add `### Verdict\nCodex: PASS`.
 - **Findings list** — structured issues with severity, file, line.
   Fix each issue, then re-run `run-codex-verify.sh`.
 
@@ -336,7 +340,7 @@ direction-locked scripts) since there is no step ownership yet.
 **Phase 1 — Parallel exploration (background):**
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Explore the codebase for the task: <task-description>. Focus on: \
    1. All consumers of files in scope (trace import chains) \
    2. Blast radius — what breaks if these files change? \
@@ -354,7 +358,7 @@ Run in the background while Claude explores simultaneously.
 After both agents finish, dispatch Codex for a convergence review:
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Read ALL findings in <plan-dir>/discovery.md. The other agent (Claude) \
    explored patterns, conventions, and architecture. You explored consumers \
    and blast radius. Now: \
@@ -378,7 +382,7 @@ reach consensus through structured debate before Orbit review. Uses
 **Round 1 — Codex reviews the plan:**
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For EACH step, return a structured proposal: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -394,7 +398,7 @@ reasoning / COUNTER-PROPOSE). Update plan files with accepted changes.
 **Round 3 (if needed) — Final resolution:**
 
 ```bash
-codex exec -C <project-root> --sandbox read-only --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For each remaining disagreement: \
    - ACCEPT Claude's reasoning, or \
@@ -414,7 +418,8 @@ not available.
 
 If `command -v codex` fails:
 - Skip all Codex interactions
-- Note "Codex: skipped — codex CLI not installed" in each step's result
+- Use the `### Criterion:` template for each step's result, with
+  `### Verdict\nCodex: skipped — codex CLI not installed`
 - The plan proceeds as fully Claude-owned
 
 ### Codex hangs (no new JSONL lines)
@@ -464,7 +469,7 @@ All context lives on disk (plan.json, discovery.md, source files).
 |---|---|
 | `claude-impl` step done | Run `run-codex-verify.sh` in background |
 | `codex-impl` step starting | Run `run-codex-implement.sh` in background |
-| Codex returns PASS | Record "Codex: PASS" in result, mark done |
+| Codex returns PASS | Write `### Criterion:` result, add `### Verdict\nCodex: PASS`, mark done |
 | Codex returns findings | Fix issues, re-run `run-codex-verify.sh` |
 | Codex implements step | Claude verifies independently (read files, run tests) |
 | Co-exploration (discovery) | Dispatch Phase 1 in background, Phase 2 after |

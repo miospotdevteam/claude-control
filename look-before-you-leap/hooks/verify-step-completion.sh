@@ -227,6 +227,31 @@ export HOOK_PLAN_NAME="$plan_name"
 python3 << 'PYEOF'
 import json, os, re, sys
 
+
+def count_acceptance_criteria_items(acceptance_criteria):
+    if not isinstance(acceptance_criteria, str):
+        return 0
+
+    text = acceptance_criteria.strip()
+    if not text:
+        return 0
+
+    if re.search(r"(?:^|\s)\d+\.\s+", text):
+        items = [
+            item.strip()
+            for item in re.split(r"(?:^|\s)(?=\d+\.\s+)", text)
+            if item.strip()
+        ]
+        return len(items)
+
+    items = [
+        item.strip()
+        for item in re.split(r"[.;](?:\s+|$)", text)
+        if item.strip()
+    ]
+    return len(items)
+
+
 steps = os.environ["HOOK_NEWLY_COMPLETED"]
 plan_path = os.environ["HOOK_PLAN_PATH"]
 plan_name = os.environ["HOOK_PLAN_NAME"]
@@ -294,6 +319,27 @@ if os.path.isfile(plan_json_path):
                     codex_blocked_steps.append(sid)
     except Exception:
         pass
+
+criterion_warnings = []
+if plan is not None:
+    for step in plan.get("steps", []):
+        sid = str(step["id"])
+        if sid not in step_list:
+            continue
+        result = step.get("result") or ""
+        criterion_markers = len(re.findall(r"^### Criterion:", result, re.MULTILINE))
+        criteria_count = count_acceptance_criteria_items(step.get("acceptanceCriteria") or "")
+        if criteria_count and criterion_markers < criteria_count:
+            criterion_warnings.append(
+                f"RESULT TEMPLATE WARNING — Step {sid}: "
+                f"Result field has {criterion_markers} criterion markers but "
+                f"acceptanceCriteria has {criteria_count} items. Ensure each "
+                f"criterion is mapped to evidence using ### Criterion markers."
+            )
+
+criterion_warning_text = ""
+if criterion_warnings:
+    criterion_warning_text = "\n".join(criterion_warnings) + "\n\n"
 
 # Handle direction-blocked codex-impl steps
 if direction_blocked_steps:
@@ -377,6 +423,7 @@ output = {
         "additionalContext": (
             f"STEP VERIFICATION REQUIRED — {step_display} just marked [x] in "
             f"plan '{plan_name}'.\n\n"
+            f"{criterion_warning_text}"
             "STOP. Before proceeding to the next step, you MUST dispatch a "
             "verification sub-agent to confirm the completed step was "
             "implemented correctly and fully.\n\n"
