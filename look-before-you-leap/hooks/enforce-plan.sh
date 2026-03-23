@@ -50,6 +50,11 @@ if [ -f "$NO_PLAN_FILE" ]; then
   if [[ "$bypass_content" == *:* ]]; then
     bypass_pid="${bypass_content%%:*}"
     bypass_count="${bypass_content##*:}"
+    # Cap bypass counter at 3 (the documented max for trivial changes)
+    if [ -n "$bypass_count" ] && [ "$bypass_count" -gt 3 ] 2>/dev/null; then
+      bypass_count=3
+      echo "${bypass_pid}:${bypass_count}" > "$NO_PLAN_FILE"
+    fi
   else
     rm -f "$NO_PLAN_FILE"
     bypass_pid=""

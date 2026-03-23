@@ -539,6 +539,14 @@ rejects them — and even if it didn't, having Codex verify its own work
 defeats the purpose. The `verify-step-completion` hook enforces this:
 it rejects "Codex: PASS" on codex-impl steps.
 
+**Do NOT implement codex-impl steps yourself.** Even if the change seems
+"trivially small" (adding a value to a union type, updating a switch
+statement), dispatch Codex via `run-codex-implement.sh`. The ownership
+model exists for independent verification — when you implement a codex-impl
+step, you lose that independence. Do not work around the verification
+rejection by calling `codex exec` directly; the direction-locked scripts
+exist for a reason.
+
 **`mode: "collab-split"` (collaborative design, then split execution):**
 
 1. Claude proposes an approach (notes in plan.json or discovery.md)

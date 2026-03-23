@@ -149,6 +149,27 @@ than spreading `any` through the codebase.
 tRPC, Drizzle), don't add redundant return-type annotations — let the
 framework's inference do its job. The rule is about safety, not ceremony.
 
+### No silent coercion on external input
+
+When handling external input that maps to an enum or closed set, **reject
+unknown values with an explicit error**. Never silently coerce an invalid
+value to a default.
+
+```typescript
+// CORRECT — reject unknown values
+if (!validPlatforms.includes(input)) return error(400, "Invalid platform");
+
+// WRONG — silent coercion hides contract drift
+const platform = validPlatforms.includes(input) ? input : "both";
+```
+
+The coercion pattern looks helpful but makes debugging impossible: callers
+learn that any string is accepted, the real contract drifts from the
+documented one, and when the valid set changes, no error surfaces. This
+applies equally to mandatory protocol requirements — if a rule says "no
+exceptions," do not add a skip clause. A "mandatory" step with an opt-out
+path is the protocol equivalent of coercing an invalid enum to a default.
+
 ### Track blast radius on shared code
 
 When you modify any of these, you MUST check all consumers:
@@ -160,6 +181,15 @@ When you modify any of these, you MUST check all consumers:
 - SDK versions or shared dependencies
 - Configuration files (tsconfig, package.json, build config)
 - Environment variables or secrets
+- Webhook payloads and event contracts (consumers may live in OTHER repos)
+- postMessage / queue message shapes (receivers are not discoverable by
+  in-repo grep alone)
+
+For cross-repo contracts (webhooks, shared types consumed by other services),
+you cannot rely on local grep or dep maps. Read the receiver's handler in the
+other repo before changing the producer's payload. If you rename a field from
+`presenzaId` to `id` in a webhook payload, the receiver still reads
+`presenzaId` — silent exit, broken sync.
 
 The check process:
 
@@ -250,22 +280,29 @@ error hiding.
   explaining WHY the failure is safe to ignore (e.g., "best-effort
   analytics ping — failure doesn't affect user flow")
 
-### New endpoints need tests and docs
+### New behavior needs tests and docs
 
-When you add a new API endpoint (route, handler, RPC method), it MUST
-land with:
+When you add new behavior — an API endpoint, webhook handler, aggregation
+function, contract change, or any logic that produces observable output —
+it MUST land with:
 
-1. **At least one integration test** — happy-path coverage at minimum.
-   Boundary/empty-state coverage strongly preferred. An endpoint without
-   a test is an endpoint that will silently break on the next refactor.
+1. **At least one targeted test** — happy-path coverage at minimum.
+   Boundary/empty-state coverage strongly preferred. "Existing tests still
+   pass" is not test coverage — it means you didn't break unrelated code,
+   not that your new code works.
 2. **Project documentation update** — if the project maintains an API
    inventory (e.g., `project-structure/api.md`, OpenAPI spec, route
    registry), update it in the same step. This is not a follow-up task —
-   it's part of adding the endpoint.
+   it's part of adding the behavior.
 
 Do NOT defer either of these. "I'll add tests later" means "these tests
-will never exist." The plan step that adds the endpoint must include both
+will never exist." The plan step that adds the behavior must include both
 the test and the doc update as progress items.
+
+**When Codex flags MISSING_TEST, treat it as equal priority to code bugs.**
+Do not fix a code finding and ignore the test finding in the same reverify
+cycle. A test gap flagged twice across verification rounds is a pattern
+failure — it means you are systematically deprioritizing test coverage.
 
 ### Install before import
 
@@ -285,6 +322,26 @@ Do NOT assume packages are installed. Do NOT assume env vars are loaded.
 Do NOT use a tool without checking it exists. These are the most common
 sources of "it works in my head but not on the machine" failures.
 
+### Verify documentation against implementation
+
+When writing documentation, examples, or instructions that reference CLI
+flags, function signatures, or behavior: **read the actual `--help` output,
+function declaration, or source code**. Never document from assumption.
+
+The check:
+
+1. For every CLI flag in your docs, run `<tool> --help` or read the source
+2. For every function name, read the module's exports to confirm the exact
+   name (e.g., `update_step_status()` vs `update_step()`)
+3. For every behavior claim, find the source that proves it
+4. If you can't find the source for a claim, the claim is unverified —
+   do not write it
+
+Wrong documentation is worse than no documentation — it teaches incorrect
+patterns that propagate. Documenting `--sandbox read-only` when the actual
+flag combination disables the sandbox entirely is not a typo — it's a
+behavioral contract violation that misleads every reader.
+
 ### Read API handlers before typing response shapes
 
 Before writing any typed API call — a fetch wrapper, a hook that reads a
@@ -301,6 +358,31 @@ The check:
 This prevents the class of bug where you type a response as `{ heroImage }`
 but the API actually returns `{ settings, uploadedKey }`. These bugs are
 invisible in the UI until the user saves and loses data.
+
+### Never fabricate values at system boundaries
+
+When a function requires a real system value (email, user ID, API key,
+resource identifier), **trace to where that value actually lives in the
+system and use it**. Never construct a plausible-looking value from other
+fields.
+
+```typescript
+// CORRECT — reads the actual value
+const email = user.email;
+
+// WRONG — fabricated, breaks with spaces, unicode, long names
+const email = `${user.fullName}@company.com`;
+```
+
+Fabricated values pass type checking and look correct in code review. They
+break at runtime — an email constructed from a full name with spaces
+(`Mario Rossi@company.com`) is invalid, blocks onboarding flows, and routes
+communications to nonexistent addresses.
+
+The check: when you write a value for a field that will be sent to an
+external system (Stripe, email provider, auth service), ask: "Did I READ
+this value from a data source, or did I CONSTRUCT it?" If constructed, find
+the real source.
 
 ### Diff against source when reimplementing behavior
 
@@ -381,6 +463,30 @@ and forget secondary deliverables. Example: step description says
 "Tab label adapts to vertical (Menu vs Lookbook)" — you implement the
 tab content but forget the label adaptation because you focused on the
 harder part.
+
+### Verify edge states, not just the happy path
+
+After implementing any UI component, API handler, or conditional logic,
+systematically ask: **"What if this data is null? Empty array? Error
+response? Single item instead of many?"**
+
+For every conditional render path (`{data && ...}`, `data?.length > 1`,
+`if (result)`), verify the output when the guard **fails** — not just when
+it succeeds. If the answer is "nothing renders" and the acceptance criteria
+expect something visible, you have a bug.
+
+The check:
+
+1. List every conditional guard in your new code
+2. For each guard, answer: what happens when the condition is false?
+3. If "nothing" — is that acceptable? Or should there be a fallback,
+   empty state, or error message?
+4. Check null, empty array, error response, and single-item states
+   explicitly — these are the four states Claude consistently skips
+
+This prevents the class of bug where a chart silently disappears when data
+is null, a detail page shows a permanent loading skeleton on API error, or
+a form sends `undefined` instead of `null` for cleared fields.
 
 ### Autonomy boundaries
 
@@ -532,10 +638,12 @@ Before declaring a task done, every item must be checked:
 
 - [ ] User's original request re-read word by word
 - [ ] Every requirement implemented AND verified working
+- [ ] Each acceptance criterion verified **mechanically** (grep, read file, run command) — not by recall
 - [ ] Plan steps all marked done (if a plan exists)
 - [ ] Verification commands pass (types, lint, tests)
 - [ ] Consumers of modified shared code re-verified after changes
 - [ ] Closed-set values verified against source definitions (enums, schemas, signatures, tool params, file paths)
+- [ ] Edge states checked (null, empty, error, single-item) for every conditional path
 - [ ] No pending plan items remain
 - [ ] Gaps, risks, and skipped items communicated explicitly
 
@@ -653,3 +761,11 @@ If you catch yourself doing any of these, stop and reconsider:
 | Setting `codexVerify: false` | `codexVerify` is always `true` — no exceptions, no mode-based exemptions. The field is structural, not opt-in |
 | Running `run-codex-verify.sh` on a `codex-impl` step | Codex must not verify its own work — for `owner: "codex"` steps, Claude verifies independently (read files, run tsc/lint/tests, check consumers) |
 | Writing "Codex: skipped — codex CLI not installed" without running `command -v codex` | **This is LYING.** You do not know whether Codex is installed until you check. Run `command -v codex` FIRST. The default assumption is Codex IS installed — you must PROVE it is absent before claiming so. Every time you fabricate "not installed" to avoid verification, you are deceiving the user and shipping unreviewed work. No exceptions, no guessing, no "I think it's not installed" — run the command or do not claim anything about its availability |
+| Only testing the happy path — never checking null/empty/error/single-item states | For every conditional guard, verify what happens when the condition is false |
+| Changing a webhook payload field without checking the receiver in the other repo | Read the receiver's handler before changing the producer — cross-repo consumers are invisible to local grep |
+| Silently coercing invalid enum values to defaults instead of rejecting | Reject unknown values with explicit errors — coercion hides contract drift |
+| Fixing code bugs from Codex but ignoring MISSING_TEST in the same round | Test gaps are equal priority to code bugs — fix both before re-verifying |
+| Documenting CLI flags, function names, or behavior from assumption | Read `--help`, the function declaration, or the source — never document from memory |
+| Constructing a plausible-looking value instead of reading the real one | Trace to the actual data source — fabricated values pass type checks but break at runtime |
+| Verifying acceptance criteria by recall ("I added idempotency keys") instead of mechanically | Run the grep, read the file, execute the command — recall drifts, mechanical checks don't |
+| Implementing a codex-impl step yourself because it seems "trivially small" | Dispatch Codex via `run-codex-implement.sh` — ownership exists for independent verification, not complexity |

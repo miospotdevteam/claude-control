@@ -288,3 +288,69 @@ New pieces needed:
 - **Human override**: The human should be able to send directives too —
   a `/steer` command that pushes a directive to any agent or supervisor
   in the room.
+
+---
+
+## Review Notes (2026-03-23)
+
+### Strengths
+
+- The three-tier message hierarchy is clean. Keeping subagents dumb (they
+  just see filtered signals + directives) while supervisors handle
+  negotiation is the right separation. Avoids the "every agent needs to
+  understand every other agent" combinatorial explosion.
+- Leveraging existing LBYL primitives (plan.json file scopes, dep maps,
+  hooks, MCP) means this isn't a from-scratch system — it's a coordination
+  layer on top of infrastructure that already works.
+- File-level signal granularity with "false positives are fine" is pragmatic.
+  Function-level would require AST parsing and still miss semantic conflicts.
+
+### Concerns
+
+1. **Supervisor as a bottleneck.** The supervisor is an LLM agent watching
+   a signal stream, reasoning about overlap, and issuing directives. If
+   Plan A has 6 agents all signaling simultaneously, the supervisor needs
+   to process signals faster than agents produce them. What happens when the
+   supervisor falls behind? Signals queue up, directives arrive late, and
+   agents make decisions on stale context. Is there a backpressure mechanism?
+
+2. **Negotiation latency vs. agent speed.** The Plan B overlap negotiation
+   (steps 1-6 in the multi-plan example) involves multiple LLM round-trips
+   between supervisors. Meanwhile, subagents are already executing. If Plan
+   A's agent is mid-edit on `api.ts` when Plan B's supervisor is still
+   negotiating, the directive arrives too late. Should subagents on
+   overlapping files be paused until negotiation completes?
+
+3. **The "one wrong edit" problem is worse than it sounds.** The doc notes
+   agents might make one wrong edit before seeing a directive. But if that
+   edit changes a type signature that 3 other files depend on, the blast
+   radius of that one edit could cascade before the correction arrives. The
+   PreToolUse hook catches the *next* edit, but the damage from the
+   *current* one is already done.
+
+4. **Supervisor skill is underspecified for a reason** — it's genuinely
+   hard. The supervisor needs to: parse signals into semantic meaning
+   ("AuthResponse changed" vs "comment added to auth.ts"), assess impact on
+   its own plan's agents, decide whether to issue a directive or let the
+   agent discover it naturally, and negotiate with other supervisors. That's
+   a full reasoning chain per signal. Is this one long-running agent or a
+   series of short invocations?
+
+5. **Room lifecycle and stale state.** "Room dies when last plan
+   disconnects" is clean, but what about crash recovery? If the WS server
+   restarts, all room state is lost. The signal log needs to be durable
+   (even just a JSONL file) so supervisors can replay missed signals on
+   reconnect.
+
+### Additional Open Questions
+
+- **Signal deduplication**: If an agent edits the same file 5 times in a
+  step, does each edit produce a signal? Should signals be debounced per
+  file per step?
+
+- **Testing this**: How do you test supervisor behavior? You'd need a
+  simulation harness that replays signal streams and verifies directive
+  quality. That's its own project.
+
+- **Graceful degradation**: If the WS server is down, agents should still
+  work — just without coordination. The hook should no-op, not block.
