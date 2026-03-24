@@ -44,6 +44,10 @@ if [ -z "$PLAN_DIR" ] || [ ! -d "$PLAN_DIR" ]; then
   exit 0
 fi
 
+# Set up plan_utils path for merged reads
+SCRIPT_DIR_ABS="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+export PLAN_UTILS_DIR="$SCRIPT_DIR_ABS"
+
 # Display a plan from plan.json
 show_plan_json() {
   local plan_json="$1"
@@ -76,9 +80,17 @@ show_plan_json() {
   echo "----------------------------------------"
 
   python3 -c "
-import json, sys
-with open(sys.argv[1]) as f:
-    plan = json.load(f)
+import json, os, sys
+
+# Use plan_utils for merged view (plan.json + progress.json)
+plan_utils_dir = os.environ.get('PLAN_UTILS_DIR', '')
+if plan_utils_dir:
+    sys.path.insert(0, plan_utils_dir)
+    import plan_utils
+    plan = plan_utils.read_plan(sys.argv[1])
+else:
+    with open(sys.argv[1]) as f:
+        plan = json.load(f)
 counts = {'pending': 0, 'in_progress': 0, 'done': 0, 'blocked': 0}
 for s in plan.get('steps', []):
     st = s.get('status', 'pending')

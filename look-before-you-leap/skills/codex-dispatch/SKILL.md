@@ -165,7 +165,7 @@ which is exactly the failure mode this architecture prevents.
 - Log findings to `usage-errors/claude-findings/` (see Symmetric Error
   Logging below)
 - Re-run verification after fixes
-- Update progress items in plan.json
+- Update progress items via plan_utils.py (writes to progress.json)
 
 The `verify-step-completion` hook enforces this:
 - For `owner: "codex"` steps: result must contain `Claude: verified`
@@ -274,7 +274,7 @@ Read `.codex-result-step-N.txt` and extract:
 - **VERIFICATION**: type checker and test results
 - **ISSUES**: anything that went wrong
 
-Update progress items in plan.json based on the report. Then proceed
+Update progress items via plan_utils.py based on the report. Then proceed
 to Claude's independent verification.
 
 ---
@@ -407,8 +407,10 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable
 
 **Max 3 rounds.** Unresolved items go to Orbit with both positions stated.
 
-Both co-exploration and plan consensus are optional — skip if Codex is
-not available.
+Co-exploration and plan consensus are **mandatory when Codex is available**.
+If `command -v codex` fails, document the fallback in discovery.md and pass
+`codexStatus=unavailable` to the discovery receipt. Do NOT skip co-exploration
+without running the preflight check first.
 
 ---
 
@@ -447,9 +449,9 @@ If Codex reports ISSUES or exits with errors:
 
 ## Compaction Recovery
 
-After context compaction, codex-dispatch recovers from plan.json:
+After context compaction, codex-dispatch recovers from plan.json + progress.json:
 
-1. Read plan.json — find the current step and its status
+1. Read plan.json (definition) + progress.json (state) — find the current step and its status
 2. If a step is `in_progress`:
    - Check for result/stream files (use `step-N-group-G` suffix for
      collab-split steps with group-scoped dispatch)
@@ -459,7 +461,7 @@ After context compaction, codex-dispatch recovers from plan.json:
 3. Continue the execution loop based on plan state
 
 No thread state to recover — each `codex exec` call is standalone.
-All context lives on disk (plan.json, discovery.md, source files).
+All context lives on disk (plan.json + progress.json, discovery.md, source files).
 
 ---
 
@@ -478,5 +480,5 @@ All context lives on disk (plan.json, discovery.md, source files).
 | `dual-pass` step | Claude pass, then Codex pass, synthesize |
 | Codex not installed | Skip, note in result |
 | Codex hangs | Kill after 3 min timeout, retry once |
-| After compaction | Read plan.json, check for result files, continue |
+| After compaction | Read plan.json + progress.json, check for result files, continue |
 | Claude finds issues in Codex work | Log to `usage-errors/claude-findings/` |

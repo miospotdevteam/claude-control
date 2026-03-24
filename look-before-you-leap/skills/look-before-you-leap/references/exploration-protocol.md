@@ -6,7 +6,16 @@ concrete answers and your confidence is Medium or higher.
 
 ---
 
-## Step 0: Run deps-query FIRST (when configured)
+## Step 0a: Codex preflight (ALWAYS run first)
+
+Run `command -v codex` to determine Codex availability BEFORE any
+exploration. This is not optional — do NOT assume availability.
+
+- If available → co-exploration is mandatory (see conductor Phase 1)
+- If unavailable → explore solo, document under `## Codex Availability`
+  in discovery.md, use `codexStatus=unavailable` for the discovery receipt
+
+## Step 0b: Run deps-query (when configured)
 
 If dep maps are configured, run `deps-query.py` on every file in scope
 BEFORE answering the questions below. The output reveals consumers,

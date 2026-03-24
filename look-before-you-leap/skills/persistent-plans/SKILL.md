@@ -18,20 +18,24 @@ that engineering-discipline provides.
 
 ## Dual-File Architecture
 
-Every plan consists of two files:
+Every plan consists of three files:
 
-- **`plan.json`** — Source of truth for execution. Steps, progress, state,
-  inline sub-plans. Parsed by hooks, updated by Claude via `plan_utils.py`.
-  Agent-facing. This is what you read to know where you are. Updated
-  constantly during execution.
+- **`plan.json`** — Immutable plan definition. Steps, acceptance criteria,
+  files, ownership, mode, skill. Frozen after Orbit approval. **Never edited
+  during execution.** Hooks read this for step structure.
+- **`progress.json`** — Mutable execution state. Step statuses, results,
+  progress item statuses, completedSummary, deviations, codexSession.
+  Updated constantly via `plan_utils.py` commands. This is what changes
+  during execution.
 - **`masterPlan.md`** — Proposal document for user review via Orbit.
   Summarizes what, why, critical decisions, warnings, risk areas.
   Human-facing. **Write-once**: frozen after Orbit approval, never updated
   during execution.
 
-Hooks read `plan.json`. You update `plan.json`. The user reviews
-`masterPlan.md` once during planning. After approval, only plan.json
-changes — masterPlan.md is a stable record of what was agreed upon.
+Hooks read both files. You update progress via `plan_utils.py` commands
+(which write to `progress.json`). **Never Edit plan.json directly after
+approval** — it is immutable. The user reviews `masterPlan.md` once during
+planning.
 
 ---
 
@@ -41,11 +45,12 @@ changes — masterPlan.md is a stable record of what was agreed upon.
 
 Claude Code will auto-compact your context without warning. You cannot
 prevent this. You cannot predict exactly when it will happen. Therefore,
-your plan.json on disk must ALWAYS reflect your current progress.
+your progress.json on disk must ALWAYS reflect your current progress.
 
-**Treat every write to plan.json as a save point.** If auto-compaction
-happens right now, would your plan.json let you resume without
-re-discovering anything? If the answer is no, update plan.json immediately.
+**Treat every write to progress.json as a save point.** If auto-compaction
+happens right now, would your plan files let you resume without
+re-discovering anything? If the answer is no, update progress via
+plan_utils.py immediately.
 
 After ANY compaction (including auto-compaction), your FIRST action is to
 read the active plan from disk. Do not wait for the user to say "continue".
@@ -58,9 +63,9 @@ immediately and state where you're resuming from.
 
 **Every task gets a plan.json before any code is edited.**
 
-The plan is your external memory. Write it to disk, update it as you work,
-and trust it over your recollection. After compaction, the plan is all you
-have.
+The plan is your external memory. Write plan.json to disk, update progress
+via plan_utils.py as you work, and trust the files over your recollection.
+After compaction, plan.json + progress.json are all you have.
 
 Exception: the user explicitly says "just do it" or "no plan" for a
 single-line trivially obvious change. Everything else gets a plan.
@@ -89,7 +94,7 @@ deviating from the plan require user confirmation.
 Reinterpreting or narrowing an accepted step after verification has failed
 also counts as a deviation. If Codex says a criterion was not met, you may
 not redefine terms like "panel", "sync", or "complete" on your own. Ask
-the user to approve the narrower scope and record it in `plan.json.deviations`
+the user to approve the narrower scope and record it via `plan_utils.py add-deviation`
 before proceeding.
 
 **Prerequisites**: this skill is always invoked via the `look-before-you-leap`
@@ -109,7 +114,8 @@ plans go in `active/`; completed plans are automatically moved to
 .temp/plan-mode/
 ├── active/                       # Plans currently in progress
 │   └── <plan-name>/              # kebab-case (e.g., "migrate-auth-to-v2")
-│       ├── plan.json             # Execution source of truth
+│       ├── plan.json             # Immutable plan definition (frozen after approval)
+│       ├── progress.json         # Mutable execution state (updated via plan_utils.py)
 │       ├── masterPlan.md         # User-facing proposal document
 │       └── discovery.md          # Exploration findings (optional)
 ├── completed/                    # Finished plans (moved here automatically)
@@ -129,10 +135,10 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 
 ---
 
-## Updating plan.json
+## Updating Progress
 
-Use `plan_utils.py` via the Bash tool. This is more reliable than Edit-based
-markdown checkbox toggling:
+Use `plan_utils.py` via the Bash tool. All commands write to progress.json
+automatically — pass the plan.json path and mutations go to the right file:
 
 <!-- plan-utils-cmd-start -->
 ```bash
@@ -145,11 +151,14 @@ python3 "$PLAN_UTILS" update-step "$PLAN_JSON" 3 in_progress
 # Mark progress item 0 of step 3 as done
 python3 "$PLAN_UTILS" update-progress "$PLAN_JSON" 3 0 done
 
-# Mark step 3 as done
-python3 "$PLAN_UTILS" update-step "$PLAN_JSON" 3 done
-
 # Set the result field on step 3
 python3 "$PLAN_UTILS" set-result "$PLAN_JSON" 3 "Migrated all hooks to new format"
+
+# Mark step 3 as done (legacy plans)
+python3 "$PLAN_UTILS" update-step "$PLAN_JSON" 3 done
+
+# Mark step 3 as done (strict plans — gates on verification receipts)
+# python3 "$PLAN_UTILS" complete-step "$PLAN_JSON" 3 "result text" "$PROJECT_ROOT"
 
 # Add to completed summary
 python3 "$PLAN_UTILS" add-summary "$PLAN_JSON" "Step 3: Migrated all hooks"
@@ -246,11 +255,14 @@ structure exactly. Hooks parse this schema — deviations break tooling.
       "result": null
     }
   ],
-  "blocked": [],
-  "completedSummary": [],
-  "deviations": []
+  "blocked": []
 }
 ```
+
+**Note:** `completedSummary`, `deviations`, and `codexSession` are mutable
+fields stored in `progress.json` (created by `plan_utils.py init-progress`).
+Step `status`, `result`, and progress item statuses are also tracked in
+`progress.json` during execution — the values in plan.json are initial only.
 
 **Every step MUST have a `progress` array** — even simple steps get at
 least 2 items. Progress items are your compaction insurance: if context
@@ -327,10 +339,10 @@ not as separate files. Each group clusters related files:
   ],
   "subPlan": {
     "groups": [
-      {"name": "Core types and schemas", "files": ["types.ts", "schemas.ts"], "status": "pending", "notes": null},
-      {"name": "Business logic filtering", "files": ["filtering.ts"], "status": "pending", "notes": null},
-      {"name": "API client methods", "files": ["client.ts"], "status": "pending", "notes": null},
-      {"name": "API seed data and routes", "files": ["seed.ts"], "status": "pending", "notes": null}
+      {"name": "Core types and schemas", "files": ["types.ts", "schemas.ts"]},
+      {"name": "Business logic filtering", "files": ["filtering.ts"]},
+      {"name": "API client methods", "files": ["client.ts"]},
+      {"name": "API seed data and routes", "files": ["seed.ts"]}
     ]
   },
   "result": null
@@ -348,22 +360,23 @@ they serve different purposes. Progress items are the checkpoint mechanism
 
 ### The Checkpoint Rule (THE #1 RULE OF EXECUTION)
 
-**After every 2-3 code file edits, you MUST update plan.json on disk.**
+**After every 2-3 code file edits, you MUST update progress via plan_utils.py.**
 This is a hard requirement enforced by a hook that will remind you if you
-forget.
+forget. All mutations write to `progress.json` — never edit `plan.json`
+directly after approval.
 
-What "update the plan" means:
+What "update progress" means:
 1. Use `plan_utils.py update-progress` to mark completed sub-tasks
 2. Use `plan_utils.py update-step` to change step status
 3. Use `plan_utils.py add-summary` when a step finishes
 
-**Why this matters**: Auto-compaction can fire at any moment. If your plan
-is stale, your next context window starts from scratch. Every plan update
-is insurance against lost work.
+**Why this matters**: Auto-compaction can fire at any moment. If your
+progress is stale, your next context window starts from scratch. Every
+progress update is insurance against lost work.
 
 **The Compaction Test**: *"If compaction fired RIGHT NOW, could someone
-resume from plan.json alone?"* Ask this after every code edit. If the
-answer is no, update plan.json BEFORE your next edit.
+resume from the plan files alone?"* Ask this after every code edit. If the
+answer is no, update progress BEFORE your next edit.
 
 This is a loop. Follow it mechanically.
 
@@ -395,7 +408,7 @@ This is a loop. Follow it mechanically.
 │        - owner=="codex": dispatch run-codex-implement.sh│
 │          → Claude verifies independently after          │
 │     c. Record per-group verdict in group.notes          │
-│     d. Mark group done in plan.json                     │
+│     d. Mark group done via plan_utils.py                │
 │     e. Checkpoint: update progress items                │
 │     f. IF all groups complete:                          │
 │        - Verify deliverables checklist (every item)     │
@@ -514,8 +527,9 @@ plan, read it immediately.
 ### Resumption protocol
 
 1. Look for `.temp/plan-mode/active/` directory
-2. Find the most recent plan.json (or use `plan_utils.py find-active`)
-3. Read it completely — especially the `discovery` and `completedSummary`
+2. Find the most recent plan (use `plan_utils.py find-active`)
+3. Read plan.json (discovery, step definitions) and progress.json
+   (completedSummary, step statuses, progress items)
 4. Find the next step with status `pending` or `in_progress`
 5. If the step is `in_progress`, check which progress items are done —
    that tells you exactly where within the step to resume
@@ -524,8 +538,8 @@ plan, read it immediately.
    point>."*
 7. Continue the execution loop
 
-**You MUST do this before touching any code.** The plan on disk is the
-source of truth, not your memory of what you were doing.
+**You MUST do this before touching any code.** The plan files on disk are
+the source of truth, not your memory of what you were doing.
 
 ### If an in-progress step exists
 
@@ -568,8 +582,8 @@ before compaction.
 - **Update immediately** — after every step completion, write to disk
 - **Never delete a plan** — when all steps are complete, move the plan
   folder from `active/` to `completed/`
-- **If requirements change** — update plan.json FIRST, then continue
-  execution
+- **If requirements change** — update progress via plan_utils.py FIRST,
+  then continue execution. plan.json is immutable after approval.
 - **The discovery section is sacred** — write it thoroughly during
   exploration; your compacted future self will thank you
 - **Use the scripts** — run `plan-status.sh` to see all plan states, run
@@ -602,14 +616,14 @@ engineering-discipline ensures the work is done correctly.
 
 | Situation | Action |
 |---|---|
-| New task from user | Explore -> write plan.json + masterPlan.md in active/ -> execute |
+| New task from user | Explore -> write plan.json + masterPlan.md + init-progress in active/ -> execute |
 | Every 2-3 file edits | Checkpoint via plan_utils.py |
-| Step completed | update-step done + add-summary immediately |
+| Step completed | complete-step (strict) or update-step done (legacy) + add-summary immediately |
 | Dep maps show >5 files for a step | Use inline subPlan with groups |
 | Step touches >10 files or is a sweep | Use inline subPlan with groups |
-| After any compaction | Read plan.json IMMEDIATELY -> state where you are -> continue |
-| User says "continue" | Read plan.json -> find next step -> execute |
-| Requirements changed | Update plan.json -> continue execution |
+| After any compaction | Read plan.json + progress.json IMMEDIATELY -> state where you are -> continue |
+| User says "continue" | Read plan.json + progress.json -> find next step -> execute |
+| Requirements changed | Update progress via plan_utils.py -> continue execution |
 | Stuck or blocked | update-step blocked -> ask user |
 | All steps complete | Final verification -> move plan to completed/ -> report to user |
 

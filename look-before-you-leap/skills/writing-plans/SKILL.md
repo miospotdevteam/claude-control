@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: "Use after discovery to write implementation plans with TDD-granularity steps. Produces both plan.json (execution source of truth) and masterPlan.md (user-facing proposal for Orbit review). Every step is one component/feature; TDD rhythm (test, verify fail, implement, verify pass, commit) lives in its progress items. Consumes discovery.md from exploration phase. Make sure to use this skill whenever the user says discovery is done, exploration is finished, discovery.md is ready, or asks to write/create/draft the implementation plan — even if they don't mention plan.json or masterPlan.md by name. Also use when the user references completed exploration findings, blast radius analysis, or consumer mappings and wants them converted into actionable steps. Do NOT use when: the user says 'just do it' or 'no plan', resuming or executing an existing plan, during exploration or brainstorming (discovery not yet complete), debugging, or code review."
+description: "Use after discovery to write implementation plans with TDD-granularity steps. Produces plan.json (immutable definition, frozen after approval), progress.json (mutable execution state), and masterPlan.md (user-facing proposal for Orbit review). Every step is one component/feature; TDD rhythm (test, verify fail, implement, verify pass, commit) lives in its progress items. Consumes discovery.md from exploration phase. Make sure to use this skill whenever the user says discovery is done, exploration is finished, discovery.md is ready, or asks to write/create/draft the implementation plan — even if they don't mention plan.json or masterPlan.md by name. Also use when the user references completed exploration findings, blast radius analysis, or consumer mappings and wants them converted into actionable steps. Do NOT use when: the user says 'just do it' or 'no plan', resuming or executing an existing plan, during exploration or brainstorming (discovery not yet complete), debugging, or code review."
 ---
 
 # Writing Plans
@@ -14,11 +14,23 @@ the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
 **Announce at start:** "I'm using the writing-plans skill to create the
 implementation plan."
 
-**Prerequisite:** Discovery must be complete. If no `discovery.md` exists
-in the plan directory, go back to Step 1 (Explore) first. If discovery.md
-exists but is thin (missing blast radius counts, no consumer lists, vague
-scope), warn the user that the plan quality will suffer and recommend going
-back to enrich the discovery before continuing.
+**Prerequisite:** Discovery must be complete with verified co-exploration.
+
+**Planning gate:** Before producing a plan, verify that a signed discovery
+receipt exists for this project+plan. Check via:
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/receipt_utils.py check discovery <projectId> <planId>
+```
+If the receipt is MISSING, refuse to produce the plan and instruct the
+caller to complete discovery first (including Codex co-exploration or
+documented fallback). This gate ensures Claude cannot skip exploration
+and jump straight to planning.
+
+If no `discovery.md` exists in the plan directory, go back to Step 1
+(Explore) first. If discovery.md exists but is thin (missing blast radius
+counts, no consumer lists, vague scope), warn the user that the plan
+quality will suffer and recommend going back to enrich the discovery
+before continuing.
 
 ---
 
@@ -162,10 +174,11 @@ ownership matrix with collaboration modes and verification rules.
 
 Produce **both** files in `.temp/plan-mode/active/<plan-name>/`:
 
-#### plan.json — execution source of truth
+#### plan.json — immutable plan definition
 
-Use the schema from `references/plan-schema.md`. This file is what hooks
-read and what Claude updates during execution. Include:
+Use the schema from `references/plan-schema.md`. This file is frozen after
+Orbit approval. Hooks read it for step structure; mutable state (statuses,
+results) lives in `progress.json` (auto-created by plan_utils.py). Include:
 
 - All discovery findings in the `discovery` object
 - Steps with TDD-granularity progress items
@@ -187,10 +200,24 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py 
 
 This is the document the user reviews via Orbit. It communicates **intent**,
 not execution state. **It is frozen after Orbit approval** — never updated
-during execution. All runtime state lives in plan.json.
+during execution. All runtime state lives in progress.json (updated
+via plan_utils.py). plan.json is also immutable after approval.
 
 Use the template from `references/master-plan-format.md`. No `[x]`/`[ ]`
 checkboxes. No execution state. Just what, why, and what could go wrong.
+
+#### progress.json — initialize after plan creation
+
+After writing plan.json, create progress.json with all steps in `pending`
+state:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py init-progress <plan.json>
+```
+
+This creates the mutable state file that tracks execution progress.
+plan.json becomes immutable after Orbit approval; all runtime updates
+go to progress.json via plan_utils.py commands.
 
 #### Step granularity: how steps map to TDD
 
@@ -379,8 +406,8 @@ If ANY criterion is met, restructure the step NOW:
 {
   "subPlan": {
     "groups": [
-      {"name": "Dashboard pages", "owner": "claude", "files": ["a.tsx", "b.tsx", "c.tsx"], "status": "pending", "notes": null},
-      {"name": "Modal components", "owner": "codex", "files": ["d.tsx", "e.tsx"], "status": "pending", "notes": null}
+      {"name": "Dashboard pages", "owner": "claude", "files": ["a.tsx", "b.tsx", "c.tsx"]},
+      {"name": "Modal components", "owner": "codex", "files": ["d.tsx", "e.tsx"]}
     ]
   }
 }
@@ -479,10 +506,31 @@ After the plan is approved via Orbit:
    The handoff marker (`.handoff-pending`) is auto-cleared by a hook when
    `EnterPlanMode` is called or when `orbit_await_review` returns approved.
 2. Read the plan.json you just wrote from disk.
-3. Write a summary to the **plan mode scratch pad** (the file path is
-   specified in the plan mode system message — it is NOT masterPlan.md and
-   NOT plan.json). Include: the key steps, files involved, and acceptance
-   criteria — enough for the user to approve or reject.
+3. Write a **minimal** summary to the **plan mode scratch pad** (the file
+   path is specified in the plan mode system message — it is NOT
+   masterPlan.md and NOT plan.json). Use this exact format:
+
+   ```
+   # Plan: <title from plan.json>
+   Path: <absolute path to plan.json>
+   Steps: <N> total
+   Context: <plan.json.context — one or two sentences>
+
+   Read plan.json at the path above to begin execution.
+   ```
+
+   **Do NOT include**: step descriptions, acceptance criteria, file lists,
+   Codex consensus results, exploration findings, implementation details,
+   transcript references, or any other content. All of that lives on disk
+   already. The session-start hook and resumption protocol handle
+   everything — the scratch pad is a pointer, not a copy.
+
+   **Why this matters**: the scratch pad becomes the initial prompt in the
+   new session. If it's too large or contains mixed instructions (implement
+   + handle consensus + read transcript), Claude gets confused and acts
+   erratically — editing code while simultaneously outputting stale Codex
+   feedback. Keep it minimal.
+
 4. Call `ExitPlanMode` to present the plan to the user.
 
 This gives the user the built-in **"autoaccept edits and clear context?"**
@@ -496,9 +544,10 @@ conductor's Step 3 with engineering-discipline.
 
 If the user changes requirements during planning (before Orbit approval),
 update BOTH plan.json and masterPlan.md to reflect the new scope. If the
-user changes requirements AFTER Orbit approval (during execution), update
-only plan.json — masterPlan.md is frozen. Record the deviation in
-plan.json's `deviations` array so the change is visible after compaction.
+user changes requirements AFTER Orbit approval (during execution),
+masterPlan.md is frozen and plan.json is immutable. Record the deviation
+via `plan_utils.py add-deviation` (writes to progress.json) so the
+change is visible after compaction.
 
 If a plan already exists in the target directory and you're asked to
 rewrite it, read the existing plan first to understand what changed. Do
@@ -544,7 +593,7 @@ directory).
 - **Precise descriptions** — never write vague "add error handling"; specify
   exactly what to do, which files, and how to verify. Plans describe intent;
   the executing engineer writes the code.
-- **masterPlan.md is write-once** — frozen after Orbit approval. All runtime
-  state lives in plan.json
+- **masterPlan.md is write-once** — frozen after Orbit approval. plan.json
+  is also immutable. All runtime state lives in progress.json
 - **DRY / YAGNI** — only what's needed now, nothing speculative
 - **Sub-plans are mandatory** — if a step meets the criteria, it gets one

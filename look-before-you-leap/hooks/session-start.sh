@@ -24,6 +24,10 @@ source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 PROJECT_ROOT="$(find_project_root)"
 PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
 
+# --- Section 1.2: Bootstrap receipt state ---
+RECEIPT_UTILS="${PLUGIN_ROOT}/scripts/receipt_utils.py"
+python3 "$RECEIPT_UTILS" bootstrap >/dev/null 2>&1 || true
+
 # --- Section 1.3: Install Codex skills ---
 INSTALL_CODEX_SKILLS="${PLUGIN_ROOT}/scripts/install-codex-skills.sh"
 if [ -f "$INSTALL_CODEX_SKILLS" ]; then
@@ -48,15 +52,10 @@ fi
 # Read config as JSON (empty object if missing/broken)
 PROJECT_CONFIG_JSON=$(python3 "$LIB_DIR/read-config.py" "$PROJECT_ROOT" 2>/dev/null) || PROJECT_CONFIG_JSON="{}"
 
-# --- Section 1.7: Clear per-plan handoff-pending marker for this session ---
-# A new session means context was cleared (via plan mode handoff, /clear, or
-# compaction). The handoff goal (fresh context for execution) is achieved.
-# Find this session's plan and clear its marker (per-plan, not global).
-PLAN_UTILS_EARLY="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
-session_plan=$(python3 "$PLAN_UTILS_EARLY" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
-if [ -n "$session_plan" ] && [ -f "$session_plan" ]; then
-  rm -f "$(dirname "$session_plan")/.handoff-pending"
-fi
+# --- Section 1.7: Handoff-pending marker ---
+# No longer auto-cleared on session start. The handoff marker persists until
+# the user explicitly approves via Orbit (clear-handoff-on-approval.sh mints
+# a handoff_approved receipt) or runs /bypass.
 
 # --- Section 1.8: Clean up stale .no-plan-* files (dead PIDs) ---
 if [ -d "$PROJECT_ROOT/.temp/plan-mode" ]; then
@@ -149,7 +148,7 @@ PYEOF
       active_plan_summary+=$'\n'"File: $latest_json"
       active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
       [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-      active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the plan.json file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
+      active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read plan.json (definition) and progress.json (mutable state) at the plan directory BEFORE doing any work. The plan + progress files are your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
     fi
 
   # No plan found for this session — check if OTHER sessions own plans (informational)
@@ -481,11 +480,14 @@ try:
             "# Mark progress item 0 of step 3 as done\n"
             "python3 \"$PLAN_UTILS\" update-progress \"$PLAN_JSON\" 3 0 done\n"
             "\n"
-            "# Mark step 3 as done\n"
-            "python3 \"$PLAN_UTILS\" update-step \"$PLAN_JSON\" 3 done\n"
-            "\n"
             "# Set the result field on step 3\n"
             "python3 \"$PLAN_UTILS\" set-result \"$PLAN_JSON\" 3 \"Migrated all hooks to new format\"\n"
+            "\n"
+            "# Mark step 3 as done (legacy plans)\n"
+            "python3 \"$PLAN_UTILS\" update-step \"$PLAN_JSON\" 3 done\n"
+            "\n"
+            "# Mark step 3 as done (strict plans — gates on receipts)\n"
+            "# python3 \"$PLAN_UTILS\" complete-step \"$PLAN_JSON\" 3 \"result text\" \"$PROJECT_ROOT\"\n"
             "\n"
             "# Add to completed summary\n"
             "python3 \"$PLAN_UTILS\" add-summary \"$PLAN_JSON\" \"Step 3: Migrated all hooks\"\n"

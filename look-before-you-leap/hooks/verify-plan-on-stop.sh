@@ -102,11 +102,68 @@ if remaining == 0:
             "",
             "Before stopping, fill in the result field for each done step.",
             "The result should describe what was implemented, files changed,",
-            "and decisions made. Use plan_utils.py or Edit to update plan.json.",
+            "and decisions made. Use plan_utils.py set-result to update progress.",
         ]
         output = {"decision": "block", "reason": "\n".join(reason_parts)}
         json.dump(output, sys.stdout)
         sys.exit(0)
+
+    # For strict plans, check receipt coverage before allowing stop
+    receipt_mode = plan.get("_receiptMode", "legacy")
+    if receipt_mode == "strict":
+        import pathlib
+        plan_dir = pathlib.Path(plan_json).parent
+        project_root = str(plan_dir)
+        p = plan_dir
+        while p != p.parent:
+            if (p / ".git").exists():
+                project_root = str(p)
+                break
+            p = p.parent
+
+        receipt_utils_dir = os.path.join(
+            os.path.dirname(os.path.dirname(plan_utils_path)),
+            "..", "scripts"
+        )
+        try:
+            sys.path.insert(0, os.path.realpath(receipt_utils_dir))
+            import receipt_utils as ru
+            proj_id = ru.project_id(project_root)
+            plan_name_val = plan.get("name", "unknown")
+            missing = []
+            for step in plan.get("steps", []):
+                if step.get("status") != "done":
+                    continue
+                sid = step["id"]
+                owner = step.get("owner", "claude")
+                mode = step.get("mode", "claude-impl")
+                extra = {"step": sid}
+                if mode in ("claude-impl", "dual-pass") or owner == "claude":
+                    exists, _ = ru.check("codex_verify", proj_id, plan_name_val, extra)
+                    if not exists:
+                        missing.append(f"Step {sid}: missing codex_verify")
+                elif mode == "codex-impl" or owner == "codex":
+                    impl_exists, _ = ru.check("codex_impl", proj_id, plan_name_val, extra)
+                    verify_exists, _ = ru.check("claude_verify", proj_id, plan_name_val, extra)
+                    if not impl_exists:
+                        missing.append(f"Step {sid}: missing codex_impl")
+                    if not verify_exists:
+                        missing.append(f"Step {sid}: missing claude_verify")
+            if missing:
+                detail = "\n  - ".join(missing)
+                reason_parts = [
+                    f"Active strict plan '{plan_name}' is missing verification receipts:",
+                    f"  - {detail}",
+                    "",
+                    f"Plan file: {plan_json}",
+                    "",
+                    "Before stopping, run verification for steps missing receipts.",
+                ]
+                output = {"decision": "block", "reason": "\n".join(reason_parts)}
+                json.dump(output, sys.stdout)
+                sys.exit(0)
+        except ImportError:
+            pass
 
     sys.exit(0)
 

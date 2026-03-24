@@ -12,7 +12,7 @@
 # via plan mode handoff (EnterPlanMode → summarize → ExitPlanMode).
 #
 # The marker is cleared by session-start.sh (new session = context cleared).
-# Bypass: rm <plan-dir>/.handoff-pending
+# Bypass: ask the user to run /bypass
 #
 # Input: JSON on stdin with tool_name, tool_input.file_path, cwd
 
@@ -138,16 +138,24 @@ output = {
             "The handoff marker is auto-cleared by a hook when you call "
             "EnterPlanMode (or when orbit_await_review returns approved).\n\n"
             "3. Call `EnterPlanMode` to enter plan mode\n"
-            "4. Read the masterPlan from disk\n"
-            "5. Write a summary to the plan mode scratch pad — include: key "
-            "steps, files involved, acceptance criteria\n"
-            "6. Call `ExitPlanMode` to present to the user\n\n"
+            "4. Write a MINIMAL summary to the plan mode scratch pad using "
+            "this exact format:\n\n"
+            "   # Plan: <title>\n"
+            "   Path: <absolute path to plan.json>\n"
+            "   Steps: <N> total\n"
+            "   Context: <one-liner from plan.json.context>\n\n"
+            "   Read plan.json at the path above to begin execution.\n\n"
+            "   Do NOT include step descriptions, acceptance criteria, file "
+            "lists, Codex consensus results, exploration findings, or "
+            "transcript references. All of that lives on disk. The scratch "
+            "pad is a pointer, not a copy.\n"
+            "5. Call `ExitPlanMode` to present to the user\n\n"
             "This gives the user the 'autoaccept edits and clear context?' "
             "prompt. If they accept, context clears and execution starts "
             "fresh.\n\n"
             "Code edits are BLOCKED until this handoff is complete (or "
             "bypassed).\n"
-            f"To bypass: rm {marker}"
+            "To bypass, ask the user to run /bypass."
         )
     }
 }

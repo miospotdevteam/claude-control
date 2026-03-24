@@ -34,7 +34,7 @@ Comprehensive strategies for testing (TDD-lite, test theater detection), UI cons
 
 ### Persistent plans
 
-Every task gets a plan written to `.temp/plan-mode/active/<plan-name>/masterPlan.md` before any code is edited. Plans have numbered steps with progress checklists that get updated every 2-3 file edits. When context compacts, the plan survives on disk — Claude reads it and picks up exactly where it left off.
+Every task gets a plan written to `.temp/plan-mode/active/<plan-name>/` before any code is edited. Plans consist of `plan.json` (immutable definition, frozen after approval), `progress.json` (mutable execution state, updated every 2-3 file edits via `plan_utils.py`), and `masterPlan.md` (user-facing proposal). When context compacts, both files survive on disk — Claude reads them and picks up exactly where it left off.
 
 ### Enforcement hooks
 
@@ -243,7 +243,7 @@ look-before-you-leap/
 │   │   │   ├── git-checklist.md           # Layer 2: Commits, branches
 │   │   │   ├── linting-checklist.md       # Layer 2: Linter discipline
 │   │   │   ├── master-plan-format.md      # Plan template with structured discovery
-│   │   │   ├── plan-schema.md             # Full plan.json schema (incl. codexSession, owner, mode)
+│   │   │   ├── plan-schema.md             # plan.json (immutable) + progress.json (mutable) schemas
 │   │   │   ├── recommended-plugins.md     # Official plugin suggestions for onboarding
 │   │   │   ├── routing-matrix.md          # Task-type routing table for step ownership
 │   │   │   ├── scenario-playbook.md       # 23-scenario ownership matrix

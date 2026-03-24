@@ -171,4 +171,18 @@ codex exec \
   "$PROMPT" \
   > "$STREAM_FILE" 2>&1
 
-exit $?
+CODEX_EXIT=$?
+
+# Emit signed receipt on successful implementation
+if [ "$CODEX_EXIT" -eq 0 ] && [ -f "$RESULT_FILE" ]; then
+  PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+  source "${PLUGIN_ROOT}/hooks/lib/receipt-state.sh"
+  receipt_bootstrap 2>/dev/null || true
+  PROJ_ID=$(receipt_project_id "$PROJECT_ROOT" 2>/dev/null) || true
+  P_ID=$(receipt_plan_id "$PLAN_JSON" 2>/dev/null) || true
+  if [ -n "$PROJ_ID" ] && [ -n "$P_ID" ]; then
+    receipt_sign "codex_impl" "$PROJ_ID" "$P_ID" "step=$STEP_NUM" >/dev/null 2>&1 || true
+  fi
+fi
+
+exit $CODEX_EXIT

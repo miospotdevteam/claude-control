@@ -27,6 +27,50 @@ print(data.get('tool_input', {}).get('command', ''))
 
 [ -z "$COMMAND" ] && exit 0
 
+# --- Early allow: known Codex wrapper scripts pass regardless of plan state ---
+# These are plugin-owned scripts that legitimately run codex exec with redirects.
+# Requirements for the allow:
+#   1. Command starts with "bash "
+#   2. The script path matches a known wrapper basename
+#   3. The script path is under $CLAUDE_PLUGIN_ROOT (prevents spoofed paths)
+#   4. No shell compound operators (&&, ||, ;, |) anywhere in the command
+WRAPPER_RE='(run-codex-verify|run-codex-implement|write-discovery-receipt|write-claude-verify-receipt)\.sh'
+CMD_TRIMMED="${COMMAND#"${COMMAND%%[![:space:]]*}"}"
+if [[ "$CMD_TRIMMED" =~ ^bash[[:space:]] ]] && [[ "$CMD_TRIMMED" =~ $WRAPPER_RE ]]; then
+  # Deny if any shell compound operator is present (prevents injection)
+  if [[ "$CMD_TRIMMED" != *'&&'* && "$CMD_TRIMMED" != *'||'* && \
+        "$CMD_TRIMMED" != *';'* && "$CMD_TRIMMED" != *'|'* ]]; then
+    # Extract script path (second token after "bash"), strip quotes
+    SCRIPT_PATH=$(echo "$CMD_TRIMMED" | awk '{print $2}' | tr -d '"'"'")
+    # Verify script is under plugin root with directory boundary
+    # (prevents sibling-dir spoofing like "plugin-root-evil/wrapper.sh")
+    if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [[ "$SCRIPT_PATH" == "${CLAUDE_PLUGIN_ROOT}/"* ]]; then
+      exit 0
+    fi
+  fi
+fi
+
+# --- Block receipt-minting scripts ---
+# grant-bypass.sh is user-invocable only (via /bypass command). Claude must
+# NOT call it directly — that would let Claude mint its own bypass receipts.
+if [[ "$COMMAND" == *"grant-bypass.sh"* ]]; then
+  python3 -c "
+import json
+output = {
+    'hookSpecificOutput': {
+        'hookEventName': 'PreToolUse',
+        'permissionDecision': 'deny',
+        'permissionDecisionReason': (
+            'BLOCKED: grant-bypass.sh is a user-only command. Claude cannot '
+            'mint bypass receipts directly. Ask the user to run /bypass.'
+        )
+    }
+}
+json.dump(output, __import__('sys').stdout)
+"
+  exit 0
+fi
+
 # --- Check if this command writes files ---
 # Pass command via env var to avoid quoting issues with heredoc
 
@@ -56,7 +100,7 @@ ALLOWED_PREFIXES = [
     "python3 -m pytest", "python3 -m pip", "python -m pytest", "python -m pip",
     "pytest ", "jest ", "vitest ", "mocha ",
     "eslint ", "prettier ", "ruff ", "mypy ", "tsc ",
-    "bash -n ", "bash ",
+    "bash -n ",
 ]
 
 # Check if command starts with an allowed tool
@@ -119,7 +163,25 @@ print(data.get('cwd', ''))
 
 PROJECT_ROOT="$(find_project_root "${HOOK_CWD:-$PWD}")"
 
-# Check for per-session bypass (counter-based: contains PID:remaining_edits)
+# Check for receipt-based bypass (strict mode)
+source "${BASH_SOURCE[0]%/*}/lib/receipt-state.sh"
+receipt_bootstrap 2>/dev/null || true
+PROJ_ID=$(receipt_project_id "$PROJECT_ROOT" 2>/dev/null) || true
+if [ -n "$PROJ_ID" ]; then
+  BYPASS_DIR="${RECEIPT_STATE_ROOT}/${PROJ_ID}"
+  if [ -d "$BYPASS_DIR" ]; then
+    for plan_dir in "$BYPASS_DIR"/*/; do
+      [ -d "$plan_dir" ] || continue
+      if [ -f "${plan_dir}bypass-default.json" ]; then
+        if receipt_verify "${plan_dir}bypass-default.json" 2>/dev/null; then
+          exit 0
+        fi
+      fi
+    done
+  fi
+fi
+
+# Check for per-session bypass (legacy: counter-based .no-plan-$PPID marker)
 NO_PLAN_FILE="$PROJECT_ROOT/.temp/plan-mode/.no-plan-$PPID"
 if [ -f "$NO_PLAN_FILE" ]; then
   bypass_content=$(cat "$NO_PLAN_FILE" 2>/dev/null) || true
@@ -173,7 +235,7 @@ output = {
             "1. Create a plan: write masterPlan.md to "
             ".temp/plan-mode/active/<plan-name>/masterPlan.md\n"
             "2. Use the Edit or Write tool (not Bash) to modify files\n\n"
-            "For trivial changes (max 3 edits): echo \"$PPID:3\" > .temp/plan-mode/.no-plan-$PPID"
+            "For trivial changes, ask the user to run /bypass."
         )
     }
 }

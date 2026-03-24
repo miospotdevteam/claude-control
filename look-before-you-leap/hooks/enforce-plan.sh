@@ -22,8 +22,37 @@ data = json.loads(sys.stdin.read())
 print(data.get('tool_input', {}).get('file_path', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
-# Always allow edits to plan files and .temp/ directory
+# Allow edits to .temp/ directory — EXCEPT plan.json after approval
 if [[ "$FILE_PATH" == *"/.temp/"* ]] || [[ "$FILE_PATH" == *"/.temp" ]]; then
+  # Guard plan.json immutability: block direct edits after plan is no longer fresh
+  if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
+    PLUGIN_ROOT_EARLY="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+    PLAN_UTILS_EARLY="${PLUGIN_ROOT_EARLY}/skills/look-before-you-leap/scripts/plan_utils.py"
+    is_fresh=$(python3 "$PLAN_UTILS_EARLY" is-fresh "$FILE_PATH" 2>/dev/null) || true
+    if [ "$is_fresh" = "false" ]; then
+      python3 << 'PYEOF'
+import json, sys
+
+output = {
+    "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": (
+            "BLOCKED: plan.json is immutable after approval. "
+            "All mutable state (step status, results, progress items, "
+            "completedSummary, deviations, codexSession) lives in progress.json.\n\n"
+            "Use plan_utils.py commands to update progress:\n"
+            "  update-step, update-progress, set-result, add-summary, "
+            "add-deviation, complete-step\n\n"
+            "These commands automatically write to progress.json, not plan.json."
+        )
+    }
+}
+json.dump(output, sys.stdout)
+PYEOF
+      exit 0
+    fi
+  fi
   exit 0
 fi
 
@@ -38,23 +67,61 @@ print(data.get('cwd', ''))
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 
-# Allow edits to files outside the project root (e.g., ~/.claude/plans/ scratch pad)
+# Allow edits to known safe paths outside the project root
+# (e.g., ~/.claude/plans/ scratch pad, plugin plan files)
+# NOTE: cross-project edits to OTHER project roots are no longer blanket-allowed.
+# The filesystem mutation guard handles Bash; this narrowing handles Edit/Write.
 if [[ -n "$FILE_PATH" ]] && [[ "$FILE_PATH" != "$PROJECT_ROOT"* ]]; then
-  exit 0
+  # Allow ~/.claude/ paths (plan scratch pad, settings)
+  if [[ "$FILE_PATH" == "$HOME/.claude/"* ]]; then
+    exit 0
+  fi
+  # Allow /tmp and temp dirs (test fixtures, scratch files)
+  if [[ "$FILE_PATH" == "/tmp/"* ]] || [[ "$FILE_PATH" == "${TMPDIR:-/nonexistent}/"* ]]; then
+    exit 0
+  fi
+  # Other outside-root edits: deny (requires plan or bypass)
+  # Fall through to plan check below
 fi
 
-# Check for per-session bypass (counter-based: contains PID:remaining_edits)
+# Check for receipt-based bypass (strict mode — receipts are authority)
+source "${BASH_SOURCE[0]%/*}/lib/receipt-state.sh"
+receipt_bootstrap 2>/dev/null || true
+PROJ_ID=$(receipt_project_id "$PROJECT_ROOT" 2>/dev/null) || true
+if [ -n "$PROJ_ID" ]; then
+  # Check any plan ID that has a bypass receipt for this project
+  # (bypass receipts use session-scoped plan IDs)
+  BYPASS_DIR="${RECEIPT_STATE_ROOT}/${PROJ_ID}"
+  if [ -d "$BYPASS_DIR" ]; then
+    for plan_dir in "$BYPASS_DIR"/*/; do
+      [ -d "$plan_dir" ] || continue
+      if [ -f "${plan_dir}bypass-default.json" ]; then
+        if receipt_verify "${plan_dir}bypass-default.json" 2>/dev/null; then
+          exit 0
+        fi
+      fi
+    done
+  fi
+fi
+
+# Classify the active plan (if any) to determine enforcement mode
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+PLAN_MODE="legacy"
+if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
+  PLAN_MODE=$(receipt_classify "$SESSION_PLAN" 2>/dev/null) || PLAN_MODE="legacy"
+fi
+
+# Check for per-session bypass (legacy: counter-based .no-plan-$PPID marker)
+# Skip for strict plans — they require signed receipts (checked above)
 NO_PLAN_FILE="$PROJECT_ROOT/.temp/plan-mode/.no-plan-$PPID"
-if [ -f "$NO_PLAN_FILE" ]; then
+if [ "$PLAN_MODE" != "strict" ] && [ -f "$NO_PLAN_FILE" ]; then
   bypass_content=$(cat "$NO_PLAN_FILE" 2>/dev/null) || true
   if [[ "$bypass_content" == *:* ]]; then
     bypass_pid="${bypass_content%%:*}"
     bypass_count="${bypass_content##*:}"
-    # Cap bypass counter at 3 (the documented max for trivial changes)
-    if [ -n "$bypass_count" ] && [ "$bypass_count" -gt 3 ] 2>/dev/null; then
-      bypass_count=3
-      echo "${bypass_pid}:${bypass_count}" > "$NO_PLAN_FILE"
-    fi
+    # Bypass counter is set by user via /bypass command
   else
     rm -f "$NO_PLAN_FILE"
     bypass_pid=""
@@ -77,10 +144,7 @@ if [ -f "$NO_PLAN_FILE" ]; then
 fi
 
 # Check for per-plan handoff-pending marker (fresh plan needs plan mode handoff first)
-# Find this session's plan via PPID routing, then check its directory for .handoff-pending
-PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
-SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+# SESSION_PLAN already computed above during plan classification
 
 if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
   SESSION_PLAN_DIR="$(dirname "$SESSION_PLAN")"
@@ -145,9 +209,11 @@ output = {
             "The handoff marker is auto-cleared by a hook when you call "
             "EnterPlanMode (or when orbit_await_review returns approved).\n\n"
             "1. Call EnterPlanMode\n"
-            "2. Write a summary to the scratch pad\n"
+            "2. Write a MINIMAL summary to the scratch pad — plan title, "
+            "path to plan.json, step count, one-liner context, and "
+            "'Read plan.json to begin execution.' Nothing else.\n"
             "3. Call ExitPlanMode\n\n"
-            f"To bypass (if Orbit unavailable): rm {marker}"
+            "If Orbit is unavailable, ask the user to run /bypass."
         )
     }
 }
@@ -188,7 +254,7 @@ output = {
             "implemented correctly and fully.\n\n"
             "Dispatch a verification agent now (see the directive injected when "
             "the step was marked [x]).\n\n"
-            f"To bypass: rm {plan_dir}/.verify-pending-*"
+            "To bypass, ask the user to run /bypass."
         )
     }
 }
@@ -219,7 +285,7 @@ output = {
             "1. Explore the codebase (read files, grep consumers)\n"
             "2. Write plan.json + masterPlan.md to .temp/plan-mode/active/<plan-name>/\n"
             "3. Then proceed with edits\n\n"
-            "To bypass for trivial changes (max 3 edits): echo \"$PPID:3\" > .temp/plan-mode/.no-plan-$PPID"
+            "For trivial changes, ask the user to run /bypass."
         )
     }
 }

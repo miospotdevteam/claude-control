@@ -174,8 +174,8 @@ if active_plan:
     preamble_lines.extend([
         "",
         f"- Active plan exists at: {active_plan} — read it before starting work",
-        "- PROGRESS TRACKING: If your work corresponds to progress items in plan.json,",
-        f"  update via: `python3 {plan_utils_cmd} update-progress {plan_json_path} <step> <index> done`",
+        "- PROGRESS TRACKING: If your work corresponds to progress items in the plan,",
+        f"  update via: `python3 {plan_utils_cmd} update-progress {plan_json_path} <step> <index> done` (writes to progress.json)",
         "  Do NOT wait until you're done — update after each sub-task so compaction",
         "  can't lose your progress.",
     ])
@@ -187,8 +187,17 @@ if active_plan:
     plan_dir = pathlib.Path(active_plan).parent
     candidate = plan_dir / "discovery.md"
     if not candidate.exists():
+        import datetime
+        plan_name = pathlib.Path(active_plan).parent.name
+        project_root = os.environ.get("HOOK_PROJECT_ROOT", os.environ.get("PROJECT_ROOT", "unknown"))
         candidate.write_text(
             "# Discovery Log\n\n"
+            "## Metadata\n"
+            f"- **Plan**: {plan_name}\n"
+            f"- **Project**: {project_root}\n"
+            f"- **Created**: {datetime.datetime.now().isoformat()}\n"
+            "- **Codex status**: pending (run `command -v codex` to determine)\n\n"
+            "---\n\n"
             "Shared findings from parallel agents. "
             "Each agent appends under its own section.\n"
         )

@@ -2,13 +2,14 @@
 
 masterPlan.md is the **user-facing proposal document** reviewed via Orbit.
 It communicates intent, critical decisions, warnings, and risk — NOT
-execution state. Execution state lives in `plan.json` (see
+execution state. Execution state lives in `progress.json` (see
 `references/plan-schema.md`).
 
 **Write-once**: masterPlan.md is frozen after Orbit approval. It is never
-updated during execution. All runtime state (progress, results, deviations)
-lives in `plan.json`. This keeps the proposal document as a stable record
-of what was agreed upon.
+updated during execution. `plan.json` is also immutable after approval.
+All runtime state (progress, results, deviations) lives in `progress.json`,
+updated via `plan_utils.py`. This keeps both proposal and plan definition
+as stable records of what was agreed upon.
 
 No `[x]`/`[ ]` checkboxes. No progress tracking. No result fields.
 Just what, why, and what could go wrong.
@@ -181,17 +182,18 @@ None.
 None.
 ```
 
-## Relationship to plan.json
+## Relationship to plan.json and progress.json
 
-masterPlan.md and plan.json are written together during the planning phase
-(see `writing-plans` skill). They contain the same steps, but:
+masterPlan.md, plan.json, and progress.json are written during the planning
+phase (see `writing-plans` skill). They contain the same steps, but:
 
-| Aspect | plan.json | masterPlan.md |
-|---|---|---|
-| **Audience** | Claude + hooks | User (via Orbit) |
-| **Execution state** | Yes (status, progress, results) | No |
-| **Updated during execution** | Yes (constantly) | Never (frozen after approval) |
-| **Reviewed via Orbit** | No | Yes |
-| **Parsed by hooks** | Yes | Legacy fallback only |
+| Aspect | plan.json | progress.json | masterPlan.md |
+|---|---|---|---|
+| **Audience** | Claude + hooks | Claude + hooks | User (via Orbit) |
+| **Content** | Step definitions, criteria, files, ownership | Status, results, progress items, deviations | Intent, decisions, risks |
+| **Execution state** | No (immutable after approval) | Yes (all mutable state) | No |
+| **Updated during execution** | Never (frozen) | Yes (via plan_utils.py) | Never (frozen) |
+| **Reviewed via Orbit** | No | No | Yes |
+| **Parsed by hooks** | Yes (structure) | Yes (state) | Legacy fallback only |
 
-The plan.json schema is documented in `references/plan-schema.md`.
+The schemas are documented in `references/plan-schema.md`.

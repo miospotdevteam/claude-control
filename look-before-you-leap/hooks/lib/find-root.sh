@@ -1,13 +1,43 @@
 #!/usr/bin/env bash
-# Shared helper: find the project root for plan-mode operations.
+# Shared helpers for resolving root directories.
 #
-# Walks up from the given directory (or $PWD) looking for .git or CLAUDE.md.
-# If .temp/plan-mode/ exists at that root, returns it immediately.
-# If not, keeps walking up to find a parent that HAS .temp/plan-mode/.
-# This handles monorepos where Claude Code runs in a subdirectory
-# but the plan lives at a parent level.
+# find_project_root [start_dir]
+#   Walks up from the given directory (or $PWD) looking for .git or CLAUDE.md.
+#   If .temp/plan-mode/ exists at that root, returns it immediately.
+#   If not, keeps walking up to find a parent that HAS .temp/plan-mode/.
+#   This handles monorepos where Claude Code runs in a subdirectory
+#   but the plan lives at a parent level.
 #
-# Usage: source this file, then call find_project_root [start_dir]
+# find_plugin_repo
+#   Derives the plugin SOURCE repo root from CLAUDE_PLUGIN_ROOT (cache path).
+#   Cache structure: ~/.claude/plugins/cache/<repo-name>/<plugin>/<hash>
+#   Checks ~/Projects/<repo-name> for a git repo.
+#   Returns empty string and exit 1 if not found.
+
+find_plugin_repo() {
+  local cache_path="${CLAUDE_PLUGIN_ROOT:-}"
+  if [ -z "$cache_path" ]; then
+    return 1
+  fi
+
+  # Extract repo name from cache path: strip up to "cache/", take first component
+  local after_cache="${cache_path#*plugins/cache/}"
+  local repo_name="${after_cache%%/*}"
+
+  if [ -z "$repo_name" ]; then
+    return 1
+  fi
+
+  # Check common development directories
+  for base in "$HOME/Projects" "$HOME/Code" "$HOME/Dev" "$HOME/src" "$HOME"; do
+    if [ -d "$base/$repo_name/.git" ]; then
+      echo "$base/$repo_name"
+      return 0
+    fi
+  done
+
+  return 1
+}
 
 find_project_root() {
   local dir="${1:-$PWD}"

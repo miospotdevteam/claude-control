@@ -145,13 +145,73 @@ if os.path.isfile(plan_json):
                         f"Cannot move plan to completed/ — steps are marked done but "
                         f"work is not fully verified:\n\n{detail}\n\n"
                         f"Plan: {plan_json}\n\n"
-                        "Fix: fill in result fields (via plan_utils.py or Edit) and "
-                        "mark all progress items done before moving."
+                        "Fix: fill in result fields (via plan_utils.py set-result) and "
+                        "mark all progress items done (via plan_utils.py update-progress) before moving."
                     )
                 }
             }
             json.dump(output, sys.stdout)
             sys.exit(0)
+
+        # For strict plans, check that all steps have receipts
+        receipt_mode = plan.get("_receiptMode", "legacy")
+        if receipt_mode == "strict":
+            # Find project root from plan path
+            import pathlib
+            plan_dir_path = pathlib.Path(plan_json).parent
+            # Walk up to find .git
+            project_root = str(plan_dir_path)
+            p = plan_dir_path
+            while p != p.parent:
+                if (p / ".git").exists():
+                    project_root = str(p)
+                    break
+                p = p.parent
+
+            receipt_utils_dir = os.path.join(
+                os.path.dirname(os.path.dirname(plan_utils_path)),
+                "..", "scripts"
+            )
+            try:
+                sys.path.insert(0, os.path.realpath(receipt_utils_dir))
+                import receipt_utils as ru
+                proj_id = ru.project_id(project_root)
+                plan_name_val = plan.get("name", "unknown")
+                missing_receipts = []
+                for step in plan.get("steps", []):
+                    sid = step["id"]
+                    owner = step.get("owner", "claude")
+                    mode = step.get("mode", "claude-impl")
+                    extra = {"step": sid}
+                    if mode in ("claude-impl", "dual-pass") or owner == "claude":
+                        exists, _ = ru.check("codex_verify", proj_id, plan_name_val, extra)
+                        if not exists:
+                            missing_receipts.append(f"Step {sid}: missing codex_verify receipt")
+                    elif mode == "codex-impl" or owner == "codex":
+                        impl_exists, _ = ru.check("codex_impl", proj_id, plan_name_val, extra)
+                        verify_exists, _ = ru.check("claude_verify", proj_id, plan_name_val, extra)
+                        if not impl_exists:
+                            missing_receipts.append(f"Step {sid}: missing codex_impl receipt")
+                        if not verify_exists:
+                            missing_receipts.append(f"Step {sid}: missing claude_verify receipt")
+                if missing_receipts:
+                    detail = "\n".join(missing_receipts)
+                    output = {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": (
+                                f"Cannot move strict plan to completed/ — "
+                                f"verification receipts missing:\n\n{detail}\n\n"
+                                f"Plan: {plan_json}\n\n"
+                                "Run verification scripts for each step to mint receipts."
+                            )
+                        }
+                    }
+                    json.dump(output, sys.stdout)
+                    sys.exit(0)
+            except ImportError:
+                pass  # receipt_utils not available — allow
 
         # All checks pass — allow
         sys.exit(0)

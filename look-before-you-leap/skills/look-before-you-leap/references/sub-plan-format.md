@@ -9,12 +9,16 @@ See `references/plan-schema.md` for the inline sub-plan format:
 {
   "subPlan": {
     "groups": [
-      {"name": "Dashboard pages", "files": ["a.tsx", "b.tsx"], "status": "pending", "notes": null},
-      {"name": "Modal components", "files": ["c.tsx", "d.tsx"], "status": "pending", "notes": null}
+      {"name": "Dashboard pages", "owner": "claude", "files": ["a.tsx", "b.tsx"]},
+      {"name": "Modal components", "owner": "codex", "files": ["c.tsx", "d.tsx"]}
     ]
   }
 }
 ```
+
+**Note:** Group `status` and `notes` are mutable fields stored in
+`progress.json`, not in plan.json. The `name`, `owner`, and `files`
+fields are immutable plan definition.
 
 Groups should have 3-8 files each. A step gets a sub-plan when ANY of:
 - It touches **more than 10 files**

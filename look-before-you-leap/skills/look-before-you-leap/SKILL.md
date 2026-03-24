@@ -1,6 +1,6 @@
 ---
 name: look-before-you-leap
-description: "Unified engineering discipline for ALL coding tasks. Conductor that orchestrates: explore codebase before editing, write persistent plans to disk (plan.json survives compaction), route to specialized skills (TDD, brainstorming, refactoring, frontend-design, debugging), enforce definitions-before-consumers ordering, track blast radius via dep maps, and verify with type checker/linter/tests after every change. Use for every task that writes, edits, fixes, refactors, ports, migrates, or debugs code — no exceptions, no shortcuts. Do NOT use when: answering questions about code without changing it, pure research or documentation queries, conversations with no file edits, or running commands that don't modify the codebase."
+description: "Unified engineering discipline for ALL coding tasks. Conductor that orchestrates: explore codebase before editing, write persistent plans to disk (plan.json + progress.json survive compaction), route to specialized skills (TDD, brainstorming, refactoring, frontend-design, debugging), enforce definitions-before-consumers ordering, track blast radius via dep maps, and verify with type checker/linter/tests after every change. Use for every task that writes, edits, fixes, refactors, ports, migrates, or debugs code — no exceptions, no shortcuts. Do NOT use when: answering questions about code without changing it, pure research or documentation queries, conversations with no file edits, or running commands that don't modify the codebase."
 ---
 
 # Software Discipline
@@ -196,13 +196,27 @@ This file survives compaction and feeds directly into the plan's
 discovery section. If you skip this, your future compacted self starts
 from zero.
 
-### Co-exploration protocol (Claude + Codex explore in parallel)
+### Co-exploration protocol (MANDATORY when Codex available)
 
-Instead of Claude exploring alone and Codex reviewing after, both agents
-explore simultaneously. This produces broader coverage and catches blind
-spots neither agent would find solo.
+Co-exploration is not optional. When Codex is available, both agents
+MUST explore simultaneously. This produces broader coverage and catches
+blind spots neither agent would find solo.
 
-**Phase 1 — Parallel exploration:**
+**Phase 0 — Codex preflight (ALWAYS run first):**
+
+Before ANY exploration, run `command -v codex` to determine Codex
+availability. Do NOT assume Codex is unavailable without proof.
+
+```bash
+command -v codex && echo "Codex available" || echo "Codex unavailable"
+```
+
+If Codex is available → proceed with Phase 1 (mandatory parallel exploration).
+If Codex is unavailable → explore solo, document the fallback reason in
+discovery.md under `## Codex Availability`, and pass `codexStatus=unavailable`
+to the discovery receipt.
+
+**Phase 1 — Parallel exploration (mandatory when Codex available):**
 
 At the START of exploration (before writing discovery.md), dispatch Codex
 in the background to explore in parallel with Claude:
@@ -252,8 +266,28 @@ plan.json.
 disagreements are flagged, and the discovery object in plan.json reflects
 the combined understanding.
 
-If `codex` CLI is not available, Claude explores solo and notes
-"Codex: skipped — codex CLI not installed" in the discovery notes.
+**Phase 3 — Discovery receipt:**
+
+After co-exploration completes (or solo exploration with documented
+fallback), write a signed discovery receipt:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/write-discovery-receipt.sh <project_root> <plan_name> <codex_status>
+```
+
+Where `codex_status` is one of:
+- `complete` — Codex participated in co-exploration
+- `unavailable` — `command -v codex` failed (document in discovery.md)
+- `skipped-user-override` — user explicitly said to skip Codex
+
+The writing-plans skill gates on this receipt — it will refuse to produce
+a plan without verified discovery.
+
+**Codex fallback states** (all require documentation in discovery.md):
+- `unavailable`: Codex CLI not installed. Note "Codex: unavailable —
+  command -v codex returned non-zero" under `## Codex Availability`.
+- `skipped-user-override`: User said "skip Codex" or "explore without
+  Codex". Note the user's instruction verbatim.
 
 ---
 
@@ -270,7 +304,8 @@ Call: `Skill(skill: "look-before-you-leap:writing-plans")`
 
 The skill consumes your discovery.md, identifies applicable discipline
 checklists, structures TDD-granularity steps, and writes both:
-- `plan.json` — execution source of truth (hooks read this, updated during execution)
+- `plan.json` — immutable plan definition (frozen after Orbit approval, never edited during execution)
+- `progress.json` — mutable execution state (step statuses, results, updated via plan_utils.py)
 - `masterPlan.md` — user-facing proposal for Orbit review (write-once, frozen after approval)
 
 Follow **persistent-plans Phase 1** (Create the Plan) for the structural
@@ -286,17 +321,19 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
 Every plan.json MUST include these fields — hooks parse them, and
 compaction recovery depends on them. Do NOT invent your own schema:
 
-- **Top level**: `name`, `title`, `context`, `status`, `requiredSkills`,
-  `disciplines`, `discovery`, `steps`, `blocked`, `completedSummary`,
-  `deviations`.
-- **`discovery` object** (required, not a separate file): `scope`,
+- **Top level (plan.json)**: `name`, `title`, `context`, `status`,
+  `requiredSkills`, `disciplines`, `discovery`, `steps`, `blocked`.
+- **Top level (progress.json)**: `completedSummary`, `deviations`,
+  `codexSession`, step statuses/results — auto-managed by plan_utils.py.
+- **`discovery` object** (required in plan.json): `scope`,
   `entryPoints`, `consumers`, `existingPatterns`, `testInfrastructure`,
   `conventions`, `blastRadius`, `confidence`. Your exploration findings
   go HERE, not just in discovery.md.
-- **Each step**: `id`, `title`, `status`, `skill`, `simplify`, `files`,
-  `description`, `acceptanceCriteria`, `progress`. Optional: `owner`
-  (`"claude"` default or `"codex"`), `mode` (collaboration mode, default
-  `"claude-impl"`), `qa` (default false), `codexVerify` (always true —
+- **Each step (plan.json)**: `id`, `title`, `skill`, `simplify`, `files`,
+  `description`, `acceptanceCriteria`, `progress` (task/files definitions).
+  Optional: `owner` (`"claude"` default or `"codex"`), `mode`
+  (collaboration mode, default `"claude-impl"`), `qa` (default false),
+  `codexVerify` (always true —
   no exceptions, no mode-based exemptions), `subPlan`
   (null if none), `result` (null until completion),
   `routingJustification` (why this owner/mode was assigned — required by
@@ -384,7 +421,10 @@ Orbit MCP. The `writing-plans` skill handles the details, but the flow is:
    blocks until the user approves or requests changes
 3. Handle the response (approved → proceed, changes_requested → iterate)
 4. Once approved — proceed with plan mode handoff (EnterPlanMode →
-   summarize → ExitPlanMode) for context clearing. The handoff marker
+   minimal scratch pad → ExitPlanMode) for context clearing. The scratch
+   pad must be minimal: plan title, path, step count, one-liner context,
+   and "Read plan.json to begin execution." Nothing else — no step
+   descriptions, no Codex consensus, no file lists. The handoff marker
    is auto-cleared by a hook when `EnterPlanMode` is called or when
    `orbit_await_review` returns approved.
 
@@ -417,13 +457,13 @@ TaskCreate for each step in plan.steps:
   activeForm: "[Step {id}/{total}] {title}"
 ```
 
-**During execution**, update tasks to match plan.json state:
+**During execution**, update tasks to match progress state:
 - When marking a step `in_progress` → `TaskUpdate(status: "in_progress")`
 - When marking a step `done` → `TaskUpdate(status: "completed")`
 - When a step is `blocked` → keep as `pending` (no blocked status in tasks)
 
 **After compaction**: if tasks don't exist (compaction clears them), re-create
-them from plan.json with correct statuses (completed for done steps, pending
+them from plan.json + progress.json with correct statuses (completed for done steps, pending
 for the rest).
 
 This is not optional — the task list is how the user tracks progress visually.
@@ -569,7 +609,7 @@ Standard flow — implement, then run Codex verification.
    - Fix directly
    - Log Claude's findings to `usage-errors/claude-findings/` (see
      Symmetric Error Logging below)
-5. Update progress items in plan.json based on Codex's report
+5. Update progress items via plan_utils.py based on Codex's report
 6. Write step result using the `### Criterion:` template, add `### Verdict\nClaude: verified`
 
 **Do NOT run `run-codex-verify.sh` on codex-impl steps.** The script
@@ -902,8 +942,8 @@ Hooks enforce this discipline automatically. Key behaviors to know:
   process the hook describes — do not work around it.
 - **Blocked grep**: When dep maps are configured, grepping for
   import/consumer patterns is blocked. Use `deps-query.py` instead.
-- **Checkpoint reminder**: After 5 code edits without updating plan.json,
-  a reminder fires. Update the plan immediately.
+- **Checkpoint reminder**: After 5 code edits without updating progress,
+  a reminder fires. Update via plan_utils.py immediately.
 - **Plan completion guard**: Cannot move a plan to `completed/` if steps
   remain unfinished. Cannot stop if the active plan has unfinished steps.
 - **Script warnings**: When `plan_utils.py` emits a warning (e.g., "step
@@ -996,7 +1036,7 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 
 **Scripts:**
 - `scripts/init-plan-dir.sh` — initialize `.temp/plan-mode/`
-- `scripts/plan_utils.py` — read/update plan.json (used by hooks and Claude)
+- `scripts/plan_utils.py` — read plan.json + progress.json, update progress (used by hooks and Claude)
 - `scripts/deps-query.py` — query dep maps for consumers and blast radius
 - `scripts/deps-generate.py` — generate or regenerate dep maps
 - `scripts/run-codex-verify.sh` — direction-locked Codex verification

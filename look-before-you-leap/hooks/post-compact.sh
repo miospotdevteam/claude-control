@@ -17,8 +17,8 @@ PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
 ACTIVE_DIR="$PLAN_DIR/active"
 PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
 
-# Clear per-plan handoff-pending — compaction achieves the same goal as plan mode handoff
-# (cleared below after finding this session's plan)
+# Note: handoff-pending is NOT auto-cleared on compaction. It persists until
+# the user approves via Orbit or runs /bypass.
 
 active_plan_summary=""
 
@@ -29,9 +29,6 @@ if [ -d "$ACTIVE_DIR" ]; then
   if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
     plan_dir="$(dirname "$latest_json")"
     plan_name="$(basename "$plan_dir")"
-
-    # Clear per-plan handoff marker — compaction achieves same goal
-    rm -f "$plan_dir/.handoff-pending"
 
     export HOOK_PLAN_JSON="$latest_json"
     export HOOK_PLAN_UTILS="$PLAN_UTILS"
@@ -85,7 +82,7 @@ PYEOF
       active_plan_summary+=$'\n'"File: $latest_json"
       active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
       [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-      active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the plan.json file IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
+      active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read plan.json (definition) and progress.json (mutable state) IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
     fi
   else
     # Legacy fallback: find masterPlan.md

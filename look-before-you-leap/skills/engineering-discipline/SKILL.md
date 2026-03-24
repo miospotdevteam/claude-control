@@ -723,11 +723,13 @@ If you catch yourself doing any of these, stop and reconsider:
 | Using env vars without verifying they load | Check .env and loading mechanism |
 | Saying "You're absolutely right!" | Fix the bug, audit for similar ones, report |
 | Thinking "I'll skip this for now" | Do it or flag it — no silent cuts |
-| Editing 3+ code files without updating the plan | Stop coding, update plan.json via plan_utils.py NOW |
+| Editing 3+ code files without updating the plan | Stop coding, update progress via plan_utils.py NOW |
 | Thinking "I'll update the plan later" | Later never comes — compaction will erase your memory |
-| Using Bash to write files because Edit/Write was denied | The hook denied it for a reason — create the plan first |
+| Using Bash to write files because Edit/Write was denied | The mutation guard catches redirects, sed -i, tee, nested scripts, tar/unzip — create the plan first |
+| Running destructive commands (rm -rf, find -delete, git clean) without approval | Destructive ops require user approval via /bypass even with a plan |
+| Mutating files outside the project root | Cross-project mutations require explicit user approval via /bypass |
 | Calling a hook block a "false positive" | Hooks enforce discipline. Follow the process, don't bypass it |
-| Inventing creative workarounds for hook blocks (python3 -c, node -e) | The hook blocked you for a reason. Follow the process, not your creativity |
+| Inventing creative workarounds for hook blocks (python3 -c, node -e) | The mutation guard detects interpreter file writes too — follow the process |
 | Marking a plan step done without verifying the work | Verify first, then mark complete — done means verified, not "I wrote some code" |
 | Moving a plan to completed/ before all steps are done | Finish the work or flag what's remaining to the user |
 | Renaming/moving/extracting across 3+ files without a contract | Invoke `look-before-you-leap:refactoring` first — build the contract |
@@ -776,3 +778,4 @@ If you catch yourself doing any of these, stop and reconsider:
 | Implementing a codex-owned sub-plan group yourself in a collab-split step | Check `group.owner` — dispatch codex-owned groups via `run-codex-implement.sh`, never implement them directly |
 | Writing result field as "Done" or "Created X" without mapping each criterion | Use the `### Criterion:` template — map every acceptance criterion to file:line evidence |
 | Fixing a type error with the same approach that failed last reverify round | After the same category appears in 2 consecutive reverify logs, invoke `look-before-you-leap:systematic-debugging` |
+| Writing step descriptions, Codex consensus, file lists, or transcript refs into the plan mode scratch pad | Scratch pad is a POINTER: plan title, path, step count, one-liner context, "Read plan.json to begin execution." Nothing else — everything lives on disk |

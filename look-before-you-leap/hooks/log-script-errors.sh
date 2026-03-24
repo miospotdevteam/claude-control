@@ -9,7 +9,7 @@
 # - Crashes: non-zero exit (tool_response contains "Exit code")
 # - Warnings: exit 0 but output contains "Warning:"
 #
-# Logs to <project-root>/usage-errors/script-errors/
+# Logs to <plugin-repo>/usage-errors/script-errors/
 # and injects context telling Claude to stop and fix the issue.
 #
 # Input: JSON on stdin with tool_input.command, tool_response
@@ -28,16 +28,21 @@ case "$INPUT" in
     ;;
 esac
 
-# Find project root for dynamic log path
+# Find plugin repo root for logging (usage-errors live in the plugin repo,
+# not the project being worked on — see CLAUDE.md).
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
-CWD=$(python3 -c "
+PLUGIN_REPO="$(find_plugin_repo)" || PLUGIN_REPO=""
+
+# Fallback: if plugin repo not found, use the project root (better than nothing)
+if [ -z "$PLUGIN_REPO" ]; then
+  CWD=$(python3 -c "
 import json, sys
 data = json.loads(sys.stdin.read())
 print(data.get('cwd', ''))
 " <<< "$INPUT" 2>/dev/null) || true
-
-PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
+  PLUGIN_REPO="$(find_project_root "${CWD:-$PWD}")"
+fi
 
 # Plugin script detected — use Python for structured parsing and logging.
 # Write input to temp file to avoid env var size limits and heredoc conflicts.
@@ -48,7 +53,7 @@ trap 'rm -f "$TMPFILE"' EXIT
 printf '%s' "$INPUT" > "$TMPFILE" 2>/dev/null || exit 0
 
 export HOOK_TMPFILE="$TMPFILE"
-export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
+export HOOK_PLUGIN_REPO="$PLUGIN_REPO"
 
 python3 << 'PYEOF' || exit 0
 import json, os, sys
@@ -60,7 +65,7 @@ try:
 except (json.JSONDecodeError, KeyError, FileNotFoundError):
     sys.exit(0)
 
-LOG_BASE = os.path.join(os.environ.get("HOOK_PROJECT_ROOT", "."), "usage-errors", "script-errors")
+LOG_BASE = os.path.join(os.environ.get("HOOK_PLUGIN_REPO", "."), "usage-errors", "script-errors")
 
 command = data.get("tool_input", {}).get("command", "")
 response = str(data.get("tool_response", ""))

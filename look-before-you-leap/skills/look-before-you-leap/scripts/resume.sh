@@ -45,22 +45,24 @@ if [ ! -d "$ACTIVE_DIR" ]; then
 fi
 
 # --- Try plan.json first ---
-# Find most recently modified plan.json in active/
+# Find most recently modified plan using max(plan.json, progress.json) mtime
 latest_json=""
 
-# Try macOS stat first
-if command -v stat &>/dev/null; then
-  latest_json=$(find "$ACTIVE_DIR" -name "plan.json" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
-fi
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/../../.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+latest_json=$(python3 "$PLAN_UTILS" find-active "$(dirname "$(dirname "$ACTIVE_DIR")")" 2>/dev/null) || true
 
-# Fallback: try GNU find with -printf (Linux)
+# Fallback: direct filesystem search if plan_utils fails
 if [ -z "$latest_json" ]; then
-  latest_json=$(find "$ACTIVE_DIR" -name "plan.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
-fi
-
-# Last resort: just pick the first one
-if [ -z "$latest_json" ]; then
-  latest_json=$(find "$ACTIVE_DIR" -name "plan.json" -type f 2>/dev/null | head -1)
+  if command -v stat &>/dev/null; then
+    latest_json=$(find "$ACTIVE_DIR" -name "plan.json" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
+  fi
+  if [ -z "$latest_json" ]; then
+    latest_json=$(find "$ACTIVE_DIR" -name "plan.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
+  fi
+  if [ -z "$latest_json" ]; then
+    latest_json=$(find "$ACTIVE_DIR" -name "plan.json" -type f 2>/dev/null | head -1)
+  fi
 fi
 
 if [ -n "$latest_json" ]; then
@@ -73,10 +75,19 @@ if [ -n "$latest_json" ]; then
   echo "Plan file: $latest_json"
   echo ""
 
+  export HOOK_PLAN_UTILS="$PLAN_UTILS"
   python3 -c "
-import json, sys
-with open(sys.argv[1]) as f:
-    plan = json.load(f)
+import json, os, sys
+
+# Use plan_utils for merged view (plan.json + progress.json)
+plan_utils_path = os.environ.get('HOOK_PLAN_UTILS', '')
+if plan_utils_path:
+    sys.path.insert(0, os.path.dirname(plan_utils_path))
+    import plan_utils
+    plan = plan_utils.read_plan(sys.argv[1])
+else:
+    with open(sys.argv[1]) as f:
+        plan = json.load(f)
 
 # Context
 print('--- Context ---')

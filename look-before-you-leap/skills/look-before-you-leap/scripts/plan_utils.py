@@ -2,9 +2,13 @@
 """
 Plan utilities for look-before-you-leap hooks.
 
-Provides read/update operations on plan.json files, replacing fragile
-markdown regex parsing. Used by hooks via CLI and by session-start.sh
-via import.
+Provides read/update operations on plan.json (immutable definition) and
+progress.json (mutable execution state). After Orbit approval, plan.json
+is frozen; all mutations go to progress.json.
+
+read_plan() returns a merged view (plan + progress) for backwards
+compatibility. Legacy plans without progress.json still work — mutable
+fields are read from plan.json as a fallback.
 
 CLI usage:
     python3 plan-utils.py status <plan.json>
@@ -28,14 +32,201 @@ import signal
 import sys
 
 
+# ---------------------------------------------------------------------------
+# progress.json helpers
+# ---------------------------------------------------------------------------
+
+def progress_path_for(plan_path):
+    """Derive the progress.json path from a plan.json path."""
+    return os.path.join(os.path.dirname(plan_path), "progress.json")
+
+
+def read_progress(plan_path):
+    """Read progress.json sibling. Returns empty dict if missing."""
+    path = progress_path_for(plan_path)
+    if not os.path.isfile(path):
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def write_progress(plan_path, progress):
+    """Write progress dict to progress.json sibling."""
+    path = progress_path_for(plan_path)
+    with open(path, "w") as f:
+        json.dump(progress, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+def _ensure_progress(plan_path):
+    """Return progress dict, migrating from plan.json on first call.
+
+    If progress.json doesn't exist yet, extracts mutable state from
+    plan.json to bootstrap it (preserving in-flight status/results).
+    """
+    prog_path = progress_path_for(plan_path)
+    if os.path.isfile(prog_path):
+        with open(prog_path) as f:
+            return json.load(f)
+
+    # First write — migrate current mutable state from plan.json
+    with open(plan_path) as f:
+        plan = json.load(f)
+
+    return extract_progress(plan)
+
+
+def extract_progress(plan):
+    """Extract mutable fields from a plan dict into progress format.
+
+    Used for first-write migration from legacy plan.json.
+    """
+    progress = {"steps": {}}
+
+    for step in plan.get("steps", []):
+        step_id = str(step["id"])
+        step_prog = {
+            "status": step.get("status", "pending"),
+        }
+        if "result" in step:
+            step_prog["result"] = step["result"]
+        if step.get("progress"):
+            step_prog["progress"] = [
+                {"status": p.get("status", "pending")} for p in step["progress"]
+            ]
+        # Migrate subPlan group mutable fields
+        sub_plan = step.get("subPlan")
+        if sub_plan and sub_plan.get("groups"):
+            groups = {}
+            for i, g in enumerate(sub_plan["groups"]):
+                g_prog = {}
+                if "status" in g:
+                    g_prog["status"] = g["status"]
+                if "notes" in g:
+                    g_prog["notes"] = g["notes"]
+                if g_prog:
+                    groups[str(i)] = g_prog
+            if groups:
+                step_prog["groups"] = groups
+        progress["steps"][step_id] = step_prog
+
+    if plan.get("completedSummary"):
+        progress["completedSummary"] = list(plan["completedSummary"])
+    if plan.get("deviations"):
+        progress["deviations"] = list(plan["deviations"])
+    if plan.get("codexSession"):
+        progress["codexSession"] = dict(plan["codexSession"])
+
+    return progress
+
+
+def init_progress(plan):
+    """Create a fresh progress.json for a new plan (all steps pending)."""
+    progress = {"steps": {}}
+    for step in plan.get("steps", []):
+        step_id = str(step["id"])
+        step_prog = {"status": "pending"}
+        if step.get("progress"):
+            step_prog["progress"] = [
+                {"status": "pending"} for _ in step["progress"]
+            ]
+        sub_plan = step.get("subPlan")
+        if sub_plan and sub_plan.get("groups"):
+            groups = {}
+            for i, g in enumerate(sub_plan["groups"]):
+                groups[str(i)] = {"status": "pending"}
+            step_prog["groups"] = groups
+        progress["steps"][step_id] = step_prog
+    return progress
+
+
+def merge_plan_progress(plan, progress):
+    """Merge progress into a copy of plan, returning the merged view.
+
+    Overlays mutable fields from progress onto the immutable plan
+    definition. Returns a new dict — does not mutate either input.
+    """
+    import copy
+    merged = copy.deepcopy(plan)
+
+    steps_prog = progress.get("steps", {})
+    for step in merged.get("steps", []):
+        step_id = str(step["id"])
+        sp = steps_prog.get(step_id, {})
+        if "status" in sp:
+            step["status"] = sp["status"]
+        if "result" in sp:
+            step["result"] = sp["result"]
+        # Merge progress item statuses
+        if "progress" in sp and step.get("progress"):
+            for i, p_status in enumerate(sp["progress"]):
+                if i < len(step["progress"]):
+                    step["progress"][i]["status"] = p_status.get(
+                        "status", step["progress"][i].get("status", "pending")
+                    )
+        # Merge subPlan group mutable fields
+        if "groups" in sp:
+            sub_plan = step.get("subPlan")
+            if sub_plan and sub_plan.get("groups"):
+                for idx_str, g_prog in sp["groups"].items():
+                    idx = int(idx_str)
+                    if 0 <= idx < len(sub_plan["groups"]):
+                        if "status" in g_prog:
+                            sub_plan["groups"][idx]["status"] = g_prog["status"]
+                        if "notes" in g_prog:
+                            sub_plan["groups"][idx]["notes"] = g_prog["notes"]
+
+    if "completedSummary" in progress:
+        merged["completedSummary"] = list(progress["completedSummary"])
+    if "deviations" in progress:
+        merged["deviations"] = list(progress["deviations"])
+    if "codexSession" in progress:
+        merged["codexSession"] = copy.deepcopy(progress["codexSession"])
+
+    return merged
+
+
+def _plan_dir_mtime(plan_dir):
+    """Get the most recent mtime across plan.json and progress.json."""
+    plan_path = os.path.join(plan_dir, "plan.json")
+    prog_path = os.path.join(plan_dir, "progress.json")
+    mtime = 0
+    if os.path.isfile(plan_path):
+        mtime = os.path.getmtime(plan_path)
+    if os.path.isfile(prog_path):
+        mtime = max(mtime, os.path.getmtime(prog_path))
+    return mtime
+
+
+# ---------------------------------------------------------------------------
+# Core read/write
+# ---------------------------------------------------------------------------
+
 def read_plan(plan_path):
-    """Read and parse a plan.json file."""
+    """Read plan.json and merge with progress.json if it exists.
+
+    Returns the merged view — immutable definition + mutable progress.
+    Legacy plans without progress.json return plan.json contents as-is.
+    """
+    with open(plan_path) as f:
+        plan = json.load(f)
+    progress = read_progress(plan_path)
+    if progress:
+        return merge_plan_progress(plan, progress)
+    return plan
+
+
+def read_plan_definition(plan_path):
+    """Read only the immutable plan definition (plan.json)."""
     with open(plan_path) as f:
         return json.load(f)
 
 
 def write_plan(plan_path, plan):
-    """Write a plan dict back to plan.json with consistent formatting."""
+    """Write a plan dict to plan.json. Used for initial plan creation only.
+
+    After approval, use mutation functions that write to progress.json.
+    """
     with open(plan_path, "w") as f:
         json.dump(plan, f, indent=2, ensure_ascii=False)
         f.write("\n")
@@ -101,8 +292,23 @@ VALID_SKILLS = {
 }
 
 
+def _update_step_in_progress(plan_path, step_id, updater):
+    """Helper: read progress, apply updater to a step's progress entry, write back.
+
+    updater(step_prog) should mutate step_prog in place.
+    Returns the progress dict after writing.
+    """
+    progress = _ensure_progress(plan_path)
+    step_key = str(step_id)
+    if step_key not in progress.get("steps", {}):
+        progress.setdefault("steps", {})[step_key] = {"status": "pending"}
+    updater(progress["steps"][step_key])
+    write_progress(plan_path, progress)
+    return progress
+
+
 def update_step_status(plan_path, step_id, new_status):
-    """Update a step's status and write back to disk.
+    """Update a step's status and write to progress.json.
 
     When setting to 'done', warns if progress items are incomplete and
     errors if the result field is empty. A step cannot be marked done
@@ -114,7 +320,7 @@ def update_step_status(plan_path, step_id, new_status):
         print(f"Error: step {step_id} not found", file=sys.stderr)
         return False
 
-    # Validate mode and skill values
+    # Validate mode and skill values (from immutable definition)
     mode = step.get("mode")
     if mode and mode not in VALID_MODES:
         print(
@@ -131,6 +337,17 @@ def update_step_status(plan_path, step_id, new_status):
         )
 
     if new_status == "done":
+        # Block update-step done for strict plans — use complete-step instead
+        receipt_mode = plan.get("_receiptMode", "legacy")
+        if receipt_mode == "strict":
+            print(
+                f"Error: step {step_id} is in a strict plan. Use "
+                f"'complete-step' instead of 'update-step done' — "
+                f"complete-step gates on verification receipts.",
+                file=sys.stderr,
+            )
+            return False
+
         # Warn about incomplete progress items
         incomplete = [
             p["task"] for p in step.get("progress", [])
@@ -166,74 +383,183 @@ def update_step_status(plan_path, step_id, new_status):
             )
             sys.exit(1)
 
-    step["status"] = new_status
-    write_plan(plan_path, plan)
+    _update_step_in_progress(
+        plan_path, step_id, lambda sp: sp.__setitem__("status", new_status)
+    )
     return True
 
 
-def update_progress_item(plan_path, step_id, progress_index, new_status):
-    """Update a progress item's status within a step."""
+def complete_step(plan_path, step_id, result_text, project_root=None):
+    """Mark a step as done with receipt verification for strict plans.
+
+    For strict plans (_receiptMode == "strict"), this command gates on
+    the appropriate verification receipt:
+    - claude-impl steps: require codex_verify receipt
+    - codex-impl steps: require codex_impl + claude_verify receipts
+
+    For legacy plans, falls through to update_step_status directly.
+    Writes result and status to progress.json.
+    """
     plan = read_plan(plan_path)
     step = get_step(plan, step_id)
     if step is None:
         print(f"Error: step {step_id} not found", file=sys.stderr)
         return False
-    progress = step.get("progress", [])
-    if progress_index < 0 or progress_index >= len(progress):
+
+    # Save result to progress immediately (even if gating fails)
+    _update_step_in_progress(
+        plan_path, step_id, lambda sp: sp.__setitem__("result", result_text)
+    )
+
+    # Check plan mode (from immutable definition)
+    plan_def = read_plan_definition(plan_path)
+    receipt_mode = plan_def.get("_receiptMode", "legacy")
+
+    if receipt_mode == "strict" and not project_root:
+        print(
+            f"Error: step {step_id} is in a strict plan. "
+            f"project_root is required for receipt verification. "
+            f"Usage: complete-step <plan.json> <step_id> <result> <project_root>",
+            file=sys.stderr,
+        )
+        return False
+
+    if receipt_mode == "strict" and project_root:
+        # Import receipt utils
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        receipt_utils_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(script_dir))),
+            "scripts",
+        )
+        sys.path.insert(0, receipt_utils_dir)
+        try:
+            import receipt_utils
+        except ImportError:
+            print(
+                "Warning: receipt_utils.py not found, skipping receipt check",
+                file=sys.stderr,
+            )
+            receipt_mode = "legacy"
+
+        if receipt_mode == "strict":
+            proj_id = receipt_utils.project_id(project_root)
+            plan_name = plan_def.get("name", "unknown")
+            owner = step.get("owner", "claude")
+            mode = step.get("mode", "claude-impl")
+            extra = {"step": step_id}
+
+            if mode in ("claude-impl", "dual-pass") or owner == "claude":
+                exists, path = receipt_utils.check(
+                    "codex_verify", proj_id, plan_name, extra
+                )
+                if not exists:
+                    print(
+                        f"Error: step {step_id} requires codex_verify receipt "
+                        f"but none found at {path}. Run run-codex-verify.sh "
+                        f"and get PASS before completing.",
+                        file=sys.stderr,
+                    )
+                    return False
+
+            elif mode == "codex-impl" or owner == "codex":
+                impl_exists, impl_path = receipt_utils.check(
+                    "codex_impl", proj_id, plan_name, extra
+                )
+                verify_exists, verify_path = receipt_utils.check(
+                    "claude_verify", proj_id, plan_name, extra
+                )
+                if not impl_exists:
+                    print(
+                        f"Error: step {step_id} requires codex_impl receipt "
+                        f"but none found. Run run-codex-implement.sh first.",
+                        file=sys.stderr,
+                    )
+                    return False
+                if not verify_exists:
+                    print(
+                        f"Error: step {step_id} requires claude_verify receipt "
+                        f"but none found. Verify the step independently first.",
+                        file=sys.stderr,
+                    )
+                    return False
+
+    # All checks passed — mark done in progress.json
+    _update_step_in_progress(
+        plan_path, step_id, lambda sp: sp.__setitem__("status", "done")
+    )
+    return True
+
+
+def update_progress_item(plan_path, step_id, progress_index, new_status):
+    """Update a progress item's status within a step. Writes to progress.json."""
+    plan = read_plan(plan_path)
+    step = get_step(plan, step_id)
+    if step is None:
+        print(f"Error: step {step_id} not found", file=sys.stderr)
+        return False
+    progress_items = step.get("progress", [])
+    if progress_index < 0 or progress_index >= len(progress_items):
         print(f"Error: progress index {progress_index} out of range", file=sys.stderr)
         return False
-    item = progress[progress_index]
+    item = progress_items[progress_index]
     if "files" not in item:
         print(
             f"Warning: progress item {progress_index} of step {step_id} has no "
             f"files field — resumption after compaction will be degraded",
             file=sys.stderr,
         )
-    item["status"] = new_status
-    write_plan(plan_path, plan)
+
+    def _update(sp):
+        sp.setdefault("progress", [])
+        # Extend progress list if needed
+        while len(sp["progress"]) <= progress_index:
+            sp["progress"].append({"status": "pending"})
+        sp["progress"][progress_index]["status"] = new_status
+
+    _update_step_in_progress(plan_path, step_id, _update)
     return True
 
 
 def set_result(plan_path, step_id, result_text):
-    """Set the result field on a step."""
+    """Set the result field on a step. Writes to progress.json."""
     plan = read_plan(plan_path)
     step = get_step(plan, step_id)
     if step is None:
         print(f"Error: step {step_id} not found", file=sys.stderr)
         return False
-    step["result"] = result_text
-    write_plan(plan_path, plan)
+    _update_step_in_progress(
+        plan_path, step_id, lambda sp: sp.__setitem__("result", result_text)
+    )
     return True
 
 
 def add_summary(plan_path, text):
-    """Append to the completedSummary array."""
-    plan = read_plan(plan_path)
-    plan.setdefault("completedSummary", []).append(text)
-    write_plan(plan_path, plan)
+    """Append to the completedSummary array. Writes to progress.json."""
+    progress = _ensure_progress(plan_path)
+    progress.setdefault("completedSummary", []).append(text)
+    write_progress(plan_path, progress)
     return True
 
 
 def add_deviation(plan_path, text):
-    """Append to the deviations array."""
-    plan = read_plan(plan_path)
-    plan.setdefault("deviations", []).append(text)
-    write_plan(plan_path, plan)
+    """Append to the deviations array. Writes to progress.json."""
+    progress = _ensure_progress(plan_path)
+    progress.setdefault("deviations", []).append(text)
+    write_progress(plan_path, progress)
     return True
 
 
 def update_codex_session(plan_path, thread_id, phase):
-    """Set or update the codexSession object in plan.json.
+    """Set or update the codexSession object in progress.json.
 
     Creates the codexSession if it doesn't exist. Increments
     interactionCount and updates lastInteraction timestamp.
     """
     from datetime import datetime, timezone
 
-    plan = read_plan(plan_path)
-    session = plan.get("codexSession")
+    progress = _ensure_progress(plan_path)
+    session = progress.get("codexSession")
     if not isinstance(session, dict):
-        # Missing, null, or malformed — initialize fresh
         session = {
             "threadId": thread_id,
             "phase": phase,
@@ -246,26 +572,38 @@ def update_codex_session(plan_path, thread_id, phase):
         prev_count = session.get("interactionCount", 0)
         session["interactionCount"] = (prev_count if isinstance(prev_count, int) else 0) + 1
         session["lastInteraction"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    plan["codexSession"] = session
-    write_plan(plan_path, plan)
+    progress["codexSession"] = session
+    write_progress(plan_path, progress)
     return True
 
 
 def get_codex_session(plan_path):
-    """Read and return the codexSession object. Returns None if absent."""
-    plan = read_plan(plan_path)
+    """Read and return the codexSession object from progress.json.
+
+    Falls back to plan.json only when progress.json has no codexSession
+    key at all (legacy plan). If progress.json explicitly sets
+    codexSession to None (cleared), returns None without fallback.
+    """
+    progress = read_progress(plan_path)
+    if progress and "codexSession" in progress:
+        return progress["codexSession"]
+    # Legacy fallback — only if progress.json doesn't exist or has no key
+    with open(plan_path) as f:
+        plan = json.load(f)
     return plan.get("codexSession")
 
 
 def clear_codex_session(plan_path):
-    """Remove the codexSession object from plan.json.
+    """Remove the codexSession object from progress.json.
 
+    Sets codexSession to null explicitly (rather than deleting the key)
+    so that get_codex_session() won't fall back to a stale plan.json value.
     Used when a thread is lost, a plan completes, or a fresh thread
     is needed. Safe to call even if codexSession doesn't exist.
     """
-    plan = read_plan(plan_path)
-    plan.pop("codexSession", None)
-    write_plan(plan_path, plan)
+    progress = _ensure_progress(plan_path)
+    progress["codexSession"] = None
+    write_progress(plan_path, progress)
     return True
 
 
@@ -282,7 +620,10 @@ def _is_pid_alive(pid):
 
 
 def find_active_plan(project_root):
-    """Find the most recently modified plan.json in active plans.
+    """Find the most recently modified plan in active plans.
+
+    Uses max(plan.json, progress.json) mtime to find the latest plan,
+    since active plans update progress.json (not plan.json).
 
     Returns the plan.json path, or None if no active plan.
     """
@@ -294,9 +635,10 @@ def find_active_plan(project_root):
     latest_mtime = 0
 
     for entry in os.listdir(active_dir):
-        plan_path = os.path.join(active_dir, entry, "plan.json")
+        plan_dir = os.path.join(active_dir, entry)
+        plan_path = os.path.join(plan_dir, "plan.json")
         if os.path.isfile(plan_path):
-            mtime = os.path.getmtime(plan_path)
+            mtime = _plan_dir_mtime(plan_dir)
             if mtime > latest_mtime:
                 latest_mtime = mtime
                 latest_path = plan_path
@@ -337,6 +679,7 @@ def find_plan_for_session(project_root, ppid):
 def find_unclaimed_plans(project_root):
     """Find active plans with dead or missing .session-lock PIDs.
 
+    Uses max(plan.json, progress.json) mtime for sorting.
     Returns list of (plan_name, plan_json_path) sorted by mtime desc.
     """
     active_dir = os.path.join(project_root, ".temp", "plan-mode", "active")
@@ -355,8 +698,7 @@ def find_unclaimed_plans(project_root):
 
         lock_file = os.path.join(plan_dir, ".session-lock")
         if not os.path.isfile(lock_file):
-            # No lock at all — unclaimed
-            mtime = os.path.getmtime(plan_path)
+            mtime = _plan_dir_mtime(plan_dir)
             unclaimed.append((entry, plan_path, mtime))
             continue
 
@@ -364,17 +706,76 @@ def find_unclaimed_plans(project_root):
             with open(lock_file) as f:
                 lock_pid = f.read().strip()
         except OSError:
-            mtime = os.path.getmtime(plan_path)
+            mtime = _plan_dir_mtime(plan_dir)
             unclaimed.append((entry, plan_path, mtime))
             continue
 
         if not lock_pid or not _is_pid_alive(lock_pid):
-            mtime = os.path.getmtime(plan_path)
+            mtime = _plan_dir_mtime(plan_dir)
             unclaimed.append((entry, plan_path, mtime))
 
     # Sort by mtime descending (most recent first)
     unclaimed.sort(key=lambda x: x[2], reverse=True)
     return [(name, path) for name, path, _ in unclaimed]
+
+
+def active_step(plan):
+    """Find the currently active step (in_progress).
+
+    Returns the step dict, or None if no step is in progress.
+    """
+    for step in plan.get("steps", []):
+        if step.get("status") == "in_progress":
+            return step
+    return None
+
+
+def effective_owner(step, group_index=None):
+    """Get the effective owner of a step or group within a step.
+
+    For collab-split steps with sub-plan groups, the effective owner
+    is group.owner if set, falling back to step.owner.
+
+    Args:
+        step: Step dict from plan.json
+        group_index: Optional 0-based group index for collab-split steps
+
+    Returns:
+        Owner string ("claude" or "codex")
+    """
+    step_owner = step.get("owner", "claude")
+
+    if group_index is not None:
+        sub_plan = step.get("subPlan")
+        if sub_plan and "groups" in sub_plan:
+            groups = sub_plan["groups"]
+            if 0 <= group_index < len(groups):
+                return groups[group_index].get("owner", step_owner)
+
+    return step_owner
+
+
+def step_files(step, group_index=None):
+    """Get the list of files for a step or group.
+
+    For collab-split steps with groups, returns the group's files
+    if group_index is specified.
+
+    Args:
+        step: Step dict from plan.json
+        group_index: Optional 0-based group index
+
+    Returns:
+        List of file paths (relative to project root)
+    """
+    if group_index is not None:
+        sub_plan = step.get("subPlan")
+        if sub_plan and "groups" in sub_plan:
+            groups = sub_plan["groups"]
+            if 0 <= group_index < len(groups):
+                return groups[group_index].get("files", [])
+
+    return step.get("files", [])
 
 
 def format_status(plan):
@@ -425,23 +826,33 @@ def print_help():
     """Print usage information with all available commands."""
     print("""Usage: plan_utils.py <command> <plan.json|project_root> [args...]
 
-Plan state commands:
+Plan state commands (reads plan.json + progress.json merged view):
   status <plan.json>                              Show plan status summary
   next-step <plan.json>                           Show next step to work on
   is-fresh <plan.json>                            Check if plan is untouched
   is-complete <plan.json>                         Check if all steps are done
 
-Plan update commands:
+Plan update commands (writes to progress.json):
   update-step <plan.json> <step_id> <status>      Update step status
+  complete-step <plan.json> <step_id> <result> [project_root]  Mark step done with receipt gate
   update-progress <plan.json> <step_id> <idx> <s> Update progress item status
   set-result <plan.json> <step_id> <text>         Set step result text
   add-summary <plan.json> <text>                  Append to completedSummary
   add-deviation <plan.json> <text>                Append to deviations
 
-Codex session commands:
+Codex session commands (writes to progress.json):
   update-codex-session <plan.json> <threadId> <phase>  Set/update codex session
   get-codex-session <plan.json>                        Read codex session state
   clear-codex-session <plan.json>                      Remove codex session
+
+Step introspection commands:
+  active-step <plan.json>                         Show the in-progress step
+  effective-owner <plan.json> <step_id> [group]   Get effective owner of step/group
+  step-files <plan.json> <step_id> [group]        List files for step/group
+
+Progress commands:
+  init-progress <plan.json>                       Create fresh progress.json for new plan
+  migrate-progress <plan.json>                    Extract mutable state from plan.json → progress.json
 
 Plan discovery commands:
   find-active <project_root>                      Find most recent active plan
@@ -509,6 +920,20 @@ def main():
         if not update_step_status(plan_path, step_id, new_status):
             sys.exit(1)
 
+    elif command == "complete-step":
+        if len(sys.argv) < 5:
+            print(
+                "Usage: plan-utils.py complete-step <plan.json> <step_id> "
+                "<result_text> [project_root]",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        step_id = int(sys.argv[3])
+        result_text = sys.argv[4]
+        project_root = sys.argv[5] if len(sys.argv) > 5 else None
+        if not complete_step(plan_path, step_id, result_text, project_root):
+            sys.exit(1)
+
     elif command == "update-progress":
         if len(sys.argv) < 6:
             print("Usage: plan-utils.py update-progress <plan.json> <step_id> <index> <status>", file=sys.stderr)
@@ -569,6 +994,61 @@ def main():
     elif command == "is-complete":
         plan = read_plan(plan_path)
         print("true" if is_complete(plan) else "false")
+
+    elif command == "active-step":
+        plan = read_plan(plan_path)
+        step = active_step(plan)
+        if step:
+            print(json.dumps({
+                "id": step["id"],
+                "title": step["title"],
+                "owner": step.get("owner", "claude"),
+                "mode": step.get("mode", "claude-impl"),
+                "files": step.get("files", []),
+            }))
+        else:
+            print(json.dumps(None))
+
+    elif command == "effective-owner":
+        if len(sys.argv) < 4:
+            print("Usage: plan-utils.py effective-owner <plan.json> <step_id> [group_index]",
+                  file=sys.stderr)
+            sys.exit(1)
+        step_id = int(sys.argv[3])
+        group_idx = int(sys.argv[4]) if len(sys.argv) > 4 else None
+        plan = read_plan(plan_path)
+        step = get_step(plan, step_id)
+        if step is None:
+            print(f"Error: step {step_id} not found", file=sys.stderr)
+            sys.exit(1)
+        print(effective_owner(step, group_idx))
+
+    elif command == "step-files":
+        if len(sys.argv) < 4:
+            print("Usage: plan-utils.py step-files <plan.json> <step_id> [group_index]",
+                  file=sys.stderr)
+            sys.exit(1)
+        step_id = int(sys.argv[3])
+        group_idx = int(sys.argv[4]) if len(sys.argv) > 4 else None
+        plan = read_plan(plan_path)
+        step = get_step(plan, step_id)
+        if step is None:
+            print(f"Error: step {step_id} not found", file=sys.stderr)
+            sys.exit(1)
+        files = step_files(step, group_idx)
+        for f in files:
+            print(f)
+
+    elif command == "init-progress":
+        plan_def = read_plan_definition(plan_path)
+        prog = init_progress(plan_def)
+        write_progress(plan_path, prog)
+        print(json.dumps({"created": progress_path_for(plan_path)}))
+
+    elif command == "migrate-progress":
+        prog = _ensure_progress(plan_path)
+        write_progress(plan_path, prog)
+        print(json.dumps({"migrated": progress_path_for(plan_path)}))
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)

@@ -5,7 +5,7 @@
 #   - orbit_await_review (MCP tool) — clears marker only when status is "approved"
 #   - EnterPlanMode (built-in tool) — always clears marker (fallback)
 #
-# This eliminates the need for Claude to manually `rm .handoff-pending`.
+# This auto-clears the handoff marker so Claude does not need to bypass it.
 # The marker's purpose (force Orbit review) is fulfilled once approval comes back.
 #
 # Input: JSON on stdin with tool_name, tool_input, tool_result, cwd
@@ -48,7 +48,21 @@ data = json.loads(sys.stdin.read())
 print(data.get('tool_name', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
-# EnterPlanMode — always clear (plan mode handoff is happening)
+# Mint a handoff_approved receipt alongside marker removal
+source "${BASH_SOURCE[0]%/*}/lib/receipt-state.sh"
+mint_handoff_receipt() {
+  receipt_bootstrap 2>/dev/null || true
+  local proj_id
+  proj_id=$(receipt_project_id "$PROJECT_ROOT" 2>/dev/null) || true
+  local plan_name
+  plan_name=$(receipt_plan_id "$SESSION_PLAN" 2>/dev/null) || true
+  if [ -n "$proj_id" ] && [ -n "$plan_name" ]; then
+    receipt_sign "handoff_approved" "$proj_id" "$plan_name" >/dev/null 2>&1 || true
+  fi
+}
+
+# EnterPlanMode — clear marker only (handoff is happening), but do NOT mint
+# a handoff_approved receipt. Only Orbit approval can mint that receipt.
 if [[ "$TOOL_NAME" == "EnterPlanMode" ]]; then
   rm -f "$MARKER"
   exit 0
@@ -82,6 +96,7 @@ print('no')
 " <<< "$INPUT" 2>/dev/null) || true
 
   if [ "$approved" = "yes" ]; then
+    mint_handoff_receipt
     rm -f "$MARKER"
   fi
 fi

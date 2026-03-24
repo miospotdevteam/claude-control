@@ -20,8 +20,10 @@ data = json.loads(sys.stdin.read())
 print(data.get('tool_input', {}).get('file_path', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
-# Act on plan.json OR masterPlan.md inside .temp/plan-mode/active/
+# Act on plan.json, progress.json, OR masterPlan.md inside .temp/plan-mode/active/
 if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
+  PLAN_DIR_PATH="$(dirname "$FILE_PATH")"
+elif [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/progress.json" ]]; then
   PLAN_DIR_PATH="$(dirname "$FILE_PATH")"
 elif [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/masterPlan.md" ]]; then
   PLAN_DIR_PATH="$(dirname "$FILE_PATH")"
@@ -77,8 +79,10 @@ if [ -f "$PLAN_JSON" ]; then
     exit 0
   fi
   done_count=$(python3 -c "
-import json
-plan = json.load(open('$PLAN_JSON'))
+import json, os, sys
+sys.path.insert(0, os.path.dirname('$PLAN_UTILS'))
+import plan_utils
+plan = plan_utils.read_plan('$PLAN_JSON')
 print(sum(1 for s in plan.get('steps', []) if s.get('status') == 'done'))
 " 2>/dev/null) || true
 elif [ -f "$MASTER_PLAN" ]; then
@@ -120,7 +124,7 @@ output = {
             "2. RE-READ the user's original request word by word. Is every "
             "requirement actually implemented and working? If not, the plan is "
             "NOT done.\n"
-            "3. UPDATE the completedSummary in plan.json with final results.\n"
+            "3. UPDATE the completedSummary via plan_utils.py add-summary (writes to progress.json).\n"
             "4. REPORT to the user what was completed, what was verified, and "
             "any caveats.\n\n"
             "Only AFTER steps 1-4 are done, move the plan:\n"
