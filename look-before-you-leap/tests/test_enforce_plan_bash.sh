@@ -211,7 +211,8 @@ assert_allowed_file "plugin-root wrapper with redirect, no plan"
 run_hook "bash \"${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh\" plan.json 1 > .codex-result.txt" "$ROOT"
 assert_allowed_file "quoted plugin-root wrapper with redirect, no plan"
 
-# Sibling-dir spoof (look-before-you-leap-evil/) — must be denied
+# Sibling-dir spoof (look-before-you-leap-evil/) — must be denied.
+# This is a string-path check only; no real sibling fixture is required.
 run_hook "bash ${PLUGIN_ROOT}-evil/scripts/run-codex-verify.sh plan.json 1 > out.txt" "$ROOT"
 assert_denied_file "sibling-dir spoof with redirect, no plan"
 

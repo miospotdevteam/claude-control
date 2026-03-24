@@ -185,6 +185,7 @@ look-before-you-leap/
 │   ├── remind-deps-query.sh               # PreToolUse: blocks grep-based import discovery
 │   ├── remind-plan-update.sh              # PostToolUse: checkpoint reminder after 3 edits
 │   ├── session-start.sh                   # SessionStart: skill injection + plan detection + config
+│   ├── track-codex-exploration.sh         # PostToolUse: tracks Codex preflight and co-exploration markers
 │   ├── verify-plan-on-stop.sh             # Stop: blocks stopping with unfinished plans
 │   ├── verify-step-completion.sh          # PostToolUse: verification gate for step completion
 │   └── lib/

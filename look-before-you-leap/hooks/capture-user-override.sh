@@ -15,13 +15,22 @@ INPUT=$(cat)
 PROMPT=$(python3 -c "
 import json, sys
 data = json.loads(sys.stdin.read())
-print(data.get('prompt', ''))
+prompt = data.get('user_prompt')
+if prompt is None:
+    prompt = data.get('prompt', '')
+print(prompt)
+" <<< "$INPUT" 2>/dev/null) || true
+
+CWD=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('cwd', ''))
 " <<< "$INPUT" 2>/dev/null) || true
 
 [ -z "$PROMPT" ] && exit 0
 
 # Check for override phrases (case-insensitive)
-PROMPT_LOWER=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]')
+PROMPT_LOWER=$(printf '%s' "$PROMPT" | tr '[:upper:]' '[:lower:]')
 
 # Match known override phrases
 IS_OVERRIDE="no"
@@ -40,7 +49,7 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/lib/find-root.sh"
 source "${SCRIPT_DIR}/lib/receipt-state.sh"
 
-PROJECT_ROOT="$(find_project_root)"
+PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 receipt_bootstrap
 
 PROJ_ID=$(receipt_project_id "$PROJECT_ROOT")

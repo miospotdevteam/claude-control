@@ -7,13 +7,21 @@
 
 set -euo pipefail
 
+INPUT=$(cat)
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LIB_DIR="${SCRIPT_DIR}/lib"
 
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
-PROJECT_ROOT="$(find_project_root)"
+CWD=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('cwd', ''))
+" <<< "$INPUT" 2>/dev/null) || true
+
+PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 MARKER="$PROJECT_ROOT/.claude/.onboarding-pending"
 
 # No marker = not a first run, exit silently

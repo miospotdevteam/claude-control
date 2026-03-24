@@ -33,6 +33,62 @@ if [ -d "$ACTIVE_DIR" ]; then
   fi
 fi
 
+resolve_plan_dir() {
+  local session_plan=""
+  local dir_count=0
+  local only_dir=""
+  local dir=""
+  local lock_pid=""
+
+  if [ -n "$active_plan_path" ] && [ -f "$active_plan_path" ]; then
+    dirname "$active_plan_path"
+    return 0
+  fi
+
+  [ -d "$ACTIVE_DIR" ] || return 0
+
+  session_plan=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+  if [ -n "$session_plan" ] && [ -f "$session_plan" ]; then
+    dirname "$session_plan"
+    return 0
+  fi
+
+  for dir in "$ACTIVE_DIR"/*; do
+    [ -d "$dir" ] || continue
+    dir_count=$((dir_count + 1))
+    only_dir="$dir"
+    if [ -f "$dir/.session-lock" ]; then
+      lock_pid=$(cat "$dir/.session-lock" 2>/dev/null) || true
+      if [ "$lock_pid" = "$PPID" ]; then
+        echo "$dir"
+        return 0
+      fi
+    fi
+  done
+
+  if [ "$dir_count" -eq 1 ] && [ -n "$only_dir" ]; then
+    echo "$only_dir"
+  fi
+}
+
+active_plan_dir=""
+exploration_phase="false"
+if [ -d "$ACTIVE_DIR" ]; then
+  active_plan_dir=$(resolve_plan_dir) || true
+fi
+
+if [ -n "$active_plan_dir" ] && [ -d "$active_plan_dir" ]; then
+  plan_json_candidate="$active_plan_dir/plan.json"
+  if [ -f "$plan_json_candidate" ]; then
+    is_fresh=$(python3 "$PLAN_UTILS" is-fresh "$plan_json_candidate" 2>/dev/null) || true
+    if [ "$is_fresh" = "true" ]; then
+      exploration_phase="true"
+    fi
+  else
+    exploration_phase="true"
+  fi
+fi
+
 # Pass data via environment variables for safe JSON handling
 # Read project config
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/lib" && pwd)"
@@ -40,8 +96,11 @@ HOOK_CONFIG_JSON=$(python3 "$LIB_DIR/read-config.py" "$PROJECT_ROOT" 2>/dev/null
 
 export HOOK_INPUT="$INPUT"
 export HOOK_ACTIVE_PLAN="$active_plan_path"
+export HOOK_ACTIVE_PLAN_DIR="$active_plan_dir"
+export HOOK_EXPLORATION_PHASE="$exploration_phase"
 export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
 export HOOK_CONFIG_JSON
+export HOOK_SESSION_PPID="$PPID"
 
 python3 << 'PYEOF'
 import json, sys, os, pathlib
@@ -51,6 +110,9 @@ tool_input = input_data.get("tool_input", {})
 original_prompt = tool_input.get("prompt", "")
 subagent_type = tool_input.get("subagent_type", "")
 active_plan = os.environ.get("HOOK_ACTIVE_PLAN", "")
+active_plan_dir = os.environ.get("HOOK_ACTIVE_PLAN_DIR", "")
+exploration_phase = os.environ.get("HOOK_EXPLORATION_PHASE", "false") == "true"
+session_ppid = os.environ.get("HOOK_SESSION_PPID", "")
 config_json_str = os.environ.get("HOOK_CONFIG_JSON", "{}")
 
 # Parse project config
@@ -88,6 +150,58 @@ def classify_agent(agent_type):
     return "code-editing"
 
 category = classify_agent(subagent_type)
+
+
+def read_marker_text(path):
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def increment_dispatch_count(path):
+    current = 0
+    if path.exists():
+        try:
+            current = int(path.read_text(encoding="utf-8").strip() or "0")
+        except (OSError, ValueError):
+            current = 0
+    current += 1
+    try:
+        path.write_text(f"{current}\n", encoding="utf-8")
+    except OSError:
+        pass
+    return current
+
+
+additional_context = None
+if category == "research" and exploration_phase and active_plan_dir and session_ppid:
+    plan_dir = pathlib.Path(active_plan_dir)
+    preflight_marker = plan_dir / f".codex-preflight-{session_ppid}"
+    coexploration_marker = plan_dir / f".codex-co-exploration-{session_ppid}"
+    dispatch_counter = plan_dir / f".exploration-agent-count-{session_ppid}"
+    dispatch_count = increment_dispatch_count(dispatch_counter)
+    preflight_status = read_marker_text(preflight_marker)
+
+    if preflight_status == "unavailable":
+        additional_context = (
+            "NOTE: Codex preflight reported unavailable for this session. "
+            "Document that in discovery.md and continue without Codex co-exploration. "
+            "No further co-exploration warnings will be injected for this session."
+        )
+    elif not coexploration_marker.exists():
+        if dispatch_count >= 3:
+            additional_context = (
+                "WARNING: 3+ research agents dispatched without Codex co-exploration. "
+                "The conductor skill requires parallel Codex dispatch during exploration. "
+                "Run codex exec for co-exploration NOW."
+            )
+        elif dispatch_count == 1 and not preflight_status:
+            additional_context = (
+                "MANDATORY: You must run command -v codex and dispatch Codex for "
+                "co-exploration before or alongside exploration agents. "
+                "See the co-exploration protocol in the conductor skill."
+            )
 
 # --- Build tailored preamble ---
 
@@ -242,15 +356,17 @@ preamble = "\n".join(preamble_lines)
 updated_prompt = f"{preamble}\n\n---\n\n{original_prompt}"
 
 # Return updatedInput with the modified prompt
-output = {
-    "hookSpecificOutput": {
-        "hookEventName": "PreToolUse",
-        "updatedInput": {
-            **tool_input,
-            "prompt": updated_prompt
-        }
+hook_output = {
+    "hookEventName": "PreToolUse",
+    "updatedInput": {
+        **tool_input,
+        "prompt": updated_prompt
     }
 }
+if additional_context:
+    hook_output["additionalContext"] = additional_context
+
+output = {"hookSpecificOutput": hook_output}
 
 json.dump(output, sys.stdout)
 PYEOF
