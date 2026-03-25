@@ -64,6 +64,66 @@ of whether the failure was introduced by this step or existed before.
 
 ---
 
+## Step 3.5: Standard Checks (always run)
+
+These checks run on EVERY step regardless of what the acceptance criteria
+say. They catch the most common failure patterns from historical findings.
+
+### i18n completeness
+
+If the step modified or created files with user-visible strings:
+1. Grep for new translation keys or literal strings in the changed files
+2. Check ALL locale files (e.g., `packages/i18n/messages/*.json`) for
+   corresponding entries
+3. Flag any new user-visible string that does not exist in all locales
+4. English-only fallbacks (`t("key", "English text")`) count as missing
+
+### State transitions
+
+If the step modified UI code:
+1. Don't just check the initial render — check what happens when:
+   - The user switches between items (e.g., selecting a different season,
+     tab, or entity). Does stale data from the previous selection leak?
+   - Data is loading (is there a loading state, or does old data show?)
+   - An API call fails (is there error handling, or silent failure?)
+   - Form fields display defaults — are those defaults actually in form
+     state, or just cosmetic? If Save sends form state, cosmetic defaults
+     cause data loss.
+2. Trace the save path: for every editable field, verify onChange → state
+   → mutation → API. If a field shows a value but the value isn't in state,
+   saving will drop it.
+
+### Description parity
+
+The step description often has more detail than the acceptance criteria.
+1. Re-read the step `description` word by word
+2. List every deliverable mentioned (features, buttons, behaviors, states)
+3. Verify each deliverable exists in the implementation
+4. Flag deliverables that are in the description but missing from the code
+   — these are silent scope cuts
+
+### Empty and edge states
+
+If the step added conditional UI (`{data && ...}`, `data?.length > 0`,
+guards):
+1. Check what renders when the guard is false (null, empty array, error)
+2. If "nothing renders" — is that acceptable, or should there be a
+   placeholder, empty state message, or fallback?
+3. Specifically check: empty list, zero count, null data, single item
+   (when the UI assumes multiple)
+
+### Existing pattern matching
+
+If the step implements a pattern that already exists elsewhere in the
+codebase (swipeable rows, modals, steppers, pickers):
+1. Grep for existing instances of that pattern
+2. Compare configuration (thresholds, props, styling) against the existing
+   pattern
+3. Flag inconsistencies — the new instance should match unless the step
+   explicitly says otherwise
+
+---
+
 ## Step 4: Check Consumers
 
 If the step modified shared code (types, utilities, API signatures,
@@ -154,6 +214,7 @@ Severity guide:
 3. **Be specific** — cite file paths and line numbers in findings
 4. **No pre-existing exemptions** — if the criteria require it to pass and
    it does not, report it
-5. **Do not invent criteria** — only verify what the acceptance criteria
-   and step description specify
+5. **Do not invent criteria beyond the standard checks** — verify what the
+   acceptance criteria, step description, and Step 3.5 standard checks
+   specify. Do not add ad-hoc checks beyond these three sources
 6. **Run real commands** — do not guess whether tsc passes; run it

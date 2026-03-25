@@ -132,6 +132,13 @@ Check the group's files mechanically:
 - Use deps-query on modified shared files to check consumer integrity (if dep maps are configured)
 - Look for bugs, type safety holes, silent scope cuts, and missed consumers
 
+Also run the standard checks from the lbyl-verify skill (Step 3.5) regardless of criteria:
+- i18n: check new user-visible strings exist in ALL locale files
+- State transitions: check loading, switching, error paths — not just the initial render
+- Description parity: compare step description deliverables against actual implementation
+- Empty/edge states: check what happens when data is null, empty, zero, or error
+- Pattern matching: if a UI pattern exists elsewhere, verify config matches
+
 Report PASS if the group's work is correct, or report structured findings with:
 - Severity: HIGH (blocks shipping) / MEDIUM (should fix) / LOW (nit)
 - File and line number
@@ -148,6 +155,13 @@ Check every acceptance criterion mechanically:
 - Read the modified files and verify changes match the specification
 - Use deps-query on modified shared files to check consumer integrity (if dep maps are configured)
 - Look for bugs, type safety holes, silent scope cuts, and missed consumers
+
+Also run the standard checks from the lbyl-verify skill (Step 3.5) regardless of criteria:
+- i18n: check new user-visible strings exist in ALL locale files
+- State transitions: check loading, switching, error paths — not just the initial render
+- Description parity: compare step description deliverables against actual implementation
+- Empty/edge states: check what happens when data is null, empty, zero, or error
+- Pattern matching: if a UI pattern exists elsewhere, verify config matches
 
 Report PASS if all criteria are met, or report structured findings with:
 - Severity: HIGH (blocks shipping) / MEDIUM (should fix) / LOW (nit)
