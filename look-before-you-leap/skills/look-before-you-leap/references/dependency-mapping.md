@@ -23,6 +23,28 @@ The output shows:
 
 ---
 
+## Planning Partition Helper
+
+```bash
+python3 <plugin>/scripts/dep_partition.py <project_root> <file_path> [<file_path> ...]
+```
+
+Turns dep-map data for a set of target files into machine-readable planning
+context:
+
+- **Connected target groups** — files that share dependencies or dependents
+  are merged into the same group
+- **Direct target-to-target links** — which targets directly import each other
+- **Shared boundaries** — files that make two groups unsafe to split
+- **Per-group metadata**: `parallelHint` / `safeParallel` / `suggestedOrder`
+
+Use during planning (writing-plans Step 6) to shape `subPlan.groups` from the
+dependency graph instead of from intuition alone. The output is informational
+— it informs group structure but does not replace the existing threshold-based
+sub-plan criteria.
+
+---
+
 ## Generation Commands
 
 ```bash

@@ -114,11 +114,6 @@ except (OSError, json.JSONDecodeError, ImportError):
     print("allow")
     sys.exit(0)
 
-# Only enforce for strict plans
-if plan.get("_receiptMode") != "strict":
-    print("allow")
-    sys.exit(0)
-
 # Find all in_progress steps with codex ownership
 for step in plan.get("steps", []):
     if step.get("status") != "in_progress":

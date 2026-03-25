@@ -340,15 +340,17 @@ direction-locked scripts) since there is no step ownership yet.
 **Phase 1 — Parallel exploration (background):**
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Explore the codebase for the task: <task-description>. Focus on: \
    1. All consumers of files in scope (trace import chains) \
    2. Blast radius — what breaks if these files change? \
    3. Test infrastructure — what tests cover this code? \
    4. Edge cases and error paths in the current implementation \
    5. Cross-module dependencies that might be missed \
-   Write findings to <plan-dir>/discovery.md using append (>>). \
-   Format: ## [Codex: <topic>]\n- **finding** (evidence: ...)"
+   Write findings to <plan-dir>/discovery.md using heredoc append: \
+   cat <<'EOF' >> discovery.md \
+   then your markdown content, then EOF on its own line. \
+   Format: ## [Codex: <topic>] then bullet points with findings."
 ```
 
 Run in the background while Claude explores simultaneously.
@@ -358,7 +360,7 @@ Run in the background while Claude explores simultaneously.
 After both agents finish, dispatch Codex for a convergence review:
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Read ALL findings in <plan-dir>/discovery.md. The other agent (Claude) \
    explored patterns, conventions, and architecture. You explored consumers \
    and blast radius. Now: \
@@ -382,7 +384,7 @@ reach consensus through structured debate before Orbit review. Uses
 **Round 1 — Codex reviews the plan:**
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For EACH step, return a structured proposal: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -398,7 +400,7 @@ reasoning / COUNTER-PROPOSE). Update plan files with accepted changes.
 **Round 3 (if needed) — Final resolution:**
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For each remaining disagreement: \
    - ACCEPT Claude's reasoning, or \
@@ -447,18 +449,42 @@ If Codex reports ISSUES or exits with errors:
 
 ---
 
+## Parallel Step Execution
+
+When the DAG frontier has multiple runnable steps, Codex may be
+implementing several steps concurrently. Each `codex exec` invocation
+runs independently — no coordination between parallel Codex processes
+is needed because:
+
+- Each step has isolated files (enforced by `dependsOn` — overlapping
+  files create edges, preventing parallel execution)
+- Each step writes to its own result/stream files
+  (`.codex-result-step-N.txt`, `.codex-stream-step-N.jsonl`)
+- Per-step codexSessions in progress.json prevent session collision
+
+When dispatching Codex for a step that's part of a parallel batch, the
+prompt MUST note which other steps are running concurrently (for awareness,
+not coordination — Codex should not attempt to coordinate with parallel
+steps). This helps Codex avoid touching files outside its step's scope.
+
+---
+
 ## Compaction Recovery
 
 After context compaction, codex-dispatch recovers from plan.json + progress.json:
 
-1. Read plan.json (definition) + progress.json (state) — find the current step and its status
-2. If a step is `in_progress`:
+1. Read plan.json (definition) + progress.json (state) — find ALL
+   in_progress steps (there may be multiple during parallel execution)
+2. For each in_progress step:
+   - Check its `dependsOn` — if all predecessors are done, the step was
+     legitimately parallel
    - Check for result/stream files (use `step-N-group-G` suffix for
      collab-split steps with group-scoped dispatch)
    - If result file exists: Codex finished, parse the result
    - If only stream file: Codex may still be running or may have failed.
      Check if the process is still running.
-3. Continue the execution loop based on plan state
+3. Continue the execution loop based on plan state — re-dispatch steps
+   whose Codex processes are no longer running
 
 No thread state to recover — each `codex exec` call is standalone.
 All context lives on disk (plan.json + progress.json, discovery.md, source files).

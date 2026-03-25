@@ -182,7 +182,7 @@ results) lives in `progress.json` (auto-created by plan_utils.py). Include:
 
 - All discovery findings in the `discovery` object
 - Steps with TDD-granularity progress items
-- Inline sub-plans for large steps (see Step 5 below)
+- Inline sub-plans for large steps (see Step 6 below)
 - Exact skill identifiers in `skill` fields
 
 **Use dep maps to populate step `files` arrays.** If dep maps are
@@ -382,7 +382,80 @@ the `codex-dispatch` skill for the full flow.
 - **DRY / YAGNI** — cut anything not clearly needed right now
 - **Frequent commits** — after every green test or logical unit of work
 
-### 5. Evaluate sub-plan needs (mandatory checkpoint)
+### 5. Compute step dependency DAG
+
+Before saving the plan, compute `dependsOn` edges so the executor can
+dispatch independent steps in parallel.
+
+#### Algorithm
+
+For each pair of steps (A, B) where A.id < B.id:
+
+1. Collect step A's file set and step B's file set from their `files` arrays
+2. **When dep maps are configured**: expand each file set with its
+   dependents from `deps-query.py` before checking intersection. This
+   catches transitive dependencies — step B might not directly list a file
+   from step A, but one of B's files may depend on one of A's files.
+3. If step B's (expanded) file set intersects step A's (expanded) file set,
+   add A.id to B's `dependsOn` array
+4. You may also add **manual** `dependsOn` edges when you know step B
+   consumes step A's output even without file overlap (e.g., step A creates
+   a type that step B uses, but they have no shared files because the type
+   file isn't listed in step A)
+
+Steps with empty `dependsOn` are roots of the DAG — they can all start
+in parallel. The executor uses `runnable_steps()` in plan_utils.py to
+compute the frontier at runtime.
+
+#### Example
+
+```
+Step 1: files [a.ts, b.ts]        → dependsOn: []
+Step 2: files [c.ts, d.ts]        → dependsOn: []
+Step 3: files [e.ts, f.ts]        → dependsOn: []
+Step 4: files [b.ts, g.ts]        → dependsOn: [1]  (shares b.ts with step 1)
+Step 5: files [h.ts]              → dependsOn: []
+Step 6: files [a.ts, c.ts, e.ts]  → dependsOn: [1, 2, 3]
+```
+
+Execution: Steps 1, 2, 3, 5 start in parallel. Step 4 starts when 1
+finishes. Step 6 starts when 1, 2, 3 all finish. Step 5 is independent
+and can run alongside anything.
+
+#### Validation
+
+After computing all edges, verify the DAG is valid:
+- No cycles (step A depends on B, B depends on A)
+- No self-references (step depends on itself)
+- All referenced IDs exist in the step list
+
+If the plan has no file overlaps and no manual edges, every step gets
+`dependsOn: []` — the plan is fully parallel. This is valid and common
+for plans with well-isolated steps.
+
+### 6. Evaluate sub-plan needs (mandatory checkpoint)
+
+#### Graph-informed grouping (when dep maps are configured)
+
+Before evaluating thresholds, run `dep_partition.py` on the scoped
+entry-point files to get graph-informed groups:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/dep_partition.py <project_root> <file_path> [<file_path> ...]
+```
+
+The partition output tells you:
+- Which files belong in the same group (connected components via shared deps)
+- Which groups are safe to parallelize (`safeParallel` hint)
+- Suggested execution order (`suggestedOrder` — cross-module boundaries first)
+
+Use these groups to shape `subPlan.groups` directly when the thresholds
+below are met. The partition output feeds group structure inline — do NOT
+create a separate `dep-partition.json` artifact. When dep maps are **not**
+configured, skip `dep_partition.py` and use existing threshold-based
+grouping unchanged.
+
+#### Threshold criteria
 
 **Before saving the plan, evaluate EVERY step against these criteria:**
 
@@ -438,11 +511,11 @@ in group names, not enforced by schema.
 `"Group 3 (Codex): Account hooks"`. But the formal `owner` field on
 the group object is what the executor reads — the name is informational.
 
-**This is a hard checkpoint.** Do not proceed to Step 6 until every step
+**This is a hard checkpoint.** Do not proceed to Step 7 until every step
 has been evaluated. If you skip this, large steps will fail mid-execution
 when context runs out.
 
-### 6. Plan consensus with Codex (before Orbit)
+### 7. Plan consensus with Codex (before Orbit)
 
 After saving both files to disk, run the plan consensus protocol with
 Codex before presenting to the user. Both agents must agree on the plan.
@@ -471,7 +544,7 @@ stated so the user can decide.
 
 If `codex` CLI is not available, skip consensus and proceed to Orbit.
 
-### 7. Present for review via Orbit
+### 8. Present for review via Orbit
 
 After plan consensus (or directly after saving if Codex is unavailable),
 present masterPlan.md to the user for interactive review using the Orbit
@@ -498,7 +571,7 @@ MCP:
 - **`timeout`** → tell the user the review timed out and ask them to
   review when ready.
 
-### 8. Plan mode handoff (post-approval)
+### 9. Plan mode handoff (post-approval)
 
 After the plan is approved via Orbit:
 
@@ -571,7 +644,7 @@ This skill must NOT:
   go through plan mode handoff before execution begins.
 - **Write implementation code** — this skill produces plans, not code files.
 - **Skip the routing classification** — Step 3 is mandatory for every plan.
-- **Skip the sub-plan evaluation** — Step 5 is mandatory for every plan.
+- **Skip the sub-plan evaluation** — Step 6 is mandatory for every plan.
 
 **Autonomy limits**: reading discovery, reading checklists, writing plan
 files, and writing sub-plans are autonomous. Overwriting an existing plan

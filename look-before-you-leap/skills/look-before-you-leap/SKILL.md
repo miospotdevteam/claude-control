@@ -124,7 +124,7 @@ workflow, it is **forbidden**. If you catch yourself reaching for
 ```bash
 # CORRECT — always use this:
 codex exec -C <project-root> \
-  --dangerously-bypass-approvals-and-sandbox --enable fast_mode "..."
+  --dangerously-bypass-approvals-and-sandbox --disable fast_mode "..."
 
 # WRONG — never do this:
 # mcp__codex__codex(prompt: "...", sandbox: "read-only")
@@ -222,15 +222,17 @@ At the START of exploration (before writing discovery.md), dispatch Codex
 in the background to explore in parallel with Claude:
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Explore the codebase for the task: <task-description>. Focus on: \
    1. All consumers of files in scope (trace import chains) \
    2. Blast radius — what breaks if these files change? \
    3. Test infrastructure — what tests cover this code? \
    4. Edge cases and error paths in the current implementation \
    5. Cross-module dependencies that might be missed \
-   Write your findings to <plan-dir>/discovery.md using append (>>). \
-   Use the format: ## [Codex: <topic>]\n- **finding** (evidence: ...)"
+   Write your findings to <plan-dir>/discovery.md using heredoc append: \
+   cat <<'EOF' >> discovery.md \
+   then your markdown content, then EOF on its own line. \
+   Use the format: ## [Codex: <topic>] then bullet points with findings."
 ```
 
 While Codex runs, Claude explores simultaneously — focusing on:
@@ -247,7 +249,7 @@ After both agents finish, Claude reads all of discovery.md, then
 dispatches Codex for a convergence review:
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Read ALL findings in <plan-dir>/discovery.md. The other agent (Claude) \
    explored patterns, conventions, and architecture. You explored consumers \
    and blast radius. Now: \
@@ -303,7 +305,11 @@ have the schema memorized, skipping the skill means skipping those rules.
 Call: `Skill(skill: "look-before-you-leap:writing-plans")`
 
 The skill consumes your discovery.md, identifies applicable discipline
-checklists, structures TDD-granularity steps, and writes both:
+checklists, structures TDD-granularity steps, and writes both.
+When dep maps are configured, `dep_partition.py` can be run on scoped
+files to build graph-informed groups (see writing-plans Step 6).
+
+Outputs:
 - `plan.json` — immutable plan definition (frozen after Orbit approval, never edited during execution)
 - `progress.json` — mutable execution state (step statuses, results, updated via plan_utils.py)
 - `masterPlan.md` — user-facing proposal for Orbit review (write-once, frozen after approval)
@@ -324,7 +330,7 @@ compaction recovery depends on them. Do NOT invent your own schema:
 - **Top level (plan.json)**: `name`, `title`, `context`, `status`,
   `requiredSkills`, `disciplines`, `discovery`, `steps`, `blocked`.
 - **Top level (progress.json)**: `completedSummary`, `deviations`,
-  `codexSession`, step statuses/results — auto-managed by plan_utils.py.
+  `codexSessions`, step statuses/results — auto-managed by plan_utils.py.
 - **`discovery` object** (required in plan.json): `scope`,
   `entryPoints`, `consumers`, `existingPatterns`, `testInfrastructure`,
   `conventions`, `blastRadius`, `confidence`. Your exploration findings
@@ -371,7 +377,7 @@ the one-shot attack pass — both agents must agree on the plan.
 **Round 1 — Codex reviews the plan:**
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For EACH step, return a structured proposal: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -397,7 +403,7 @@ Update the plan files with accepted changes.
 If disagreements remain after Round 2, dispatch Codex one more time:
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --enable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For each remaining disagreement: \
    - ACCEPT Claude's reasoning, or \
@@ -546,47 +552,72 @@ full skill context (references, checklists, hooks) loads properly.
 Claude knows exactly which skill to invoke for each step. If you skip the
 dispatch, you lose the specialized guidance that makes the step succeed.
 
-### Owner-based dispatch during execution
+### DAG-driven parallel dispatch
 
-Before starting each step, check its `owner` and `mode` fields in
-plan.json. The execution flow differs based on ownership:
+Steps declare dependencies via `dependsOn`. The executor uses
+`runnable_steps()` from plan_utils.py to compute the frontier — all
+pending steps whose predecessors are done. Independent steps run in
+parallel; dependent steps wait.
 
 ```
-FOR each step in plan.steps:
-  IF step.mode == "collab-split":
-    REQUIRE step.subPlan with groups
-    FOR each group in step.subPlan.groups:
-      effective_owner = group.owner ?? step.owner   # defaults to step.owner
-      IF effective_owner == "claude":
-        Claude implements the group's files
-        → run-codex-verify.sh scoped to group files
-        → If findings: Claude fixes → re-run verify → repeat until PASS
-        → Record "Group N (Claude): Codex: PASS" in group.notes
-      ELSE IF effective_owner == "codex":
-        → run-codex-implement.sh scoped to group files
-        → Claude verifies INDEPENDENTLY: read files, tsc/lint/tests, deps-query
-        → If issues: Claude fixes directly, log to usage-errors/claude-findings/
-        → Record "Group N (Codex): Claude: verified" in group.notes
-    Step result accumulates per-group verdicts
+LOOP:
+  1. runnable = runnable_steps(plan)    # pending steps with all dependsOn done
+  2. IF runnable is empty AND no in_progress steps → plan complete
+  3. IF len(runnable) == 1 → execute sequentially (current single-step flow)
+  4. IF len(runnable) > 1 → dispatch all in parallel:
+     FOR each step in runnable:
+       Mark step in_progress
+       IF step.owner == "claude":
+         Dispatch as foreground sub-agent via Agent tool
+       ELSE IF step.owner == "codex":
+         Dispatch via run-codex-implement.sh in background
+     Wait for all to complete
+  5. Verify all completed steps (Codex verify for claude-impl, Claude verify for codex-impl)
+  6. Fix findings sequentially, re-verify as needed
+  7. Mark verified steps done → new steps may now be runnable
+  8. GOTO LOOP
+```
 
-  ELSE IF step.mode == "dual-pass":
-    Claude does design/UX/architecture pass
-    Codex does correctness/security pass via run-codex-verify.sh
-    Claude synthesizes both sets of findings
+### Owner-based dispatch (per-step)
 
-  ELSE IF step.owner == "claude":           # claude-impl
-    Claude implements
-    → run-codex-verify.sh
-    → If findings: Claude fixes → re-run verify → repeat until PASS
-    → Write ### Criterion: result, add ### Verdict with Codex: PASS
+For each step (whether dispatched sequentially or as part of a parallel
+batch), the execution flow depends on `owner` and `mode`:
 
-  ELSE IF step.owner == "codex":            # codex-impl
-    → run-codex-implement.sh
-    → Codex implements via codex exec
-    → Claude verifies INDEPENDENTLY: read files, tsc/lint/tests, deps-query
-    → If issues: Claude fixes directly
-    → Log findings to usage-errors/claude-findings/
-    → Write ### Criterion: result, add ### Verdict with Claude: verified
+```
+IF step.mode == "collab-split":
+  REQUIRE step.subPlan with groups
+  FOR each group in step.subPlan.groups:
+    effective_owner = group.owner ?? step.owner
+    IF effective_owner == "claude":
+      Claude implements the group's files
+      → run-codex-verify.sh scoped to group files
+      → If findings: Claude fixes → re-run verify → repeat until PASS
+      → Record "Group N (Claude): Codex: PASS" in group.notes
+    ELSE IF effective_owner == "codex":
+      → run-codex-implement.sh scoped to group files
+      → Claude verifies INDEPENDENTLY: read files, tsc/lint/tests, deps-query
+      → If issues: Claude fixes directly, log to usage-errors/claude-findings/
+      → Record "Group N (Codex): Claude: verified" in group.notes
+  Step result accumulates per-group verdicts
+
+ELSE IF step.mode == "dual-pass":
+  Claude does design/UX/architecture pass
+  Codex does correctness/security pass via run-codex-verify.sh
+  Claude synthesizes both sets of findings
+
+ELSE IF step.owner == "claude":           # claude-impl
+  Claude implements
+  → run-codex-verify.sh
+  → If findings: Claude fixes → re-run verify → repeat until PASS
+  → Write ### Criterion: result, add ### Verdict with Codex: PASS
+
+ELSE IF step.owner == "codex":            # codex-impl
+  → run-codex-implement.sh
+  → Codex implements via codex exec
+  → Claude verifies INDEPENDENTLY: read files, tsc/lint/tests, deps-query
+  → If issues: Claude fixes directly
+  → Log findings to usage-errors/claude-findings/
+  → Write ### Criterion: result, add ### Verdict with Claude: verified
 ```
 
 **`owner: "claude"` (default — Claude implements, Codex verifies):**
@@ -714,16 +745,43 @@ independent file groups), choose the right dispatch mode:
 Use when results inform your next steps or have cross-cutting concerns.
 All agents run in parallel, you see all results before proceeding. Use
 for: audits, exploration, reviews, any task where one finding might
-affect another agent's scope.
+affect another agent's scope. **Also use for parallel claude-impl steps**
+— each sub-agent implements one step.
 
 **Background** (fire-and-forget only):
 Use only when you have genuinely independent work to continue in the
 main thread. You must poll with `TaskOutput` later — no automatic
-cross-pollination. Use for: running builds/tests while continuing edits.
+cross-pollination. Use for: running builds/tests while continuing edits,
+**and for codex-impl steps dispatched via run-codex-implement.sh**.
 
 **Rule of thumb**: if you'd want to read Agent A's results before acting
 on Agent B's results, use foreground. Background agents are isolated by
 default.
+
+#### Implementation sub-agents (parallel step execution)
+
+When the DAG frontier has multiple runnable steps, Claude dispatches
+parallel sub-agents. Each sub-agent receives:
+
+- The step definition from plan.json (id, description, acceptanceCriteria,
+  files, skill, owner)
+- The plan.json path for progress updates
+- The project root for running commands
+
+Each sub-agent must:
+- Only edit files listed in its step's `files` array
+- Update its step's progress items via plan_utils.py
+- Run its step's skill if `skill` is not `"none"`
+- Run own verification (tsc, lint, tests) before reporting
+- Report results — do NOT mark the step done (main thread does that
+  after Codex/Claude verification)
+
+Each sub-agent must NOT:
+- Edit files belonging to other steps
+- Mark the step as `done` (verification gate is main thread's job)
+- Read or modify other steps' progress items
+- Run Codex verification (main thread handles this after all sub-agents
+  complete)
 
 ### Shared discovery (cross-agent communication)
 
@@ -737,10 +795,16 @@ This file is created during Step 1 (Explore) when the plan directory is
 set up. The `inject-subagent-context` hook automatically tells sub-agents
 where it is and registers their dispatch.
 
-**Writing** — use Bash append (`>>`), never `Edit`. Multiple agents write
-concurrently, and append is atomic at the OS level:
+**Writing** — use heredoc append (`>>`), never `Edit`. Multiple agents
+write concurrently, and append is atomic at the OS level. Use a
+single-quoted heredoc delimiter (`'EOF'`) to prevent zsh glob expansion
+of `**bold**` markdown patterns:
 ```bash
-printf '\n## [your-focus-area]\n- **[severity]** `file:line` — finding (evidence: ...)\n' >> discovery.md
+cat <<'EOF' >> discovery.md
+
+## [your-focus-area]
+- **[severity]** `file:line` — finding (evidence: ...)
+EOF
 ```
 
 **Reading** — read the file periodically to see other agents' findings,
@@ -1041,3 +1105,4 @@ All paths relative to `${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/`:
 - `scripts/deps-generate.py` — generate or regenerate dep maps
 - `scripts/run-codex-verify.sh` — direction-locked Codex verification
 - `scripts/run-codex-implement.sh` — direction-locked Codex implementation
+- `scripts/dep_partition.py` — partition target files into planning groups using dep maps

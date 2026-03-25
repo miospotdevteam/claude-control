@@ -5,7 +5,7 @@ during execution. Hooks read this file for step structure, ownership, and
 acceptance criteria.
 
 Mutable execution state (step statuses, results, progress items,
-completedSummary, deviations, codexSession) lives in **progress.json**,
+completedSummary, deviations, codexSessions) lives in **progress.json**,
 which is auto-created by `plan_utils.py` on first mutation.
 
 masterPlan.md is the human-facing presentation document.
@@ -61,6 +61,7 @@ Runtime updates to these fields go to `progress.json` via `plan_utils.py`.
       ],
       "subPlan": null,
       "result": null,
+      "dependsOn": [],
       "routingJustification": "Frontend UI / visual design → claude-impl"
     },
     {
@@ -86,6 +87,7 @@ Runtime updates to these fields go to `progress.json` via `plan_utils.py`.
         ]
       },
       "result": null,
+      "dependsOn": [1],
       "routingJustification": "Refactor across many files → codex-impl"
     }
   ],
@@ -115,11 +117,19 @@ Auto-created by `plan_utils.py` on first mutation. All mutable state lives here.
   },
   "completedSummary": ["Step 1: implemented auth flow"],
   "deviations": ["Used OAuth2 instead of SAML"],
-  "codexSession": {
-    "threadId": "...",
-    "phase": "verify",
-    "interactionCount": 3,
-    "lastInteraction": "2026-03-24T10:00:00Z"
+  "codexSessions": {
+    "1": {
+      "threadId": "...",
+      "phase": "verify",
+      "interactionCount": 3,
+      "lastInteraction": "2026-03-24T10:00:00Z"
+    },
+    "3": {
+      "threadId": "...",
+      "phase": "implement",
+      "interactionCount": 1,
+      "lastInteraction": "2026-03-24T10:05:00Z"
+    }
   }
 }
 ```
@@ -134,7 +144,7 @@ Auto-created by `plan_utils.py` on first mutation. All mutable state lives here.
 | `steps.<id>.groups` | object | Group-level status/notes keyed by index: `{"0": {"status": "done"}}` |
 | `completedSummary` | string[] | Running log of completed steps |
 | `deviations` | string[] | Where implementation deviated from plan |
-| `codexSession` | object | Codex CLI session state (threadId, phase, count) |
+| `codexSessions` | object | Per-step Codex CLI session state, keyed by step ID. Each value: `{threadId, phase, interactionCount, lastInteraction}`. Legacy singleton `codexSession` is auto-migrated on first access. |
 
 ### Legacy fallback
 
@@ -160,7 +170,7 @@ state from `plan.json` into a new `progress.json`.
 | `steps` | Step[] | yes | Ordered list of execution steps |
 | `blocked` | string[] | yes | Blocked step descriptions (empty if none) |
 
-**Note:** `completedSummary`, `deviations`, and `codexSession` are mutable
+**Note:** `completedSummary`, `deviations`, and `codexSessions` are mutable
 fields that live in `progress.json`. See the progress.json schema above.
 
 ### Step fields (immutable in plan.json, except where noted)
@@ -182,6 +192,7 @@ fields that live in `progress.json`. See the progress.json schema above.
 | `progress` | Progress[] | yes | Sub-task checklist (empty array for simple steps) |
 | `subPlan` | SubPlan? | no | Inline sub-plan for large steps (null if none) |
 | `result` | string? | no | **Mutable** — initial: null. Runtime value in progress.json. Uses `### Criterion:` template. See Result Field Format below. |
+| `dependsOn` | number[] | no | Step IDs that must complete before this step can start. Computed by writing-plans from file overlap + dep-map enrichment. Steps with empty `dependsOn` (or all predecessors done) are immediately runnable. Defaults to `[]`. |
 | `routingJustification` | string | no | Why this step was assigned to this owner/mode — routing matrix category and justification. Format: `"<category> → <mode> [override reason]"`. Required by writing-plans skill for auditability. Example: `"Refactor across many files → codex-impl"` |
 
 ### Progress item fields

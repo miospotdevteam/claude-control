@@ -24,7 +24,7 @@ Every plan consists of three files:
   files, ownership, mode, skill. Frozen after Orbit approval. **Never edited
   during execution.** Hooks read this for step structure.
 - **`progress.json`** — Mutable execution state. Step statuses, results,
-  progress item statuses, completedSummary, deviations, codexSession.
+  progress item statuses, completedSummary, deviations, codexSessions.
   Updated constantly via `plan_utils.py` commands. This is what changes
   during execution.
 - **`masterPlan.md`** — Proposal document for user review via Orbit.
@@ -259,7 +259,7 @@ structure exactly. Hooks parse this schema — deviations break tooling.
 }
 ```
 
-**Note:** `completedSummary`, `deviations`, and `codexSession` are mutable
+**Note:** `completedSummary`, `deviations`, and `codexSessions` are mutable
 fields stored in `progress.json` (created by `plan_utils.py init-progress`).
 Step `status`, `result`, and progress item statuses are also tracked in
 `progress.json` during execution — the values in plan.json are initial only.
@@ -381,54 +381,48 @@ answer is no, update progress BEFORE your next edit.
 This is a loop. Follow it mechanically.
 
 ```
-┌─ EXECUTION LOOP ────────────────────────────────────────┐
+┌─ EXECUTION LOOP (DAG-DRIVEN) ───────────────────────────┐
 │                                                         │
 │  0. IF first loop entry (or after compaction):          │
 │     Create/recreate tasks from plan.json steps:         │
 │     TaskCreate for each step:                           │
 │       subject: "[Step N/total: owner] title"            │
 │       Set completed steps to status: "completed"        │
-│       Set in_progress step to status: "in_progress"     │
+│       Set in_progress steps to status: "in_progress"    │
 │                                                         │
-│  1. Read plan.json from disk                            │
-│  2. Find the next pending or in_progress step           │
-│  3. Mark it in_progress — write to disk NOW             │
-│     → TaskUpdate(status: "in_progress") on matching task│
-│  3b. EXTRACT DELIVERABLES CHECKLIST:                    │
-│      - Re-read step description + acceptanceCriteria    │
-│      - List every deliverable as a numbered checklist   │
-│      - This checklist gates "mark done" (see below)     │
+│  1. Read plan.json + progress.json from disk            │
+│  2. Compute runnable steps:                             │
+│     runnable = runnable_steps(plan)                     │
+│     (pending steps whose dependsOn predecessors are done)│
 │                                                         │
-│  4. IF step has a subPlan:                              │
-│     a. Find next pending group                          │
-│     b. Check group.owner (defaults to step.owner):      │
-│        - owner=="claude": Claude implements group files  │
-│          → run-codex-verify.sh scoped to group files    │
-│          → fix/re-verify loop until PASS                │
-│        - owner=="codex": dispatch run-codex-implement.sh│
-│          → Claude verifies independently after          │
-│     c. Record per-group verdict in group.notes          │
-│     d. Mark group done via plan_utils.py                │
-│     e. Checkpoint: update progress items                │
-│     f. IF all groups complete:                          │
-│        - Verify deliverables checklist (every item)     │
-│        - Run own verification (tsc, lint, tests)        │
-│        - Step result = accumulated group verdicts       │
-│        - Mark step done                                 │
-│        - TaskUpdate(status: "completed") on matching task│
-│        - Add to completedSummary                        │
+│  3. IF no runnable AND no in_progress → plan complete   │
 │                                                         │
-│  5. IF step has no subPlan:                             │
-│     a. Execute the step                                 │
-│     b. CHECKPOINT after every 2-3 file edits:           │
-│        - Update progress items via plan_utils.py        │
-│        - Write partial notes to result field            │
-│     c. Verify deliverables checklist (every item)       │
-│     d. Run own verification (tsc, lint, tests)          │
-│     e. IF codexVerify: true → Codex gate (see below)    │
-│     f. Mark step done (with Codex verdict in result)    │
-│     g. TaskUpdate(status: "completed") on matching task │
-│     h. Add to completedSummary                          │
+│  4. IF 1 runnable step → execute sequentially:          │
+│     a. Mark it in_progress — write to disk NOW          │
+│        → TaskUpdate(status: "in_progress")              │
+│     b. EXTRACT DELIVERABLES CHECKLIST                   │
+│     c. Execute per owner-based dispatch (see conductor) │
+│     d. CHECKPOINT after every 2-3 file edits            │
+│     e. Verify deliverables checklist (every item)       │
+│     f. Run own verification (tsc, lint, tests)          │
+│     g. CODEX GATE (see below)                           │
+│     h. Mark step done, TaskUpdate(completed),           │
+│        add to completedSummary                          │
+│                                                         │
+│  5. IF multiple runnable steps → dispatch in parallel:  │
+│     a. Mark ALL runnable steps as in_progress           │
+│        → TaskUpdate(in_progress) for each               │
+│     b. FOR each step:                                   │
+│        - claude-impl: dispatch as foreground sub-agent  │
+│          via Agent tool (implements + own verification)  │
+│        - codex-impl: dispatch via run-codex-implement.sh│
+│          in background                                  │
+│     c. Wait for all to complete                         │
+│     d. Verify all (Codex verify for claude-impl,        │
+│        Claude verify for codex-impl)                    │
+│     e. Fix findings sequentially, re-verify as needed   │
+│     f. Mark verified steps done, TaskUpdate(completed), │
+│        add to completedSummary                          │
 │                                                         │
 │  CODEX GATE (for steps with codexVerify: true):         │
 │     a. Run run-codex-verify.sh (claude-impl steps)      │
@@ -436,11 +430,7 @@ This is a loop. Follow it mechanically.
 │     b. If issues found: fix → re-run verify → repeat    │
 │     c. Only proceed to "mark done" after PASS           │
 │                                                         │
-│  6. IF all steps are now done:                          │
-│     a. Move plan folder from active/ to completed/      │
-│     b. Report completion to the user                    │
-│                                                         │
-│  7. ELSE: Loop back to step 1                           │
+│  6. GOTO step 1 — new steps may now be runnable         │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -530,18 +520,45 @@ plan, read it immediately.
 2. Find the most recent plan (use `plan_utils.py find-active`)
 3. Read plan.json (discovery, step definitions) and progress.json
    (completedSummary, step statuses, progress items)
-4. Find the next step with status `pending` or `in_progress`
-5. If the step is `in_progress`, check which progress items are done —
+4. Find ALL steps with status `in_progress` and all `pending` steps
+5. For each `in_progress` step, check which progress items are done —
    that tells you exactly where within the step to resume
-6. State to the user: *"Resuming plan '<title>'. Steps 1-N are complete.
-   Picking up at Step N+1: <title>, starting from <specific progress
-   point>."*
-7. Continue the execution loop
+6. State to the user: *"Resuming plan '<title>'. Steps [done list] are
+   complete. Steps [in_progress list] were in flight. Picking up from
+   [specific progress points]."*
+7. Continue the execution loop (DAG-driven — see below)
 
 **You MUST do this before touching any code.** The plan files on disk are
 the source of truth, not your memory of what you were doing.
 
-### If an in-progress step exists
+### If multiple in-progress steps exist
+
+Multiple `in_progress` steps means compaction happened during parallel
+execution. For each in_progress step:
+
+1. Check its `dependsOn` — if ALL predecessors are `done`, the step was
+   legitimately running in parallel and can be re-dispatched
+2. If a predecessor is also `in_progress`, the step may be stale from a
+   crash — wait for the predecessor to complete first
+3. Determine the step's phase (implementation vs verification):
+   - Check `codexSessions[step_id].phase` in progress.json — if `"verify"`,
+     the step was mid-verification (Claude had finished implementing,
+     Codex was reviewing). Resume by re-running verification.
+   - If `codexSessions[step_id].phase` is `"implement"` (codex-impl step),
+     Codex was mid-implementation. Check result/stream files below.
+   - If no codexSessions entry exists for this step, it was mid-
+     implementation by Claude. Resume from progress items.
+4. Check for existing result/stream files in the plan directory:
+   - `.codex-result-step-N.txt` exists → Codex finished, parse the result
+   - `.codex-stream-step-N.jsonl` exists but no result → Codex may still
+     be running (check process) or may have crashed
+   - Neither exists → step was mid-implementation, resume from
+     progress items
+
+Re-dispatch legitimate parallel steps using the DAG-driven execution
+loop below.
+
+### If a single in-progress step exists
 
 A step with status `in_progress` means compaction happened mid-step. Read
 the step's progress array. The `done` items tell you what's been done.

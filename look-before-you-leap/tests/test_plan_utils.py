@@ -23,27 +23,54 @@ STRUCTURED_RESULT = """### Criterion: "criterion one"
 Codex: PASS"""
 
 
-def make_plan(*, result=None, progress=None):
+def make_step(
+    step_id,
+    *,
+    title=None,
+    status="pending",
+    owner="claude",
+    mode="claude-impl",
+    skill="none",
+    codex_verify=True,
+    acceptance_criteria="1. first criterion. 2. second criterion.",
+    files=None,
+    progress=None,
+    depends_on=None,
+    result=None,
+):
     step = {
-        "id": 1,
-        "title": "Regression target",
-        "status": "in_progress",
-        "owner": "claude",
-        "mode": "claude-impl",
-        "skill": "none",
-        "codexVerify": True,
-        "acceptanceCriteria": "1. first criterion. 2. second criterion.",
-        "files": ["look-before-you-leap/tests/test_plan_utils.py"],
+        "id": step_id,
+        "title": title or f"Step {step_id}",
+        "status": status,
+        "owner": owner,
+        "mode": mode,
+        "skill": skill,
+        "codexVerify": codex_verify,
+        "acceptanceCriteria": acceptance_criteria,
+        "files": files if files is not None else ["look-before-you-leap/tests/test_plan_utils.py"],
         "progress": progress if progress is not None else [],
     }
+    if depends_on is not None:
+        step["dependsOn"] = depends_on
     if result is not None:
         step["result"] = result
+    return step
 
+
+def make_plan(*, result=None, progress=None):
     return {
         "name": "fixture",
         "title": "Fixture Plan",
         "status": "active",
-        "steps": [step],
+        "steps": [
+            make_step(
+                1,
+                title="Regression target",
+                status="in_progress",
+                progress=progress,
+                result=result,
+            )
+        ],
     }
 
 
@@ -393,18 +420,24 @@ class ProgressJsonTests(unittest.TestCase):
             plan_path = self.write_plan(temp_dir, plan)
             plan_json_before = plan_path.read_text()
 
-            self.run_cli("update-codex-session", str(plan_path), "thread-123", "verify")
+            self.run_cli(
+                "update-codex-session",
+                str(plan_path),
+                "thread-123",
+                "verify",
+                "1",
+            )
 
             # plan.json unchanged
             self.assertEqual(plan_path.read_text(), plan_json_before)
 
-            # Session in progress.json
+            # Session in progress.json under the step-keyed map
             prog_path = Path(temp_dir) / "progress.json"
             progress = json.loads(prog_path.read_text())
-            self.assertEqual(progress["codexSession"]["threadId"], "thread-123")
+            self.assertEqual(progress["codexSessions"]["1"]["threadId"], "thread-123")
 
             # get-codex-session reads from progress.json
-            result = self.run_cli("get-codex-session", str(plan_path))
+            result = self.run_cli("get-codex-session", str(plan_path), "1")
             session = json.loads(result.stdout)
             self.assertEqual(session["threadId"], "thread-123")
 
@@ -464,6 +497,249 @@ class ProgressJsonTests(unittest.TestCase):
 
             result = plan_utils.find_active_plan(temp_dir)
             self.assertIn("plan-b", result)
+
+
+class ParallelExecutionPlanUtilsTests(unittest.TestCase):
+    def write_plan(self, temp_dir, plan):
+        plan_path = Path(temp_dir) / "plan.json"
+        plan_path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+        return plan_path
+
+    def read_plan(self, plan_path):
+        return plan_utils.read_plan(str(plan_path))
+
+    def run_cli(self, *args):
+        return subprocess.run(
+            [sys.executable, str(PLAN_UTILS), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_transactional_locking_preserves_concurrent_step_updates(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            steps = [make_step(step_id) for step_id in range(1, 41)]
+            plan_path = self.write_plan(temp_dir, {
+                "name": "fixture",
+                "title": "Fixture Plan",
+                "status": "active",
+                "steps": steps,
+            })
+            init_result = self.run_cli("init-progress", str(plan_path))
+            self.assertEqual(init_result.returncode, 0, init_result.stderr)
+
+            trigger_path = Path(temp_dir) / "start.signal"
+            wrapper = (
+                "import os, subprocess, sys, time\n"
+                "trigger = sys.argv[1]\n"
+                "command = sys.argv[2:]\n"
+                "while not os.path.exists(trigger):\n"
+                "    time.sleep(0.005)\n"
+                "result = subprocess.run(command, capture_output=True, text=True, check=False)\n"
+                "sys.stdout.write(result.stdout)\n"
+                "sys.stderr.write(result.stderr)\n"
+                "raise SystemExit(result.returncode)\n"
+            )
+
+            proc1 = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    wrapper,
+                    str(trigger_path),
+                    sys.executable,
+                    str(PLAN_UTILS),
+                    "update-step",
+                    str(plan_path),
+                    "1",
+                    "in_progress",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            proc2 = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    wrapper,
+                    str(trigger_path),
+                    sys.executable,
+                    str(PLAN_UTILS),
+                    "update-step",
+                    str(plan_path),
+                    "2",
+                    "blocked",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            trigger_path.write_text("go\n", encoding="utf-8")
+            _, stderr1 = proc1.communicate(timeout=10)
+            _, stderr2 = proc2.communicate(timeout=10)
+
+            self.assertEqual(proc1.returncode, 0, stderr1)
+            self.assertEqual(proc2.returncode, 0, stderr2)
+
+            merged = self.read_plan(plan_path)
+            step_statuses = {step["id"]: step["status"] for step in merged["steps"]}
+            self.assertEqual(step_statuses[1], "in_progress")
+            self.assertEqual(step_statuses[2], "blocked")
+
+    def test_runnable_steps_follow_dag_frontier(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, {
+                "name": "fixture",
+                "title": "Fixture Plan",
+                "status": "active",
+                "steps": [
+                    make_step(1, result=STRUCTURED_RESULT),
+                    make_step(2, result=STRUCTURED_RESULT),
+                    make_step(3, depends_on=[1]),
+                    make_step(4, depends_on=[1, 2]),
+                ],
+            })
+
+            initial = [step["id"] for step in plan_utils.runnable_steps(self.read_plan(plan_path))]
+            self.assertEqual(initial, [1, 2])
+
+            step1_result = self.run_cli("update-step", str(plan_path), "1", "done")
+            self.assertEqual(step1_result.returncode, 0, step1_result.stderr)
+            after_step1 = [step["id"] for step in plan_utils.runnable_steps(self.read_plan(plan_path))]
+            self.assertEqual(after_step1, [2, 3])
+
+            step2_result = self.run_cli("update-step", str(plan_path), "2", "done")
+            self.assertEqual(step2_result.returncode, 0, step2_result.stderr)
+            after_step2 = [step["id"] for step in plan_utils.runnable_steps(self.read_plan(plan_path))]
+            self.assertEqual(after_step2, [3, 4])
+
+    def test_active_steps_returns_all_in_progress_steps(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, {
+                "name": "fixture",
+                "title": "Fixture Plan",
+                "status": "active",
+                "steps": [make_step(1), make_step(2), make_step(3)],
+            })
+
+            result1 = self.run_cli("update-step", str(plan_path), "1", "in_progress")
+            result2 = self.run_cli("update-step", str(plan_path), "2", "in_progress")
+            self.assertEqual(result1.returncode, 0, result1.stderr)
+            self.assertEqual(result2.returncode, 0, result2.stderr)
+
+            active = plan_utils.active_steps(self.read_plan(plan_path))
+            self.assertEqual([step["id"] for step in active], [1, 2])
+
+    def test_get_next_step_supports_legacy_and_dependency_aware_plans(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy_path = self.write_plan(temp_dir, {
+                "name": "legacy",
+                "title": "Legacy Plan",
+                "status": "active",
+                "steps": [make_step(1), make_step(2), make_step(3)],
+            })
+
+            legacy_next = plan_utils.get_next_step(self.read_plan(legacy_path))
+            self.assertIsNotNone(legacy_next)
+            self.assertEqual(legacy_next["id"], 1)
+
+            dag_dir = Path(temp_dir) / "dag"
+            dag_dir.mkdir()
+            dag_path = self.write_plan(str(dag_dir), {
+                "name": "dag",
+                "title": "DAG Plan",
+                "status": "active",
+                "steps": [
+                    make_step(1, status="done", result=STRUCTURED_RESULT),
+                    make_step(2, depends_on=[1]),
+                    make_step(3, depends_on=[2]),
+                ],
+            })
+
+            dag_next = plan_utils.get_next_step(self.read_plan(dag_path))
+            self.assertIsNotNone(dag_next)
+            self.assertEqual(dag_next["id"], 2)
+
+    def test_per_step_codex_sessions_stay_independent_and_migrate_legacy_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, {
+                "name": "fixture",
+                "title": "Fixture Plan",
+                "status": "active",
+                "steps": [make_step(1), make_step(2), make_step(3)],
+            })
+
+            update_step1 = self.run_cli(
+                "update-codex-session",
+                str(plan_path),
+                "thread-1",
+                "implement",
+                "1",
+            )
+            update_step3 = self.run_cli(
+                "update-codex-session",
+                str(plan_path),
+                "thread-3",
+                "verify",
+                "3",
+            )
+            self.assertEqual(update_step1.returncode, 0, update_step1.stderr)
+            self.assertEqual(update_step3.returncode, 0, update_step3.stderr)
+
+            progress = json.loads((Path(temp_dir) / "progress.json").read_text(encoding="utf-8"))
+            self.assertEqual(progress["codexSessions"]["1"]["threadId"], "thread-1")
+            self.assertEqual(progress["codexSessions"]["1"]["phase"], "implement")
+            self.assertEqual(progress["codexSessions"]["3"]["threadId"], "thread-3")
+            self.assertEqual(progress["codexSessions"]["3"]["phase"], "verify")
+
+            legacy_dir = Path(temp_dir) / "legacy"
+            legacy_dir.mkdir()
+            legacy_plan_path = self.write_plan(str(legacy_dir), {
+                "name": "legacy",
+                "title": "Legacy Plan",
+                "status": "active",
+                "steps": [make_step(1, status="in_progress"), make_step(2)],
+            })
+            legacy_progress_path = legacy_plan_path.parent / "progress.json"
+            legacy_progress_path.write_text(
+                json.dumps(
+                    {
+                        "steps": {"1": {"status": "in_progress"}},
+                        "codexSession": {
+                            "threadId": "legacy-thread",
+                            "phase": "implement",
+                            "interactionCount": 2,
+                            "lastInteraction": "2026-03-25T10:00:00Z",
+                        },
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            migrated_session = plan_utils.get_codex_session(str(legacy_plan_path))
+            self.assertEqual(migrated_session["threadId"], "legacy-thread")
+            migrated_progress = json.loads(legacy_progress_path.read_text(encoding="utf-8"))
+            self.assertNotIn("codexSession", migrated_progress)
+            self.assertEqual(
+                migrated_progress["codexSessions"]["1"]["threadId"],
+                "legacy-thread",
+            )
+
+    def test_runnable_steps_treat_missing_depends_on_as_no_dependencies(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, {
+                "name": "fixture",
+                "title": "Fixture Plan",
+                "status": "active",
+                "steps": [make_step(1), make_step(2), make_step(3)],
+            })
+
+            runnable = plan_utils.runnable_steps(self.read_plan(plan_path))
+            self.assertEqual([step["id"] for step in runnable], [1, 2, 3])
 
 
 if __name__ == "__main__":

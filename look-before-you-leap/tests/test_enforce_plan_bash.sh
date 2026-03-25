@@ -13,6 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 HOOK="${PLUGIN_ROOT}/hooks/enforce-plan-bash.sh"
+EDIT_HOOK="${PLUGIN_ROOT}/hooks/enforce-plan.sh"
 
 PASS=0
 FAIL=0
@@ -69,12 +70,32 @@ print(json.dumps({
 " "$cmd" "$cwd"
 }
 
+make_edit_input() {
+  local file_path="$1"
+  local cwd="$2"
+  python3 -c "
+import json, sys
+print(json.dumps({
+    'tool_name': 'Edit',
+    'tool_input': {'file_path': sys.argv[1]},
+    'cwd': sys.argv[2]
+}))
+" "$file_path" "$cwd"
+}
+
 # run_hook writes output to HOOK_OUT_FILE (no subshell, preserves PPID)
 run_hook() {
   local cmd="$1"
   local cwd="$2"
   : > "$HOOK_OUT_FILE"
   make_input "$cmd" "$cwd" | bash "$HOOK" > "$HOOK_OUT_FILE" 2>/dev/null || true
+}
+
+run_edit_hook() {
+  local file_path="$1"
+  local cwd="$2"
+  : > "$HOOK_OUT_FILE"
+  make_edit_input "$file_path" "$cwd" | bash "$EDIT_HOOK" > "$HOOK_OUT_FILE" 2>/dev/null || true
 }
 
 setup_with_plan() {
@@ -94,6 +115,29 @@ setup_with_plan() {
 JSON
   # Session lock must match the hook's $PPID, which is this script's $$
   echo "$$" > "$root/.temp/plan-mode/active/demo/.session-lock"
+}
+
+setup_with_verify_pending_step() {
+  local root="$1"
+  mkdir -p "$root/.git" "$root/.temp/plan-mode/active/demo"
+  cat > "$root/.temp/plan-mode/active/demo/plan.json" << 'JSON'
+{
+  "name": "demo",
+  "title": "Demo",
+  "context": "test",
+  "status": "active",
+  "steps": [
+    {"id": 1, "title": "verified", "status": "done", "files": ["src/owned.ts"]},
+    {"id": 2, "title": "other", "status": "pending", "files": ["src/other.ts"]}
+  ],
+  "blocked": [],
+  "completedSummary": [],
+  "deviations": []
+}
+JSON
+  echo "$$" > "$root/.temp/plan-mode/active/demo/.session-lock"
+  printf "1\n%s\n" "$root/.temp/plan-mode/active/demo/plan.json" > \
+    "$root/.temp/plan-mode/active/demo/.verify-pending-1"
 }
 
 cleanup() {
@@ -249,6 +293,22 @@ setup_with_plan "$ROOT"
 
 run_hook "echo hello > somefile.txt" "$ROOT"
 assert_allowed_file "echo redirect with plan"
+
+cleanup "$ROOT"
+
+# ============================================================
+echo ""
+echo "=== Test: verify-pending blocks only the verified step's files ==="
+# ============================================================
+
+ROOT=$(make_root)
+setup_with_verify_pending_step "$ROOT"
+
+run_edit_hook "src/owned.ts" "$ROOT"
+assert_denied_file "verify-pending blocks edit to step file"
+
+run_edit_hook "src/other.ts" "$ROOT"
+assert_allowed_file "verify-pending allows edit outside step files"
 
 cleanup "$ROOT"
 

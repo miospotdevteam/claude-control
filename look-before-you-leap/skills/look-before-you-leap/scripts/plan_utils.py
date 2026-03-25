@@ -13,6 +13,8 @@ fields are read from plan.json as a fallback.
 CLI usage:
     python3 plan-utils.py status <plan.json>
     python3 plan-utils.py next-step <plan.json>
+    python3 plan-utils.py active-steps <plan.json>
+    python3 plan-utils.py runnable-steps <plan.json>
     python3 plan-utils.py update-step <plan.json> <step_id> <new_status>
     python3 plan-utils.py update-progress <plan.json> <step_id> <progress_index> <new_status>
     python3 plan-utils.py set-result <plan.json> <step_id> <result_text>
@@ -21,11 +23,12 @@ CLI usage:
     python3 plan-utils.py is-fresh <plan.json>
     python3 plan-utils.py is-complete <plan.json>
     python3 plan-utils.py find-active <project_root>
-    python3 plan-utils.py update-codex-session <plan.json> <threadId> <phase>
-    python3 plan-utils.py get-codex-session <plan.json>
+    python3 plan-utils.py update-codex-session <plan.json> <threadId> <phase> [step_id]
+    python3 plan-utils.py get-codex-session <plan.json> [step_id]
     python3 plan-utils.py clear-codex-session <plan.json>
 """
 
+import fcntl
 import json
 import os
 import signal
@@ -50,12 +53,43 @@ def read_progress(plan_path):
         return json.load(f)
 
 
+def transactional_update(progress_path, mutator_fn):
+    """Apply a read-modify-write update while holding an exclusive file lock."""
+    parent_dir = os.path.dirname(progress_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+
+    try:
+        with open(progress_path, "x", encoding="utf-8") as f:
+            f.write("{}\n")
+    except FileExistsError:
+        pass
+
+    with open(progress_path, "r+", encoding="utf-8") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            raw = f.read()
+            data = json.loads(raw) if raw.strip() else {}
+            mutator_fn(data)
+            f.seek(0)
+            f.truncate()
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+            return data
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
 def write_progress(plan_path, progress):
     """Write progress dict to progress.json sibling."""
     path = progress_path_for(plan_path)
-    with open(path, "w") as f:
-        json.dump(progress, f, indent=2, ensure_ascii=False)
-        f.write("\n")
+    progress_copy = json.loads(json.dumps(progress))
+
+    def _replace(existing):
+        existing.clear()
+        existing.update(progress_copy)
+
+    transactional_update(path, _replace)
 
 
 def _ensure_progress(plan_path):
@@ -114,10 +148,19 @@ def extract_progress(plan):
         progress["completedSummary"] = list(plan["completedSummary"])
     if plan.get("deviations"):
         progress["deviations"] = list(plan["deviations"])
-    if plan.get("codexSession"):
+    if plan.get("codexSessions"):
+        progress["codexSessions"] = dict(plan["codexSessions"])
+    elif plan.get("codexSession"):
         progress["codexSession"] = dict(plan["codexSession"])
 
     return progress
+
+
+def _seed_progress_if_needed(plan_path, progress):
+    """Bootstrap empty progress data from plan.json for first-write migration."""
+    if progress:
+        return
+    progress.update(extract_progress(read_plan_definition(plan_path)))
 
 
 def init_progress(plan):
@@ -180,7 +223,10 @@ def merge_plan_progress(plan, progress):
         merged["completedSummary"] = list(progress["completedSummary"])
     if "deviations" in progress:
         merged["deviations"] = list(progress["deviations"])
-    if "codexSession" in progress:
+    if "codexSessions" in progress:
+        merged["codexSessions"] = copy.deepcopy(progress["codexSessions"])
+        merged.pop("codexSession", None)
+    elif "codexSession" in progress:
         merged["codexSession"] = copy.deepcopy(progress["codexSession"])
 
     return merged
@@ -249,14 +295,46 @@ def count_by_status(plan):
     return counts
 
 
+def active_steps(plan):
+    """Return all currently in-progress steps."""
+    return [
+        step for step in plan.get("steps", [])
+        if step.get("status") == "in_progress"
+    ]
+
+
+def runnable_steps(plan):
+    """Return all pending steps whose dependencies are satisfied."""
+    statuses = {
+        step["id"]: step.get("status", "pending")
+        for step in plan.get("steps", [])
+    }
+
+    runnable = []
+    for step in plan.get("steps", []):
+        if step.get("status", "pending") != "pending":
+            continue
+        depends_on = step.get("dependsOn") or []
+        if all(statuses.get(dep_id) == "done" for dep_id in depends_on):
+            runnable.append(step)
+    return runnable
+
+
 def get_next_step(plan):
-    """Find the next step to work on (in_progress first, then pending)."""
-    for step in plan.get("steps", []):
-        if step["status"] == "in_progress":
-            return step
-    for step in plan.get("steps", []):
-        if step["status"] == "pending":
-            return step
+    """Find the next step to work on.
+
+    Backwards compatibility:
+    - Prefer the first in-progress step when any are active
+    - Otherwise return the first runnable pending step
+    """
+    active = active_steps(plan)
+    if active:
+        return active[0]
+
+    runnable = runnable_steps(plan)
+    if runnable:
+        return runnable[0]
+
     return None
 
 
@@ -298,13 +376,16 @@ def _update_step_in_progress(plan_path, step_id, updater):
     updater(step_prog) should mutate step_prog in place.
     Returns the progress dict after writing.
     """
-    progress = _ensure_progress(plan_path)
     step_key = str(step_id)
-    if step_key not in progress.get("steps", {}):
-        progress.setdefault("steps", {})[step_key] = {"status": "pending"}
-    updater(progress["steps"][step_key])
-    write_progress(plan_path, progress)
-    return progress
+    progress_path = progress_path_for(plan_path)
+
+    def _mutate(progress):
+        _seed_progress_if_needed(plan_path, progress)
+        if step_key not in progress.get("steps", {}):
+            progress.setdefault("steps", {})[step_key] = {"status": "pending"}
+        updater(progress["steps"][step_key])
+
+    return transactional_update(progress_path, _mutate)
 
 
 def update_step_status(plan_path, step_id, new_status):
@@ -535,75 +616,135 @@ def set_result(plan_path, step_id, result_text):
 
 def add_summary(plan_path, text):
     """Append to the completedSummary array. Writes to progress.json."""
-    progress = _ensure_progress(plan_path)
-    progress.setdefault("completedSummary", []).append(text)
-    write_progress(plan_path, progress)
+    def _mutate(progress):
+        _seed_progress_if_needed(plan_path, progress)
+        progress.setdefault("completedSummary", []).append(text)
+
+    transactional_update(progress_path_for(plan_path), _mutate)
     return True
 
 
 def add_deviation(plan_path, text):
     """Append to the deviations array. Writes to progress.json."""
-    progress = _ensure_progress(plan_path)
-    progress.setdefault("deviations", []).append(text)
-    write_progress(plan_path, progress)
+    def _mutate(progress):
+        _seed_progress_if_needed(plan_path, progress)
+        progress.setdefault("deviations", []).append(text)
+
+    transactional_update(progress_path_for(plan_path), _mutate)
     return True
 
 
-def update_codex_session(plan_path, thread_id, phase):
-    """Set or update the codexSession object in progress.json.
+def _resolve_codex_session_step_id(plan, step_id=None):
+    """Resolve the step ID for step-scoped codex session storage."""
+    if step_id is not None:
+        try:
+            resolved_step_id = int(step_id)
+        except (TypeError, ValueError):
+            return None
+        step = get_step(plan, resolved_step_id)
+        return str(step["id"]) if step else None
 
-    Creates the codexSession if it doesn't exist. Increments
-    interactionCount and updates lastInteraction timestamp.
-    """
+    current = active_step(plan)
+    if current is not None:
+        return str(current["id"])
+
+    next_step = get_next_step(plan)
+    if next_step is not None:
+        return str(next_step["id"])
+
+    return None
+
+
+def _ensure_codex_sessions(progress, plan_path):
+    """Normalize codex session storage to the step-keyed codexSessions map."""
+    existing_sessions = progress.get("codexSessions")
+    if isinstance(existing_sessions, dict):
+        progress.pop("codexSession", None)
+        return existing_sessions
+
+    sessions = {}
+    legacy_session = progress.pop("codexSession", None)
+    if isinstance(legacy_session, dict):
+        plan = merge_plan_progress(read_plan_definition(plan_path), progress)
+        target_step_id = _resolve_codex_session_step_id(plan)
+        if target_step_id is not None:
+            sessions[target_step_id] = legacy_session
+
+    progress["codexSessions"] = sessions
+    return sessions
+
+
+def update_codex_session(plan_path, thread_id, phase, step_id=None):
+    """Set or update the per-step codexSessions entry in progress.json."""
     from datetime import datetime, timezone
 
-    progress = _ensure_progress(plan_path)
-    session = progress.get("codexSession")
-    if not isinstance(session, dict):
-        session = {
-            "threadId": thread_id,
-            "phase": phase,
-            "interactionCount": 1,
-            "lastInteraction": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-    else:
-        session["threadId"] = thread_id
-        session["phase"] = phase
-        prev_count = session.get("interactionCount", 0)
-        session["interactionCount"] = (prev_count if isinstance(prev_count, int) else 0) + 1
-        session["lastInteraction"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    progress["codexSession"] = session
-    write_progress(plan_path, progress)
+    plan = read_plan(plan_path)
+    target_step_id = _resolve_codex_session_step_id(plan, step_id)
+    if target_step_id is None:
+        print(
+            "Error: could not resolve step for codex session update",
+            file=sys.stderr,
+        )
+        return False
+
+    def _mutate(progress):
+        _seed_progress_if_needed(plan_path, progress)
+        sessions = _ensure_codex_sessions(progress, plan_path)
+        session = sessions.get(target_step_id)
+        if not isinstance(session, dict):
+            session = {
+                "threadId": thread_id,
+                "phase": phase,
+                "interactionCount": 1,
+                "lastInteraction": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+        else:
+            session["threadId"] = thread_id
+            session["phase"] = phase
+            prev_count = session.get("interactionCount", 0)
+            session["interactionCount"] = (
+                (prev_count if isinstance(prev_count, int) else 0) + 1
+            )
+            session["lastInteraction"] = datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+        sessions[target_step_id] = session
+
+    transactional_update(progress_path_for(plan_path), _mutate)
     return True
 
 
-def get_codex_session(plan_path):
-    """Read and return the codexSession object from progress.json.
+def get_codex_session(plan_path, step_id=None):
+    """Read and return the per-step codex session object.
 
-    Falls back to plan.json only when progress.json has no codexSession
-    key at all (legacy plan). If progress.json explicitly sets
-    codexSession to None (cleared), returns None without fallback.
+    On first access, legacy singleton codexSession data is migrated to the
+    step-keyed codexSessions map using the current in-progress step, falling
+    back to the next runnable step for sequential-plan compatibility.
     """
-    progress = read_progress(plan_path)
-    if progress and "codexSession" in progress:
-        return progress["codexSession"]
-    # Legacy fallback — only if progress.json doesn't exist or has no key
-    with open(plan_path) as f:
-        plan = json.load(f)
-    return plan.get("codexSession")
+    plan = read_plan(plan_path)
+    target_step_id = _resolve_codex_session_step_id(plan, step_id)
+    if target_step_id is None:
+        return None
+
+    result = {"session": None}
+
+    def _mutate(progress):
+        _seed_progress_if_needed(plan_path, progress)
+        sessions = _ensure_codex_sessions(progress, plan_path)
+        result["session"] = sessions.get(target_step_id)
+
+    transactional_update(progress_path_for(plan_path), _mutate)
+    return result["session"]
 
 
 def clear_codex_session(plan_path):
-    """Remove the codexSession object from progress.json.
+    """Remove all stored codexSessions from progress.json."""
+    def _mutate(progress):
+        _seed_progress_if_needed(plan_path, progress)
+        progress["codexSessions"] = {}
+        progress.pop("codexSession", None)
 
-    Sets codexSession to null explicitly (rather than deleting the key)
-    so that get_codex_session() won't fall back to a stale plan.json value.
-    Used when a thread is lost, a plan completes, or a fresh thread
-    is needed. Safe to call even if codexSession doesn't exist.
-    """
-    progress = _ensure_progress(plan_path)
-    progress["codexSession"] = None
-    write_progress(plan_path, progress)
+    transactional_update(progress_path_for(plan_path), _mutate)
     return True
 
 
@@ -724,10 +865,8 @@ def active_step(plan):
 
     Returns the step dict, or None if no step is in progress.
     """
-    for step in plan.get("steps", []):
-        if step.get("status") == "in_progress":
-            return step
-    return None
+    active = active_steps(plan)
+    return active[0] if active else None
 
 
 def effective_owner(step, group_index=None):
@@ -822,6 +961,36 @@ def cli_next_step(plan_path):
         print(json.dumps({"id": None, "title": None, "message": "No pending steps"}))
 
 
+def cli_active_steps(plan_path):
+    """Print all active steps."""
+    plan = read_plan(plan_path)
+    print(json.dumps([
+        {
+            "id": step["id"],
+            "title": step["title"],
+            "status": step["status"],
+            "owner": step.get("owner", "claude"),
+            "mode": step.get("mode", "claude-impl"),
+            "files": step.get("files", []),
+        }
+        for step in active_steps(plan)
+    ]))
+
+
+def cli_runnable_steps(plan_path):
+    """Print all runnable pending steps."""
+    plan = read_plan(plan_path)
+    print(json.dumps([
+        {
+            "id": step["id"],
+            "title": step["title"],
+            "status": step["status"],
+            "description": step.get("description", ""),
+        }
+        for step in runnable_steps(plan)
+    ]))
+
+
 def print_help():
     """Print usage information with all available commands."""
     print("""Usage: plan_utils.py <command> <plan.json|project_root> [args...]
@@ -829,6 +998,8 @@ def print_help():
 Plan state commands (reads plan.json + progress.json merged view):
   status <plan.json>                              Show plan status summary
   next-step <plan.json>                           Show next step to work on
+  active-steps <plan.json>                        Show all in-progress steps
+  runnable-steps <plan.json>                      Show runnable pending steps
   is-fresh <plan.json>                            Check if plan is untouched
   is-complete <plan.json>                         Check if all steps are done
 
@@ -841,8 +1012,8 @@ Plan update commands (writes to progress.json):
   add-deviation <plan.json> <text>                Append to deviations
 
 Codex session commands (writes to progress.json):
-  update-codex-session <plan.json> <threadId> <phase>  Set/update codex session
-  get-codex-session <plan.json>                        Read codex session state
+  update-codex-session <plan.json> <threadId> <phase> [step_id]  Set/update codex session
+  get-codex-session <plan.json> [step_id]              Read codex session state
   clear-codex-session <plan.json>                      Remove codex session
 
 Step introspection commands:
@@ -911,6 +1082,12 @@ def main():
     elif command == "next-step":
         cli_next_step(plan_path)
 
+    elif command == "active-steps":
+        cli_active_steps(plan_path)
+
+    elif command == "runnable-steps":
+        cli_runnable_steps(plan_path)
+
     elif command == "update-step":
         if len(sys.argv) < 5:
             print("Usage: plan-utils.py update-step <plan.json> <step_id> <status>", file=sys.stderr)
@@ -969,15 +1146,21 @@ def main():
 
     elif command == "update-codex-session":
         if len(sys.argv) < 5:
-            print("Usage: plan-utils.py update-codex-session <plan.json> <threadId> <phase>", file=sys.stderr)
+            print(
+                "Usage: plan-utils.py update-codex-session <plan.json> "
+                "<threadId> <phase> [step_id]",
+                file=sys.stderr,
+            )
             sys.exit(1)
         thread_id = sys.argv[3]
         phase = sys.argv[4]
-        if not update_codex_session(plan_path, thread_id, phase):
+        step_id = sys.argv[5] if len(sys.argv) > 5 else None
+        if not update_codex_session(plan_path, thread_id, phase, step_id):
             sys.exit(1)
 
     elif command == "get-codex-session":
-        session = get_codex_session(plan_path)
+        step_id = sys.argv[3] if len(sys.argv) > 3 else None
+        session = get_codex_session(plan_path, step_id)
         if session:
             print(json.dumps(session))
         else:

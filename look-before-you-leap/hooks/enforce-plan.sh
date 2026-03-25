@@ -40,7 +40,7 @@ output = {
         "permissionDecisionReason": (
             "BLOCKED: plan.json is immutable after approval. "
             "All mutable state (step status, results, progress items, "
-            "completedSummary, deviations, codexSession) lives in progress.json.\n\n"
+            "completedSummary, deviations, codexSessions) lives in progress.json.\n\n"
             "Use plan_utils.py commands to update progress:\n"
             "  update-step, update-progress, set-result, add-summary, "
             "add-deviation, complete-step\n\n"
@@ -228,30 +228,111 @@ fi
 if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
   VERIFY_MARKERS=("$SESSION_PLAN_DIR"/.verify-pending-*)
   if [ -e "${VERIFY_MARKERS[0]}" ]; then
-    pending_steps=""
-    for marker in "${VERIFY_MARKERS[@]}"; do
-      step_num=$(head -1 "$marker" 2>/dev/null) || true
-      if [ -n "$step_num" ]; then
-        pending_steps="${pending_steps:+$pending_steps, }Step $step_num"
-      fi
-    done
+    export HOOK_FILE_PATH="$FILE_PATH"
+    export HOOK_PLAN_PATH="$SESSION_PLAN"
+    export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
+    export HOOK_CWD="${CWD:-$PWD}"
+    export HOOK_PLAN_UTILS="$PLAN_UTILS"
+    export HOOK_VERIFY_MARKERS="$(printf '%s\n' "${VERIFY_MARKERS[@]}")"
 
-    export HOOK_PENDING_STEPS="${pending_steps:-unknown}"
-    export HOOK_PLAN_DIR="$SESSION_PLAN_DIR"
-    python3 << 'PYEOF'
+    VERIFY_RESULT=$(python3 << 'PYEOF'
 import json, os, sys
 
-pending = os.environ["HOOK_PENDING_STEPS"]
-plan_dir = os.environ["HOOK_PLAN_DIR"]
+plan_path = os.environ.get("HOOK_PLAN_PATH", "")
+raw_file_path = os.environ.get("HOOK_FILE_PATH", "")
+project_root = os.environ.get("HOOK_PROJECT_ROOT", "")
+cwd = os.environ.get("HOOK_CWD", "")
+plan_utils_path = os.environ.get("HOOK_PLAN_UTILS", "")
+marker_paths = [
+    line for line in os.environ.get("HOOK_VERIFY_MARKERS", "").splitlines() if line
+]
+
+
+def normalize_file_path(path):
+    if not path:
+        return ""
+    if not os.path.isabs(path):
+        path = os.path.join(cwd or project_root, path)
+    path = os.path.normpath(path)
+
+    root = os.path.normpath(project_root) if project_root else ""
+    if root and path.startswith(root + os.sep):
+        return path[len(root) + 1:]
+    if root and path == root:
+        return ""
+    return path
+
+
+normalized_path = normalize_file_path(raw_file_path)
+if not plan_path or not normalized_path:
+    print(json.dumps({"matching": [], "pending": []}))
+    sys.exit(0)
+
+try:
+    if plan_utils_path:
+        sys.path.insert(0, os.path.dirname(plan_utils_path))
+        import plan_utils
+        plan = plan_utils.read_plan(plan_path)
+    else:
+        with open(plan_path) as f:
+            plan = json.load(f)
+except (OSError, json.JSONDecodeError, ImportError):
+    print(json.dumps({"matching": [], "pending": []}))
+    sys.exit(0)
+
+pending = []
+matching = []
+seen = set()
+
+for marker_path in marker_paths:
+    marker_name = os.path.basename(marker_path)
+    prefix = ".verify-pending-"
+    if not marker_name.startswith(prefix):
+        continue
+    try:
+        step_id = int(marker_name[len(prefix):])
+    except ValueError:
+        continue
+
+    if step_id not in seen:
+        pending.append(step_id)
+        seen.add(step_id)
+
+    step = None
+    for candidate in plan.get("steps", []):
+        if candidate.get("id") == step_id:
+            step = candidate
+            break
+    if step and normalized_path in step.get("files", []):
+        matching.append(step_id)
+
+print(json.dumps({"matching": matching, "pending": pending}))
+PYEOF
+) || VERIFY_RESULT='{"matching":[],"pending":[]}'
+
+    matching_steps=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+steps = data.get('matching', [])
+print(', '.join(f'Step {step}' for step in steps))
+" <<< "$VERIFY_RESULT" 2>/dev/null) || true
+
+    if [ -n "$matching_steps" ]; then
+      export HOOK_MATCHING_STEPS="$matching_steps"
+      python3 << 'PYEOF'
+import json, os, sys
+
+matching = os.environ["HOOK_MATCHING_STEPS"]
 
 output = {
     "hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",
         "permissionDecisionReason": (
-            f"Step verification pending for {pending}. Code edits are blocked "
-            "until a verification sub-agent confirms the completed step was "
-            "implemented correctly and fully.\n\n"
+            f"Step verification pending for {matching}. This edit targets a file "
+            "owned by the step being verified, so code edits remain blocked until "
+            "a verification sub-agent confirms the completed step was implemented "
+            "correctly and fully.\n\n"
             "Dispatch a verification agent now (see the directive injected when "
             "the step was marked [x]).\n\n"
             "To bypass, ask the user to run /bypass."
@@ -260,7 +341,8 @@ output = {
 }
 json.dump(output, sys.stdout)
 PYEOF
-    exit 0
+      exit 0
+    fi
   fi
 fi
 

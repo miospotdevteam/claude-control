@@ -259,6 +259,7 @@ look-before-you-leap/
 │   │   └── scripts/
 │   │       ├── deps-generate.py           # Builds normalized dep maps with madge
 │   │       ├── deps-query.py              # Queries dep maps for dependencies and dependents
+│   │       ├── dep_partition.py           # Partitions target files into planning groups using dep maps
 │   │       ├── init-plan-dir.sh           # Sets up .temp/plan-mode/
 │   │       ├── plan-status.sh             # Shows all plan statuses
 │   │       ├── plan_utils.py              # Plan state management (incl. codex session commands)

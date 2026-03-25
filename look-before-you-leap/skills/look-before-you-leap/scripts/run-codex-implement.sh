@@ -165,7 +165,7 @@ fi
 codex exec \
   -C "$PROJECT_ROOT" \
   --dangerously-bypass-approvals-and-sandbox \
-  --enable fast_mode \
+  --disable fast_mode \
   --json \
   -o "$RESULT_FILE" \
   "$PROMPT" \
