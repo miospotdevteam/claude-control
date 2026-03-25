@@ -202,10 +202,15 @@ Co-exploration is not optional. When Codex is available, both agents
 MUST explore simultaneously. This produces broader coverage and catches
 blind spots neither agent would find solo.
 
-**Phase 0 — Codex preflight (ALWAYS run first):**
+**Phase 0 — Codex preflight:**
 
-Before ANY exploration, run `command -v codex` to determine Codex
-availability. Do NOT assume Codex is unavailable without proof.
+Codex availability is checked at session start and injected into your
+context. Look for `**Codex CLI: AVAILABLE**` or `**Codex CLI: NOT
+AVAILABLE**` in your session context. If present, you do NOT need to
+run `command -v codex` — it was already done.
+
+If no session-start context is available (e.g., after compaction or in
+a sub-agent), run the check as a fallback:
 
 ```bash
 command -v codex && echo "Codex available" || echo "Codex unavailable"
@@ -426,13 +431,27 @@ Orbit MCP. The `writing-plans` skill handles the details, but the flow is:
 2. Call `orbit_await_review` on the masterPlan.md — opens in VS Code and
    blocks until the user approves or requests changes
 3. Handle the response (approved → proceed, changes_requested → iterate)
-4. Once approved — proceed with plan mode handoff (EnterPlanMode →
-   minimal scratch pad → ExitPlanMode) for context clearing. The scratch
-   pad must be minimal: plan title, path, step count, one-liner context,
-   and "Read plan.json to begin execution." Nothing else — no step
-   descriptions, no Codex consensus, no file lists. The handoff marker
-   is auto-cleared by a hook when `EnterPlanMode` is called or when
-   `orbit_await_review` returns approved.
+4. Once approved — proceed with plan mode handoff:
+   **Pre-flight**: Kill ALL running background tasks before starting
+   the handoff (background Bash commands, background Agents, pending
+   Codex exec). They are no longer needed after plan approval. If any
+   survive, their results leak into the new session after context
+   clears and corrupt the fresh start.
+   a. Call `EnterPlanMode` — do NOT output any text in the same response.
+   b. After entering plan mode, a system message tells you the scratch pad
+      file path (under `~/.claude/plans/`). Write to THAT file — NOT to
+      masterPlan.md or plan.json. Content must be minimal: plan title,
+      path, step count, one-liner context, and "Read plan.json to begin
+      execution." Nothing else — no step descriptions, no Codex consensus,
+      no file lists.
+   c. Call `ExitPlanMode` — do NOT output any text in the same response.
+   The handoff marker is auto-cleared by a hook when `EnterPlanMode` is
+   called or when `orbit_await_review` returns approved.
+
+   **IMPORTANT**: Do not output explanatory text alongside `EnterPlanMode`
+   or `ExitPlanMode` calls. Extra text can interfere with the plan mode
+   transition and cause the scratch pad to appear as a stashed message
+   instead of the plan mode green box.
 
 The plan mode handoff happens **after** Orbit approval, not before. This
 ensures the user has reviewed and approved the plan before context clears.

@@ -779,3 +779,4 @@ If you catch yourself doing any of these, stop and reconsider:
 | Writing result field as "Done" or "Created X" without mapping each criterion | Use the `### Criterion:` template — map every acceptance criterion to file:line evidence |
 | Fixing a type error with the same approach that failed last reverify round | After the same category appears in 2 consecutive reverify logs, invoke `look-before-you-leap:systematic-debugging` |
 | Writing step descriptions, Codex consensus, file lists, or transcript refs into the plan mode scratch pad | Scratch pad is a POINTER: plan title, path, step count, one-liner context, "Read plan.json to begin execution." Nothing else — everything lives on disk |
+| Outputting explanatory text in the same response as EnterPlanMode or ExitPlanMode | Call the tool and NOTHING ELSE in that response — extra text interferes with the plan mode transition and causes the scratch pad to appear as a stashed message |

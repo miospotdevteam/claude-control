@@ -34,6 +34,52 @@ if [ -f "$INSTALL_CODEX_SKILLS" ]; then
   bash "$INSTALL_CODEX_SKILLS" "$PLUGIN_ROOT" 2>/dev/null || true
 fi
 
+# --- Section 1.4: Codex availability check ---
+# Run command -v codex once at session start so the result is injected into
+# additionalContext. This prevents Claude from assuming Codex is unavailable
+# or wasting a tool call to check. Also pre-populates the preflight marker
+# so track-codex-exploration.sh and inject-subagent-context.sh see it.
+CODEX_AVAILABLE="false"
+CODEX_PATH=""
+if command -v codex >/dev/null 2>&1; then
+  CODEX_AVAILABLE="true"
+  CODEX_PATH="$(command -v codex)"
+fi
+
+# Pre-populate codex preflight marker in active plan dir (if one exists)
+if [ -d "$PLAN_DIR/active" ]; then
+  # Find plan dir for this session — must match track-codex-exploration.sh resolver:
+  # 1. Session-locked dir (PPID matches .session-lock)
+  # 2. Only dir (when exactly one active plan exists)
+  # 3. Otherwise: skip (ambiguous — let track-codex-exploration.sh handle it later)
+  _preflight_plan_dir=""
+  _dir_count=0
+  _only_dir=""
+  for _d in "$PLAN_DIR/active"/*/; do
+    [ -d "$_d" ] || continue
+    _dir_count=$((_dir_count + 1))
+    _only_dir="$_d"
+    if [ -f "$_d/.session-lock" ]; then
+      _lock_pid=$(cat "$_d/.session-lock" 2>/dev/null) || true
+      if [ "$_lock_pid" = "$PPID" ]; then
+        _preflight_plan_dir="$_d"
+        break
+      fi
+    fi
+  done
+  # Fallback to only dir when exactly one exists (consistent with track-codex-exploration.sh:91)
+  if [ -z "$_preflight_plan_dir" ] && [ "$_dir_count" -eq 1 ]; then
+    _preflight_plan_dir="$_only_dir"
+  fi
+  if [ -n "$_preflight_plan_dir" ] && [ -d "$_preflight_plan_dir" ]; then
+    if [ "$CODEX_AVAILABLE" = "true" ]; then
+      printf 'available\n' > "$_preflight_plan_dir/.codex-preflight-$PPID" 2>/dev/null || true
+    else
+      printf 'unavailable\n' > "$_preflight_plan_dir/.codex-preflight-$PPID" 2>/dev/null || true
+    fi
+  fi
+fi
+
 # --- Section 1.5: Project config detection ---
 LIB_DIR="${SCRIPT_DIR}/lib"
 CONFIG_FILE="$PROJECT_ROOT/.claude/look-before-you-leap.local.md"
@@ -331,6 +377,8 @@ export SKILL_INVENTORY="$skill_inventory"
 export PROJECT_CONFIG_JSON
 export HOOK_PLUGIN_ROOT="$PLUGIN_ROOT"
 export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
+export CODEX_AVAILABLE
+export CODEX_PATH
 
 python3 << 'PYEOF'
 import json
@@ -577,6 +625,28 @@ if dep_maps.get("modules"):
         "run the refresh command."
     )
     parts.extend(["", "---", "", dep_maps_notice])
+
+# Codex availability — inject so Claude never has to check
+codex_available = os.environ.get("CODEX_AVAILABLE", "false")
+codex_path = os.environ.get("CODEX_PATH", "")
+if codex_available == "true":
+    parts.extend([
+        "", "---", "",
+        f"**Codex CLI: AVAILABLE** at `{codex_path}`\n\n"
+        "Codex is installed and ready. You do NOT need to run `command -v codex` — "
+        "this was already checked at session start. Use `codex exec` via Bash for "
+        "all Codex interactions (verification, implementation, co-exploration). "
+        "Never use the Codex MCP tool."
+    ])
+else:
+    parts.extend([
+        "", "---", "",
+        "**Codex CLI: NOT AVAILABLE**\n\n"
+        "`command -v codex` returned non-zero at session start. Codex co-exploration, "
+        "plan consensus, and step verification via Codex are unavailable. Document "
+        "this in discovery.md under `## Codex Availability` and pass "
+        "`codexStatus=unavailable` to the discovery receipt."
+    ])
 
 if active_summary:
     parts.extend(["", "---", "", active_summary])

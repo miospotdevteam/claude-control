@@ -44,6 +44,7 @@ The plugin doesn't just give instructions — it enforces them:
 |---|---|---|
 | **SessionStart** | `session-start.sh` | Injects all three skill layers, detects active plans, discovers other installed plugins, auto-detects project stack |
 | **UserPromptSubmit** | `onboarding.sh` | First-run setup: walks user through config enrichment, CLAUDE.md creation, and plugin suggestions |
+| **PreToolUse** (Codex MCP) | `block-codex-mcp.sh` | Blocks Codex MCP tool usage — enforces `codex exec` via Bash for all Codex interactions |
 | **PreToolUse** (Edit\|Write) | `enforce-plan.sh` | Blocks code edits if no active plan exists |
 | **PreToolUse** (Edit\|Write) | `check-api-contracts.sh` | Warns when editing API boundary files |
 | **PreToolUse** (Bash) | `enforce-plan-bash.sh` | Blocks Bash file-write bypasses (redirects, sed -i, tee) without an active plan |

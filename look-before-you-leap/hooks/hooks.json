@@ -34,6 +34,16 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "mcp__codex__codex|mcp__codex__codex-reply",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/block-codex-mcp.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "Read|Edit|Write|Bash",
         "hooks": [
           {

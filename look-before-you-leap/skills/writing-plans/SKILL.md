@@ -575,13 +575,20 @@ MCP:
 
 After the plan is approved via Orbit:
 
-1. **If not already in plan mode**, call `EnterPlanMode` to enter it.
-   The handoff marker (`.handoff-pending`) is auto-cleared by a hook when
-   `EnterPlanMode` is called or when `orbit_await_review` returns approved.
-2. Read the plan.json you just wrote from disk.
-3. Write a **minimal** summary to the **plan mode scratch pad** (the file
-   path is specified in the plan mode system message — it is NOT
-   masterPlan.md and NOT plan.json). Use this exact format:
+**Pre-flight**: Kill ALL running background tasks before starting the
+handoff (background Bash commands, background Agents, pending Codex exec).
+They are no longer needed after plan approval. If any survive, their
+results leak into the new session after context clears and corrupt the
+fresh start.
+
+1. **Call `EnterPlanMode`** — do NOT output any text in the same response.
+   Call the tool and nothing else. The handoff marker (`.handoff-pending`)
+   is auto-cleared by a hook when `EnterPlanMode` is called or when
+   `orbit_await_review` returns approved.
+2. **Read the scratch pad path** from the plan mode system message that
+   appears after EnterPlanMode succeeds. The path is under `~/.claude/plans/`
+   — it is NOT masterPlan.md and NOT plan.json.
+3. **Write a minimal summary** to that scratch pad file. Use this exact format:
 
    ```
    # Plan: <title from plan.json>
@@ -604,7 +611,13 @@ After the plan is approved via Orbit:
    erratically — editing code while simultaneously outputting stale Codex
    feedback. Keep it minimal.
 
-4. Call `ExitPlanMode` to present the plan to the user.
+4. **Call `ExitPlanMode`** — do NOT output any text in the same response.
+   Just call the tool.
+
+**IMPORTANT**: Do not output explanatory text alongside `EnterPlanMode` or
+`ExitPlanMode` calls. Extra text in the same response can interfere with
+the plan mode transition and cause the scratch pad to appear as a stashed
+message instead of the plan mode green box.
 
 This gives the user the built-in **"autoaccept edits and clear context?"**
 prompt. If they accept, context clears and the persistent-plans resumption

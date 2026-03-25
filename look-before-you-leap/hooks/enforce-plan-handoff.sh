@@ -11,7 +11,8 @@
 # Claude reads feedback, iterates if needed, then proceeds to execution
 # via plan mode handoff (EnterPlanMode → summarize → ExitPlanMode).
 #
-# The marker is cleared by session-start.sh (new session = context cleared).
+# The marker is cleared by clear-handoff-on-approval.sh (on Orbit approval
+# or EnterPlanMode). It is NOT auto-cleared on session start.
 # Bypass: ask the user to run /bypass
 #
 # Input: JSON on stdin with tool_name, tool_input.file_path, cwd
@@ -137,8 +138,17 @@ output = {
             "## Step D: Plan mode handoff (post-approval)\n\n"
             "The handoff marker is auto-cleared by a hook when you call "
             "EnterPlanMode (or when orbit_await_review returns approved).\n\n"
-            "3. Call `EnterPlanMode` to enter plan mode\n"
-            "4. Write a MINIMAL summary to the plan mode scratch pad using "
+            "**BEFORE calling EnterPlanMode**: Kill ALL running background "
+            "tasks (background Bash commands, background Agents, pending "
+            "Codex exec). They are no longer needed after plan approval. If "
+            "any survive, their results leak into the new session after "
+            "context clears and corrupt the fresh start. Use TaskStop for "
+            "agents and kill for Bash processes.\n\n"
+            "3. Call `EnterPlanMode` — do NOT output any text in the same "
+            "response. Call the tool and NOTHING ELSE.\n"
+            "4. After EnterPlanMode succeeds, a system message tells you the "
+            "**scratch pad file path** (it will be under `~/.claude/plans/`). "
+            "Write to THAT file — NOT to masterPlan.md or plan.json. Use "
             "this exact format:\n\n"
             "   # Plan: <title>\n"
             "   Path: <absolute path to plan.json>\n"
@@ -149,10 +159,15 @@ output = {
             "lists, Codex consensus results, exploration findings, or "
             "transcript references. All of that lives on disk. The scratch "
             "pad is a pointer, not a copy.\n"
-            "5. Call `ExitPlanMode` to present to the user\n\n"
+            "5. Call `ExitPlanMode` — again, do NOT output text in the same "
+            "response. Just call the tool.\n\n"
             "This gives the user the 'autoaccept edits and clear context?' "
             "prompt. If they accept, context clears and execution starts "
             "fresh.\n\n"
+            "IMPORTANT: Do not output explanatory text alongside EnterPlanMode "
+            "or ExitPlanMode calls. Extra text can interfere with the plan "
+            "mode transition and cause the scratch pad to appear as a stashed "
+            "message instead of the plan mode UI.\n\n"
             "Code edits are BLOCKED until this handoff is complete (or "
             "bypassed).\n"
             "To bypass, ask the user to run /bypass."
