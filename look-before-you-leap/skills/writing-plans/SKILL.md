@@ -520,12 +520,18 @@ when context runs out.
 After saving both files to disk, run the plan consensus protocol with
 Codex before presenting to the user. Both agents must agree on the plan.
 
+**Apply the Codex output batching principle** (see conductor SKILL.md):
+batch into groups of 5 items, never retry oversized prompts, cap output
+scope to structured bullets.
+
 **Round 1 — Codex reviews:**
 
+If the plan has **≤5 steps**, dispatch a single call:
+
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
-   For EACH step, return a structured proposal: \
+   For steps 1-N, return a structured proposal per step: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
    - REJECT <reason>: step should be removed or fundamentally rethought \
    - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering) \
@@ -533,11 +539,51 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    ownership assignments that contradict the routing matrix."
 ```
 
+If the plan has **>5 steps**, batch into groups of 5:
+
+```bash
+# Batch 1: steps 1-5
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+  "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
+   Review ONLY steps 1-5. For each, return: \
+   - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
+   - REJECT <reason>: step should be removed or fundamentally rethought \
+   - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering) \
+   Append results to <plan-dir>/consensus-round1.md under ## Steps 1-5"
+
+# Batch 2: steps 6-10 (adjust range for actual step count)
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+  "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
+   Review ONLY steps 6-10. For each, return: \
+   - ACCEPT / REJECT <reason> / MODIFY <changes> \
+   Append results to <plan-dir>/consensus-round1.md under ## Steps 6-10"
+
+# Continue batching until all steps are covered.
+# After all batches, also dispatch a cross-cutting check:
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+  "Read <plan-dir>/consensus-round1.md (all batch results). \
+   Flag: missing steps, wrong ordering across the full plan, \
+   ownership assignments that contradict the routing matrix. \
+   Append cross-cutting notes under ## Cross-Cutting."
+```
+
+Merge all batch results before proceeding to Round 2.
+
 **Round 2 — Claude responds** to each proposal (ACCEPT / REJECT with
 reasoning / COUNTER-PROPOSE). Update plan files with accepted changes.
 
-**Round 3 (if needed)** — Codex reviews remaining disagreements. Either
-accepts Claude's reasoning or escalates with both positions stated.
+**Round 3 (if needed)** — Final resolution. If disagreements remain
+after Round 2, dispatch Codex one more time. If **≤5 disagreements**,
+use a single call. If **>5**, batch into groups of 5 disagreements per
+call, merging results between batches.
+
+```bash
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+  "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
+   to your proposals. For these remaining disagreements: [list ≤5 items] \
+   - ACCEPT Claude's reasoning, or \
+   - ESCALATE with both positions stated (for the user to decide in Orbit)"
+```
 
 **Max 3 rounds.** Unresolved items go to Orbit with both positions clearly
 stated so the user can decide.

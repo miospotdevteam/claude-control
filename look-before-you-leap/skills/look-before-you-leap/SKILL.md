@@ -251,19 +251,24 @@ Both write to the shared `discovery.md` using append (`>>`).
 **Phase 2 — Convergence round:**
 
 After both agents finish, Claude reads all of discovery.md, then
-dispatches Codex for a convergence review:
+dispatches Codex for a focused convergence review. The prompt must ask
+for **gaps and disagreements only** — not a rehash of all findings.
+Keep Codex output scoped to structured bullet points.
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
-  "Read ALL findings in <plan-dir>/discovery.md. The other agent (Claude) \
-   explored patterns, conventions, and architecture. You explored consumers \
-   and blast radius. Now: \
-   1. What did the other agent miss? \
-   2. What do you disagree with? \
-   3. What blast radius was underestimated? \
-   4. What cross-cutting concerns connect both sets of findings? \
-   Append your convergence notes to discovery.md under ## [Codex: Convergence]"
+  "Read <plan-dir>/discovery.md. Focus ONLY on gaps and disagreements: \
+   1. What did Claude's exploration miss? (bullet points, max 5) \
+   2. Where do you disagree with Claude's findings? (cite specific lines) \
+   3. What blast radius was underestimated? (file:consumer count) \
+   4. Cross-cutting concerns connecting both sets of findings? (max 3) \
+   Keep output to structured bullets — no prose summaries. \
+   Append under ## [Codex: Convergence] in discovery.md"
 ```
+
+If discovery.md exceeds ~100 lines, tell Codex which sections to read
+(e.g., "Read ## [Codex: Consumers] and ## [Claude: Patterns] only")
+rather than asking it to process the entire file.
 
 Claude then reconciles: merge complementary findings, flag disagreements
 as open questions for the user, and update the discovery object in
@@ -373,6 +378,24 @@ compaction recovery depends on them. Do NOT invent your own schema:
 See `references/plan-schema.md` for the complete schema with all optional
 fields. But the fields above are non-negotiable.
 
+### Codex output batching principle
+
+Large Codex dispatches stall when the prompt asks Codex to process
+unbounded input (e.g., "For EACH of 15 steps..." or "Read ALL 200 lines
+of findings..."). Apply this rule to every `codex exec` call:
+
+- **Batch into groups of 5.** If the input has more than 5 items (steps,
+  disagreements, findings sections), split into sequential `codex exec`
+  calls of ≤5 items each. Merge results between batches.
+- **Never retry an oversized prompt.** If a `codex exec` call times out
+  or produces truncated output, split it — do not re-run the same prompt.
+- **Cap output scope.** Ask for structured bullet points, not open-ended
+  prose. Specify what to focus on (gaps, disagreements, missing items) —
+  not "review everything."
+
+This principle applies to consensus, convergence, verification, and any
+other multi-item Codex dispatch.
+
 ### Plan consensus protocol (multi-round debate before Orbit)
 
 After writing-plans produces the plan, Claude and Codex reach consensus
@@ -381,16 +404,48 @@ the one-shot attack pass — both agents must agree on the plan.
 
 **Round 1 — Codex reviews the plan:**
 
+If the plan has **≤5 steps**, dispatch a single call:
+
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
-   For EACH step, return a structured proposal: \
+   For steps 1-N, return a structured proposal per step: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
    - REJECT <reason>: step should be removed or fundamentally rethought \
    - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering) \
    Also flag: missing steps, wrong ordering, vague acceptance criteria, \
    ownership assignments that contradict the routing matrix."
 ```
+
+If the plan has **>5 steps**, batch into groups of 5:
+
+```bash
+# Batch 1: steps 1-5
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+  "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
+   Review ONLY steps 1-5. For each, return: \
+   - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
+   - REJECT <reason>: step should be removed or fundamentally rethought \
+   - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering) \
+   Append results to <plan-dir>/consensus-round1.md under ## Steps 1-5"
+
+# Batch 2: steps 6-10 (adjust range for actual step count)
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+  "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
+   Review ONLY steps 6-10. For each, return: \
+   - ACCEPT / REJECT <reason> / MODIFY <changes> \
+   Append results to <plan-dir>/consensus-round1.md under ## Steps 6-10"
+
+# Continue batching until all steps are covered.
+# After all batches, also dispatch a cross-cutting check:
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+  "Read <plan-dir>/consensus-round1.md (all batch results). \
+   Flag: missing steps, wrong ordering across the full plan, \
+   ownership assignments that contradict the routing matrix. \
+   Append cross-cutting notes under ## Cross-Cutting."
+```
+
+Merge all batch results before proceeding to Round 2.
 
 **Round 2 — Claude responds:**
 
@@ -405,12 +460,14 @@ Update the plan files with accepted changes.
 
 **Round 3 (if needed) — Final resolution:**
 
-If disagreements remain after Round 2, dispatch Codex one more time:
+If disagreements remain after Round 2, dispatch Codex one more time.
+If **≤5 disagreements**, use a single call. If **>5**, batch into groups
+of 5 disagreements per call, merging results between batches.
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
-   to your proposals. For each remaining disagreement: \
+   to your proposals. For these remaining disagreements: [list ≤5 items] \
    - ACCEPT Claude's reasoning, or \
    - ESCALATE with both positions stated (for the user to decide in Orbit)"
 ```
