@@ -27,7 +27,7 @@ if [[ "$FILE_PATH" == *"/.temp/"* ]] || [[ "$FILE_PATH" == *"/.temp" ]]; then
   # Guard plan.json immutability: block direct edits after plan is no longer fresh
   if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
     PLUGIN_ROOT_EARLY="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-    PLAN_UTILS_EARLY="${PLUGIN_ROOT_EARLY}/skills/look-before-you-leap/scripts/plan_utils.py"
+    PLAN_UTILS_EARLY="${PLUGIN_ROOT_EARLY}/scripts/plan_utils.py"
     is_fresh=$(python3 "$PLAN_UTILS_EARLY" is-fresh "$FILE_PATH" 2>/dev/null) || true
     if [ "$is_fresh" = "false" ]; then
       python3 << 'PYEOF'
@@ -106,7 +106,7 @@ fi
 
 # Classify the active plan (if any) to determine enforcement mode
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
 PLAN_MODE="legacy"
 if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then

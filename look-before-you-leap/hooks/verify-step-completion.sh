@@ -114,7 +114,7 @@ fi
 CACHE_FILE="$PLAN_DIR/.step-status-cache"
 
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 PLAN_JSON="$PLAN_DIR/plan.json"
 MASTER_PLAN="$PLAN_DIR/masterPlan.md"
 

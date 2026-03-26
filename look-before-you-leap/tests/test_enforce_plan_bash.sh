@@ -244,15 +244,15 @@ mkdir -p "$ROOT/.git" "$ROOT/.temp/plan-mode"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 
 # Without redirect (not a file write, passes trivially)
-run_hook "bash ${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh plan.json 1" "$ROOT"
+run_hook "bash ${PLUGIN_ROOT}/scripts/run-codex-verify.sh plan.json 1" "$ROOT"
 assert_allowed_file "plugin-root wrapper without redirect, no plan"
 
 # With redirect (file write, must pass via early allow)
-run_hook "bash ${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh plan.json 1 > .codex-result.txt" "$ROOT"
+run_hook "bash ${PLUGIN_ROOT}/scripts/run-codex-verify.sh plan.json 1 > .codex-result.txt" "$ROOT"
 assert_allowed_file "plugin-root wrapper with redirect, no plan"
 
 # Quoted path (must also pass — quotes should be stripped)
-run_hook "bash \"${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh\" plan.json 1 > .codex-result.txt" "$ROOT"
+run_hook "bash \"${PLUGIN_ROOT}/scripts/run-codex-verify.sh\" plan.json 1 > .codex-result.txt" "$ROOT"
 assert_allowed_file "quoted plugin-root wrapper with redirect, no plan"
 
 # Sibling-dir spoof (look-before-you-leap-evil/) — must be denied.

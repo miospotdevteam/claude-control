@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-PLAN_UTILS = PLUGIN_ROOT / "skills" / "look-before-you-leap" / "scripts" / "plan_utils.py"
+PLAN_UTILS = PLUGIN_ROOT / "scripts" / "plan_utils.py"
 
 # Import plan_utils for merged reads
 sys.path.insert(0, str(PLAN_UTILS.parent))

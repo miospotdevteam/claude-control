@@ -13,7 +13,7 @@ PLAN_JSON="${2:?Usage: write-claude-verify-receipt.sh <project_root> <plan.json>
 STEP_NUM="${3:?Usage: write-claude-verify-receipt.sh <project_root> <plan.json> <step>}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 source "${PLUGIN_ROOT}/hooks/lib/receipt-state.sh"
 

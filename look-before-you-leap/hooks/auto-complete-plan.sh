@@ -65,7 +65,7 @@ fi
 
 # Check if all steps are complete — prefer plan.json, fall back to masterPlan.md
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 PLAN_JSON="$PLAN_DIR_PATH/plan.json"
 MASTER_PLAN="$PLAN_DIR_PATH/masterPlan.md"
 

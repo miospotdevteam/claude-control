@@ -44,8 +44,8 @@ can be used for the wrong direction — they validate the effective owner
 
 Both scripts live at:
 ```
-${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh
-${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-implement.sh
+${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh
+${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh
 ```
 
 Usage:
@@ -78,7 +78,7 @@ Output files (in the plan directory):
 2. **Dispatch Codex verification:**
    ```
    Bash(
-     command: "bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh <plan.json> <step-number>",
+     command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step-number>",
      run_in_background: true
    )
    ```
@@ -92,7 +92,7 @@ Output files (in the plan directory):
    then mark done
 6. **If findings**: fix issues, then re-run verification:
    ```bash
-   bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh <plan.json> <step-number> [group-index]
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step-number> [group-index]
    ```
    Repeat until PASS.
 
@@ -101,7 +101,7 @@ Output files (in the plan directory):
 1. **Dispatch Codex implementation:**
    ```
    Bash(
-     command: "bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-implement.sh <plan.json> <step-number> [group-index]",
+     command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh <plan.json> <step-number> [group-index]",
      run_in_background: true
    )
    ```

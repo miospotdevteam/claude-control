@@ -23,7 +23,7 @@ ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 
 # Build active plan notice — PPID routing (subagents share parent's PPID)
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 active_plan_path=""
 if [ -d "$ACTIVE_DIR" ]; then
   active_plan_path=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
@@ -256,7 +256,7 @@ dep_maps = project_config.get("dep_maps", {})
 if dep_maps and dep_maps.get("modules"):
     project_root = os.environ.get("HOOK_PROJECT_ROOT", "")
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    scripts_dir = os.path.join(plugin_root, "skills", "look-before-you-leap", "scripts") if plugin_root else ""
+    scripts_dir = os.path.join(plugin_root, "scripts") if plugin_root else ""
     module_count = len(dep_maps["modules"])
     base_rules.append(
         f"- Dep maps configured ({module_count} modules): you MUST use deps-query.py to "
@@ -284,7 +284,7 @@ if active_plan:
     plan_dir = pathlib.Path(active_plan).parent
     plan_json_path = plan_dir / "plan.json"
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    plan_utils_cmd = os.path.join(plugin_root, "skills", "look-before-you-leap", "scripts", "plan_utils.py") if plugin_root else "plan_utils.py"
+    plan_utils_cmd = os.path.join(plugin_root, "scripts", "plan_utils.py") if plugin_root else "plan_utils.py"
     preamble_lines.extend([
         "",
         f"- Active plan exists at: {active_plan} — read it before starting work",

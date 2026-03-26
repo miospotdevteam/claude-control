@@ -181,7 +181,7 @@ echo "=== Plugin wrapper scripts pass through ==="
 
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 
-run_hook '{"tool_name": "Bash", "tool_input": {"command": "bash '"$PLUGIN_ROOT"'/skills/look-before-you-leap/scripts/run-codex-verify.sh arg1"}, "cwd": "'"$FAKE_PROJECT"'"}'
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "bash '"$PLUGIN_ROOT"'/scripts/run-codex-verify.sh arg1"}, "cwd": "'"$FAKE_PROJECT"'"}'
 assert_allowed "Plugin wrapper run-codex-verify.sh allowed"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "bash '"$PLUGIN_ROOT"'/scripts/write-discovery-receipt.sh arg1"}, "cwd": "'"$FAKE_PROJECT"'"}'

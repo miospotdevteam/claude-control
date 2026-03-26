@@ -2,7 +2,7 @@
 # Shows status of all active plans (default) or all plans (--all).
 # Reads plan.json when available, falls back to masterPlan.md grep for legacy.
 # Usage: bash .temp/plan-mode/scripts/plan-status.sh [--all]
-#        bash <plugin-root>/skills/look-before-you-leap/scripts/plan-status.sh [--all]
+#        bash <plugin-root>/scripts/plan-status.sh [--all]
 #
 # Works on both macOS and Linux.
 

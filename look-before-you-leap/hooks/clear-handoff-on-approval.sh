@@ -27,7 +27,7 @@ PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 
 # Find the plan for this session
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
 
 if [ -z "$SESSION_PLAN" ] || [ ! -f "$SESSION_PLAN" ]; then

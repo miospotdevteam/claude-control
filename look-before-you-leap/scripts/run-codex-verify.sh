@@ -188,7 +188,7 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -f "$RESULT_FILE" ]; then
   RESULT_FIRST_LINE=$(head -1 "$RESULT_FILE" | tr '[:lower:]' '[:upper:]')
   if [[ "$RESULT_FIRST_LINE" == "PASS"* ]]; then
     # Mint codex_verify receipt
-    PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+    PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     source "${PLUGIN_ROOT}/hooks/lib/receipt-state.sh"
     receipt_bootstrap 2>/dev/null || true
     PROJ_ID=$(receipt_project_id "$PROJECT_ROOT" 2>/dev/null) || true

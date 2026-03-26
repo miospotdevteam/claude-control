@@ -3,7 +3,7 @@
 # Only scans active/ — completed plans are never resumed.
 # Reads plan.json when available, falls back to masterPlan.md for legacy.
 # Usage: bash .temp/plan-mode/scripts/resume.sh
-#        bash <plugin-root>/skills/look-before-you-leap/scripts/resume.sh
+#        bash <plugin-root>/scripts/resume.sh
 #
 # Works on both macOS and Linux.
 
@@ -48,8 +48,8 @@ fi
 # Find most recently modified plan using max(plan.json, progress.json) mtime
 latest_json=""
 
-PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/../../.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 latest_json=$(python3 "$PLAN_UTILS" find-active "$(dirname "$(dirname "$ACTIVE_DIR")")" 2>/dev/null) || true
 
 # Fallback: direct filesystem search if plan_utils fails

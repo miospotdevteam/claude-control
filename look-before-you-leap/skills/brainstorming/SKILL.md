@@ -30,7 +30,7 @@ to build a picture of the relevant codebase.
 initialize the plan directory so discovery.md has a place to live:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/init-plan-dir.sh
 mkdir -p .temp/plan-mode/active/<plan-name>
 ```
 
@@ -213,7 +213,7 @@ Once approved:
 
 1. Initialize the plan directory:
    ```bash
-   bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/init-plan-dir.sh
    mkdir -p .temp/plan-mode/active/<plan-name>
    ```
 2. Write the design to `.temp/plan-mode/active/<plan-name>/design.md`

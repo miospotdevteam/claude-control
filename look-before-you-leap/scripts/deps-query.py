@@ -16,7 +16,7 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 GENERATE_SCRIPT = os.path.join(SCRIPT_DIR, "deps-generate.py")
-READ_CONFIG = os.path.join(SCRIPT_DIR, "..", "..", "..", "hooks", "lib", "read-config.py")
+READ_CONFIG = os.path.join(SCRIPT_DIR, "..", "hooks", "lib", "read-config.py")
 
 
 def read_config(project_root):

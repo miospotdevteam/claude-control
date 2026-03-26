@@ -193,7 +193,7 @@ section of discovery. Without dep maps, you're guessing at consumers;
 with them, you have the complete picture.
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py <project_root> "<file_path>"
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/deps-query.py <project_root> "<file_path>"
 ```
 
 #### masterPlan.md — user-facing proposal (write-once)
@@ -212,7 +212,7 @@ After writing plan.json, create progress.json with all steps in `pending`
 state:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py init-progress <plan.json>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/plan_utils.py init-progress <plan.json>
 ```
 
 This creates the mutable state file that tracks execution progress.
@@ -441,7 +441,7 @@ Before evaluating thresholds, run `dep_partition.py` on the scoped
 entry-point files to get graph-informed groups:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/dep_partition.py <project_root> <file_path> [<file_path> ...]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/dep_partition.py <project_root> <file_path> [<file_path> ...]
 ```
 
 The partition output tells you:

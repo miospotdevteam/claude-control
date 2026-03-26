@@ -117,7 +117,7 @@ fi
 # --- Section 2: Active plan detection ---
 active_plan_summary=""
 ACTIVE_DIR="$PLAN_DIR/active"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 
 if [ -d "$ACTIVE_DIR" ]; then
   # PPID-based plan routing: find the plan claimed by this session
@@ -426,7 +426,7 @@ try:
 
     plugin_root = os.environ.get("HOOK_PLUGIN_ROOT", "")
     project_root = os.environ.get("HOOK_PROJECT_ROOT", "")
-    scripts_dir = os.path.join(plugin_root, "skills", "look-before-you-leap", "scripts")
+    scripts_dir = os.path.join(plugin_root, "scripts")
 
     if dep_maps.get("modules"):
         module_count = len(dep_maps["modules"])

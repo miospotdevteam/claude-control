@@ -177,7 +177,7 @@ After all changes are applied:
 7. **Regenerate dep maps** (if configured) — file moves, renames, and
    extractions make existing dep maps stale. Run:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-generate.py <project_root> --stale-only
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/deps-generate.py <project_root> --stale-only
    ```
    This ensures consumers of the refactored code are correctly mapped for
    future queries. If many modules were affected, run with `--all` instead.

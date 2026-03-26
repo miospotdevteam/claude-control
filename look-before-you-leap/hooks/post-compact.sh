@@ -15,7 +15,7 @@ PROJECT_ROOT="$(find_project_root)"
 
 PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
 ACTIVE_DIR="$PLAN_DIR/active"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 
 # Note: handoff-pending is NOT auto-cleared on compaction. It persists until
 # the user approves via Orbit or runs /bypass.

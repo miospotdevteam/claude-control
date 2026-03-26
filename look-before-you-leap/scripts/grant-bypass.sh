@@ -27,7 +27,7 @@ receipt_bootstrap
 PROJ_ID=$(receipt_project_id "$PROJECT_ROOT")
 
 # Find active plan name (if any)
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
 
 if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then

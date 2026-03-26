@@ -184,7 +184,7 @@ fix), create the plan directory and write findings to disk **before**
 moving to Step 2:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/init-plan-dir.sh
 mkdir -p .temp/plan-mode/active/<plan-name>
 ```
 
@@ -329,7 +329,7 @@ rules — the writing-plans skill handles the content.
 
 Initialize the plan directory if needed:
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/init-plan-dir.sh
 ```
 
 ### Mandatory plan.json fields
@@ -969,7 +969,7 @@ in the result field.
    verification passing (tsc, lint, tests).
 2. **Run Codex verification** via `run-codex-verify.sh`:
    ```bash
-   bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/run-codex-verify.sh <plan.json> <step-number>
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step-number>
    ```
    Run this in the background (`Bash run_in_background: true`). While
    Codex runs, you can begin exploring the next step (read files, check

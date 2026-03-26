@@ -22,7 +22,7 @@ from typing import Any
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-READ_CONFIG = os.path.join(SCRIPT_DIR, "..", "..", "..", "hooks", "lib", "read-config.py")
+READ_CONFIG = os.path.join(SCRIPT_DIR, "..", "hooks", "lib", "read-config.py")
 
 
 def read_config(project_root: str) -> dict[str, Any]:

@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = REPO_ROOT / "skills" / "look-before-you-leap" / "scripts" / "dep_partition.py"
+SCRIPT_PATH = REPO_ROOT / "scripts" / "dep_partition.py"
 
 spec = importlib.util.spec_from_file_location("dep_partition", SCRIPT_PATH)
 assert spec and spec.loader

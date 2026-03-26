@@ -59,7 +59,7 @@ ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
 [ -d "$ACTIVE_DIR" ] || exit 0
 
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 [ -f "$PLAN_UTILS" ] || exit 0
 
 resolve_plan_dir() {

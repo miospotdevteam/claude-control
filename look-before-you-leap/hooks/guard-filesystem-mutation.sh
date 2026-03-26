@@ -332,7 +332,7 @@ PROJ_ID=$(receipt_project_id "$PROJECT_ROOT" 2>/dev/null) || true
 
 # Find active plan ID for receipt checks
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
 PLAN_ID=""
 if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then

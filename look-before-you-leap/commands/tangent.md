@@ -14,7 +14,7 @@ from zero.
 The user may provide a `--<PPID>` flag to target a specific session.
 
 ```bash
-PLAN_UTILS="${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${CLAUDE_PLUGIN_ROOT}/scripts/plan_utils.py"
 PROJECT_ROOT="$(pwd)"
 ```
 

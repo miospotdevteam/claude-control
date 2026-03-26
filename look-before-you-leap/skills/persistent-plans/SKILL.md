@@ -130,7 +130,7 @@ Before creating your first plan, run the initialization script to set up
 this directory and ensure `.temp/` is gitignored:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/init-plan-dir.sh
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/init-plan-dir.sh
 ```
 
 ---
@@ -142,7 +142,7 @@ automatically — pass the plan.json path and mutations go to the right file:
 
 <!-- plan-utils-cmd-start -->
 ```bash
-PLAN_UTILS="${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/plan_utils.py"
+PLAN_UTILS="${CLAUDE_PLUGIN_ROOT}/scripts/plan_utils.py"
 PLAN_JSON=".temp/plan-mode/active/<plan-name>/plan.json"
 
 # Mark step 3 as in_progress
@@ -201,10 +201,10 @@ modify BEFORE writing the plan. This tells you:
 
 ```bash
 # Query blast radius for a file
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py . "<file_path>"
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/deps-query.py . "<file_path>"
 
 # JSON output for programmatic use
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/look-before-you-leap/scripts/deps-query.py . "<file_path>" --json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/deps-query.py . "<file_path>" --json
 ```
 
 Feed the dep-map output directly into your plan: use the DEPENDENTS list
