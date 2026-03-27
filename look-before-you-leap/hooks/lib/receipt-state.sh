@@ -57,6 +57,14 @@ receipt_verify() {
   python3 "$RECEIPT_UTILS" verify "$1" >/dev/null 2>&1
 }
 
+receipt_verify_bypass() {
+  # Verify a bypass receipt with session-scoping and maxEdits consumption.
+  # Usage: receipt_verify_bypass /path/to/receipt.json <caller_ppid>
+  # Returns 0 if valid, 1 if stale/consumed/invalid.
+  # Stdout suppressed — hooks rely on exit code only.
+  python3 "$RECEIPT_UTILS" verify-bypass "$1" "$2" >/dev/null 2>&1
+}
+
 receipt_classify() {
   # Classify a plan as legacy or strict.
   # Usage: receipt_classify /path/to/plan.json

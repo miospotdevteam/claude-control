@@ -122,6 +122,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "EnterPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/guard-handoff-background.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [

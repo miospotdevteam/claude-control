@@ -190,6 +190,118 @@ def check(receipt_type, proj_id, p_id, extra=None):
     return False, receipt_path
 
 
+def verify_bypass(receipt_path, caller_ppid):
+    """Verify a bypass receipt with session-scoping and maxEdits consumption.
+
+    Checks:
+    1. HMAC signature validity
+    2. data.session matches caller_ppid (session scope)
+    3. data.session PID is alive (liveness)
+    4. data.maxEdits consumption (if present)
+
+    Returns (valid, receipt_dict, status) where status is one of:
+        'valid'    - receipt is valid, session matches, PID alive
+        'stale'    - session mismatch or PID dead (receipt auto-deleted)
+        'consumed' - maxEdits exhausted (receipt auto-deleted)
+        'invalid'  - HMAC signature invalid
+    """
+    try:
+        valid, receipt = verify(receipt_path)
+    except (json.JSONDecodeError, OSError):
+        return False, {}, "invalid"
+
+    if not valid:
+        return False, receipt, "invalid"
+
+    data = receipt.get("data", {})
+    session_pid = data.get("session")
+
+    # Session field is required — receipts without it are legacy/stale
+    if session_pid is None:
+        try:
+            os.remove(receipt_path)
+        except OSError:
+            pass
+        return False, receipt, "stale"
+
+    # Parse session PID safely
+    try:
+        session_pid_int = int(session_pid)
+    except (ValueError, TypeError):
+        try:
+            os.remove(receipt_path)
+        except OSError:
+            pass
+        return False, receipt, "invalid"
+
+    # Parse caller_ppid safely
+    try:
+        caller_pid_int = int(caller_ppid)
+    except (ValueError, TypeError):
+        return False, receipt, "invalid"
+
+    # Session mismatch: receipt belongs to a different session
+    if session_pid_int != caller_pid_int:
+        try:
+            os.remove(receipt_path)
+        except OSError:
+            pass
+        return False, receipt, "stale"
+
+    # PID liveness: check if the session that created this receipt is still alive
+    try:
+        os.kill(session_pid_int, 0)
+    except (OSError, ProcessLookupError):
+        try:
+            os.remove(receipt_path)
+        except OSError:
+            pass
+        return False, receipt, "stale"
+
+    # maxEdits consumption
+    max_edits = data.get("maxEdits")
+    if max_edits is not None:
+        try:
+            max_edits = int(max_edits)
+        except (ValueError, TypeError):
+            try:
+                os.remove(receipt_path)
+            except OSError:
+                pass
+            return False, receipt, "invalid"
+        if max_edits <= 0:
+            try:
+                os.remove(receipt_path)
+            except OSError:
+                pass
+            return False, receipt, "consumed"
+        remaining = max_edits - 1
+        if remaining <= 0:
+            # Last allowed edit — rewrite with maxEdits=0 so next call returns CONSUMED
+            data["maxEdits"] = 0
+            receipt["data"] = data
+            secret = _read_secret()
+            receipt.pop("signature", None)
+            new_sig = _compute_signature(receipt, secret)
+            receipt["signature"] = new_sig
+            with open(receipt_path, "w") as f:
+                json.dump(receipt, f, indent=2)
+                f.write("\n")
+        else:
+            # Decrement and rewrite the receipt with a new signature
+            data["maxEdits"] = remaining
+            receipt["data"] = data
+            secret = _read_secret()
+            receipt.pop("signature", None)
+            new_sig = _compute_signature(receipt, secret)
+            receipt["signature"] = new_sig
+            with open(receipt_path, "w") as f:
+                json.dump(receipt, f, indent=2)
+                f.write("\n")
+
+    return True, receipt, "valid"
+
+
 def classify_plan(plan_json_path):
     """Classify a plan as 'legacy' or 'strict'.
 
@@ -294,6 +406,19 @@ def main():
             print(f"EXISTS {path}")
         else:
             print(f"MISSING {path}")
+            sys.exit(1)
+        return
+
+    if command == "verify-bypass":
+        if len(sys.argv) < 4:
+            print("Usage: receipt_utils.py verify-bypass <receipt_path> "
+                  "<caller_ppid>", file=sys.stderr)
+            sys.exit(1)
+        valid, receipt, status = verify_bypass(sys.argv[2], sys.argv[3])
+        print(status.upper())
+        if valid:
+            sys.exit(0)
+        else:
             sys.exit(1)
         return
 

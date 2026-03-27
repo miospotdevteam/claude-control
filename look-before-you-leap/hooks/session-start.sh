@@ -31,7 +31,7 @@ python3 "$RECEIPT_UTILS" bootstrap >/dev/null 2>&1 || true
 # --- Section 1.3: Install Codex skills ---
 INSTALL_CODEX_SKILLS="${PLUGIN_ROOT}/scripts/install-codex-skills.sh"
 if [ -f "$INSTALL_CODEX_SKILLS" ]; then
-  bash "$INSTALL_CODEX_SKILLS" "$PLUGIN_ROOT" 2>/dev/null || true
+  bash "$INSTALL_CODEX_SKILLS" "$PLUGIN_ROOT" >/dev/null 2>&1 || true
 fi
 
 # --- Section 1.4: Codex availability check ---
@@ -112,6 +112,35 @@ if [ -d "$PROJECT_ROOT/.temp/plan-mode" ]; then
       rm -f "$no_plan_file"
     fi
   done
+fi
+
+# --- Section 1.9: Clean up stale signed bypass receipts (dead PIDs) ---
+# Only delete receipts whose session PID is dead. Receipts from other LIVE
+# sessions must be preserved (they belong to other Claude instances).
+PROJ_ID=$(python3 "$RECEIPT_UTILS" project-id "$PROJECT_ROOT" 2>/dev/null) || true
+if [ -n "$PROJ_ID" ]; then
+  BYPASS_STATE_DIR="${HOME}/.claude/look-before-you-leap/state/${PROJ_ID}"
+  if [ -d "$BYPASS_STATE_DIR" ]; then
+    for bypass_plan_dir in "$BYPASS_STATE_DIR"/*/; do
+      [ -d "$bypass_plan_dir" ] || continue
+      bypass_receipt="${bypass_plan_dir}bypass-default.json"
+      [ -f "$bypass_receipt" ] || continue
+      # Read session PID from receipt data, check if alive
+      session_pid=$(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    r = json.load(f)
+print(r.get('data', {}).get('session', ''))
+" "$bypass_receipt" 2>/dev/null) || continue
+      if [ -z "$session_pid" ]; then
+        # Legacy receipt without session field — remove (verify_bypass rejects these)
+        rm -f "$bypass_receipt"
+      elif ! kill -0 "$session_pid" 2>/dev/null; then
+        # Dead PID — remove stale receipt
+        rm -f "$bypass_receipt"
+      fi
+    done
+  fi
 fi
 
 # --- Section 2: Active plan detection ---

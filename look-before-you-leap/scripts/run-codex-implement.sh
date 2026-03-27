@@ -100,6 +100,15 @@ if [ -n "$GROUP_IDX" ]; then
 else
   SUFFIX="step-${STEP_NUM}"
 fi
+
+# Write in-flight PID marker so guard-handoff-background.sh can detect running Codex tasks
+# Uses SUFFIX to avoid collisions between concurrent group runs on the same step
+INFLIGHT_MARKER="$PLAN_DIR/.codex-inflight-${SUFFIX}.pid"
+echo $$ > "$INFLIGHT_MARKER"
+cleanup_inflight() {
+  rm -f "$INFLIGHT_MARKER"
+}
+trap cleanup_inflight EXIT
 STREAM_FILE="$PLAN_DIR/.codex-stream-${SUFFIX}.jsonl"
 RESULT_FILE="$PLAN_DIR/.codex-result-${SUFFIX}.txt"
 

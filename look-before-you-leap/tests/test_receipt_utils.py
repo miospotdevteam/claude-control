@@ -174,6 +174,142 @@ class TestSignAndVerify(unittest.TestCase):
         self.assertTrue(valid)
 
 
+class TestVerifyBypass(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self._orig_state = receipt_utils.STATE_ROOT
+        self._orig_secret = receipt_utils.SECRET_PATH
+        receipt_utils.STATE_ROOT = os.path.join(self.tmpdir, "state")
+        receipt_utils.SECRET_PATH = os.path.join(
+            receipt_utils.STATE_ROOT, "secret.key"
+        )
+        receipt_utils.bootstrap()
+
+    def tearDown(self):
+        receipt_utils.STATE_ROOT = self._orig_state
+        receipt_utils.SECRET_PATH = self._orig_secret
+        shutil.rmtree(self.tmpdir)
+
+    def test_valid_bypass_live_session(self):
+        """Valid receipt with matching live session PID returns valid."""
+        my_pid = os.getpid()
+        path = receipt_utils.sign(
+            "bypass", "proj1", "plan1", {"session": my_pid}
+        )
+        valid, receipt, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertTrue(valid)
+        self.assertEqual(status, "valid")
+        self.assertTrue(os.path.exists(path))
+
+    def test_stale_bypass_dead_pid(self):
+        """Receipt with dead session PID returns stale and is auto-deleted."""
+        # Use a PID that is almost certainly dead
+        dead_pid = 99999
+        # Make sure this PID is actually dead
+        try:
+            os.kill(dead_pid, 0)
+            self.skipTest(f"PID {dead_pid} is unexpectedly alive")
+        except (OSError, ProcessLookupError):
+            pass
+
+        path = receipt_utils.sign(
+            "bypass", "proj1", "plan1", {"session": dead_pid}
+        )
+        self.assertTrue(os.path.exists(path))
+        valid, receipt, status = receipt_utils.verify_bypass(path, dead_pid)
+        self.assertFalse(valid)
+        self.assertEqual(status, "stale")
+        self.assertFalse(os.path.exists(path), "Stale receipt should be deleted")
+
+    def test_stale_bypass_wrong_session(self):
+        """Receipt from another live session returns stale and is auto-deleted."""
+        my_pid = os.getpid()
+        # Create receipt for a different session (PID 1 is always alive — init/launchd)
+        other_pid = 1
+        path = receipt_utils.sign(
+            "bypass", "proj1", "plan1", {"session": other_pid}
+        )
+        valid, receipt, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertFalse(valid)
+        self.assertEqual(status, "stale")
+        self.assertFalse(os.path.exists(path), "Wrong-session receipt should be deleted")
+
+    def test_invalid_bypass_tampered(self):
+        """Tampered receipt returns invalid."""
+        my_pid = os.getpid()
+        path = receipt_utils.sign(
+            "bypass", "proj1", "plan1", {"session": my_pid}
+        )
+        # Tamper with the receipt
+        with open(path) as f:
+            receipt = json.load(f)
+        receipt["type"] = "codex_verify"
+        with open(path, "w") as f:
+            json.dump(receipt, f)
+        valid, _, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertFalse(valid)
+        self.assertEqual(status, "invalid")
+
+    def test_maxedits_consumption(self):
+        """Receipt with maxEdits=1: first call VALID, second call CONSUMED."""
+        my_pid = os.getpid()
+        path = receipt_utils.sign(
+            "bypass", "proj1", "plan1", {"session": my_pid, "maxEdits": 1}
+        )
+        # First call: valid (this IS the one allowed edit)
+        valid, receipt, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertTrue(valid)
+        self.assertEqual(status, "valid")
+        # Receipt still exists but with maxEdits=0
+        self.assertTrue(os.path.exists(path))
+        # Second call: consumed (maxEdits=0), receipt deleted
+        valid, receipt, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertFalse(valid)
+        self.assertEqual(status, "consumed")
+        self.assertFalse(os.path.exists(path), "Consumed receipt should be deleted")
+
+    def test_maxedits_decrement(self):
+        """Receipt with maxEdits=3 decrements on each successful call."""
+        my_pid = os.getpid()
+        path = receipt_utils.sign(
+            "bypass", "proj1", "plan1", {"session": my_pid, "maxEdits": 3}
+        )
+        # First call: valid, maxEdits decremented to 2
+        valid, receipt, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertTrue(valid)
+        self.assertEqual(status, "valid")
+        self.assertTrue(os.path.exists(path))
+        # Check the decremented value
+        with open(path) as f:
+            updated = json.load(f)
+        self.assertEqual(updated["data"]["maxEdits"], 2)
+
+        # Second call: valid, maxEdits decremented to 1
+        valid, receipt, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertTrue(valid)
+        self.assertEqual(status, "valid")
+
+        # Third call: valid (last allowed edit), maxEdits set to 0
+        valid, receipt, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertTrue(valid)
+        self.assertEqual(status, "valid")
+        self.assertTrue(os.path.exists(path))
+
+        # Fourth call: consumed (maxEdits=0)
+        valid, receipt, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertFalse(valid)
+        self.assertEqual(status, "consumed")
+
+    def test_bypass_without_session_field(self):
+        """Receipt without session field — legacy receipt, rejected as stale."""
+        path = receipt_utils.sign("bypass", "proj1", "plan1")
+        my_pid = os.getpid()
+        valid, receipt, status = receipt_utils.verify_bypass(path, my_pid)
+        self.assertFalse(valid)
+        self.assertEqual(status, "stale")
+        self.assertFalse(os.path.exists(path), "Legacy receipt should be deleted")
+
+
 class TestClassifyPlan(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()

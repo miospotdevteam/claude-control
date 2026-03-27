@@ -96,7 +96,7 @@ if [ -n "$PROJ_ID" ]; then
     for plan_dir in "$BYPASS_DIR"/*/; do
       [ -d "$plan_dir" ] || continue
       if [ -f "${plan_dir}bypass-default.json" ]; then
-        if receipt_verify "${plan_dir}bypass-default.json" 2>/dev/null; then
+        if receipt_verify_bypass "${plan_dir}bypass-default.json" "$PPID" 2>/dev/null; then
           exit 0
         fi
       fi
