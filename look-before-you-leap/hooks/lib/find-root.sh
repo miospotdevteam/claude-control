@@ -9,9 +9,11 @@
 #   but the plan lives at a parent level.
 #
 # find_plugin_repo
-#   Derives the plugin SOURCE repo root from CLAUDE_PLUGIN_ROOT (cache path).
-#   Cache structure: ~/.claude/plugins/cache/<repo-name>/<plugin>/<hash>
-#   Checks ~/Projects/<repo-name> for a git repo.
+#   Derives the plugin SOURCE repo root from CLAUDE_PLUGIN_ROOT.
+#   Handles both layouts:
+#     ~/.claude/plugins/cache/<repo-name>/<plugin>/<hash>
+#     ~/.claude/plugins/marketplaces/<repo-name>/<plugin>
+#   Checks ~/Projects/<repo-name> (and other common dirs) for a git repo.
 #   Returns empty string and exit 1 if not found.
 
 find_plugin_repo() {
@@ -20,9 +22,14 @@ find_plugin_repo() {
     return 1
   fi
 
-  # Extract repo name from cache path: strip up to "cache/", take first component
-  local after_cache="${cache_path#*plugins/cache/}"
-  local repo_name="${after_cache%%/*}"
+  # Extract repo name from plugin path.
+  # Handles both cache and marketplace layouts:
+  #   ~/.claude/plugins/cache/<repo-name>/<plugin>/<hash>
+  #   ~/.claude/plugins/marketplaces/<repo-name>/<plugin>
+  local after_plugins="${cache_path#*plugins/}"
+  # Strip the first path component (cache/ or marketplaces/)
+  local after_type="${after_plugins#*/}"
+  local repo_name="${after_type%%/*}"
 
   if [ -z "$repo_name" ]; then
     return 1

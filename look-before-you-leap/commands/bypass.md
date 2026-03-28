@@ -1,29 +1,19 @@
 ---
 description: "Grant a temporary bypass for plan enforcement. Only the user can run this command — Claude cannot invoke it."
-allowed-tools: ["Bash"]
+allowed-tools: []
 user-invocable: true
 ---
 
 # Bypass Plan Enforcement
 
-This command grants a temporary bypass receipt that allows code edits
-without an active plan. The receipt is HMAC-signed and stored outside
-the repo — Claude cannot forge or tamper with it.
+The `capture-user-override.sh` UserPromptSubmit hook already detected
+"bypass" in the user's prompt and minted a signed bypass receipt. The
+receipt allows code edits without an active plan.
 
 ## What to do
 
-Run the grant-bypass script:
+Tell the user: **Plan enforcement is temporarily bypassed for this
+session.** You can now edit files without an active plan. The bypass
+does not persist across sessions.
 
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/grant-bypass.sh
-```
-
-This will:
-1. Detect the current project root
-2. Find the active plan (if any) or use a default plan ID
-3. Write a signed `bypass` receipt to the external state root
-4. Also write the legacy `.no-plan-$PPID` marker for backwards compatibility
-
-After running, tell the user that plan enforcement is temporarily bypassed
-for this session. Remind them that the bypass is session-scoped — it does
-not persist across sessions.
+Do NOT attempt to run `grant-bypass.sh` — the hook already handled it.

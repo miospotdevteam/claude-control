@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# PreToolUse hook: Block EnterPlanMode when background Codex tasks are running.
+# PreToolUse hook: Block EnterPlanMode when background tasks are still running.
 #
-# Checks for .codex-inflight-step-N.pid files in the active plan directory.
-# If any exist with a live PID, blocks the handoff with a clear message.
+# Two detection layers (any one blocks the handoff):
+# 1. PID markers — .codex-inflight-step-N.pid with a live process
+# 2. Incomplete streams — .codex-stream-step-N.jsonl without a matching
+#    .codex-result-step-N.txt (Codex started but hasn't finished)
+#
+# Both layers are session-scoped (plan directory), safe for parallel sessions.
 #
 # Input: JSON on stdin with tool_name (EnterPlanMode)
 
@@ -32,39 +36,54 @@ fi
 
 SESSION_PLAN_DIR="$(dirname "$SESSION_PLAN")"
 
-# Check for active .codex-inflight-*.pid files
-live_tasks=""
+blockers=""
+
+# --- Layer 1: PID markers ---
 for pid_file in "$SESSION_PLAN_DIR"/.codex-inflight-*.pid; do
   [ -f "$pid_file" ] || continue
   inflight_pid=$(cat "$pid_file" 2>/dev/null) || continue
   if [ -n "$inflight_pid" ] && kill -0 "$inflight_pid" 2>/dev/null; then
     marker_name="$(basename "$pid_file")"
-    # Extract step info from filename: .codex-inflight-step-N.pid
     step_info="${marker_name#.codex-inflight-}"
     step_info="${step_info%.pid}"
-    live_tasks="${live_tasks}  - ${step_info} (PID: ${inflight_pid})\n"
+    blockers="${blockers}  - [pid] ${step_info} (PID: ${inflight_pid})\n"
   else
     # PID is dead — clean up stale marker
     rm -f "$pid_file"
   fi
 done
 
-if [ -n "$live_tasks" ]; then
-  export HOOK_LIVE_TASKS="$live_tasks"
+# --- Layer 2: Incomplete streams (stream exists, result does not) ---
+for stream_file in "$SESSION_PLAN_DIR"/.codex-stream-*.jsonl; do
+  [ -f "$stream_file" ] || continue
+  stream_name="$(basename "$stream_file")"
+  # .codex-stream-step-N.jsonl -> .codex-result-step-N.txt
+  result_name="${stream_name/.codex-stream-/.codex-result-}"
+  result_name="${result_name%.jsonl}.txt"
+  result_file="$SESSION_PLAN_DIR/$result_name"
+  if [ ! -f "$result_file" ]; then
+    suffix="${stream_name#.codex-stream-}"
+    suffix="${suffix%.jsonl}"
+    blockers="${blockers}  - [stream] ${suffix} (stream exists, no result yet)\n"
+  fi
+done
+
+if [ -n "$blockers" ]; then
+  export HOOK_BLOCKERS="$blockers"
   python3 << 'PYEOF'
 import json, os, sys
 
-live_tasks = os.environ.get("HOOK_LIVE_TASKS", "")
+blockers = os.environ.get("HOOK_BLOCKERS", "")
 
 output = {
     "hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",
         "permissionDecisionReason": (
-            "BLOCKED: Cannot enter plan mode — background Codex tasks are still running.\n\n"
+            "BLOCKED: Cannot enter plan mode — background tasks are still running.\n\n"
             "Active tasks:\n"
-            f"{live_tasks}\n"
-            "Kill ALL background tasks before handoff. Stale Codex results "
+            f"{blockers}\n"
+            "Kill ALL background tasks before handoff. Stale results "
             "leak into the post-handoff session and corrupt execution.\n\n"
             "After killing background tasks, retry EnterPlanMode."
         )
@@ -75,5 +94,5 @@ PYEOF
   exit 0
 fi
 
-# No live inflight tasks — allow handoff
+# No blockers — allow handoff
 exit 0

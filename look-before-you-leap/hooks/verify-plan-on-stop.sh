@@ -62,9 +62,17 @@ fi
 # Use plan.json for status check
 plan_name="$(basename "$(dirname "$latest_json")")"
 
+# Extract last assistant message for second-attempt passthrough detection
+LAST_MSG=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('last_assistant_message', ''))
+" <<< "$INPUT" 2>/dev/null) || true
+
 export HOOK_PLAN_JSON="$latest_json"
 export HOOK_PLAN_NAME="$plan_name"
 export HOOK_PLAN_UTILS="$PLAN_UTILS"
+export HOOK_LAST_MSG="$LAST_MSG"
 
 python3 << 'PYEOF'
 import json, os, sys
@@ -82,8 +90,9 @@ pending = counts.get("pending", 0)
 active = counts.get("in_progress", 0)
 blocked = counts.get("blocked", 0)
 
-remaining = pending + active
-if remaining == 0:
+# Only block on in_progress steps (real lost-work risk).
+# Pending steps haven't started — no progress to lose.
+if active == 0:
     # All steps done — but check for steps with null/empty results
     null_result_steps = []
     for step in plan.get("steps", []):
@@ -167,13 +176,17 @@ if remaining == 0:
 
     sys.exit(0)
 
-reason_parts = [f"Active plan '{plan_name}' has unfinished work:"]
-if active > 0:
-    reason_parts.append(f"  - {active} step(s) in-progress")
+# Second-attempt passthrough: check if the last assistant message already
+# contains our stop-hook warning. If so, Claude already reported the state
+# to the user and the user chose to stop again — let it through.
+last_msg = os.environ.get("HOOK_LAST_MSG", "")
+if "has in-progress work" in last_msg and "step(s) in-progress" in last_msg:
+    sys.exit(0)
+
+reason_parts = [f"Active plan '{plan_name}' has in-progress work:"]
+reason_parts.append(f"  - {active} step(s) in-progress")
 if pending > 0:
-    reason_parts.append(f"  - {pending} step(s) pending")
-if blocked > 0:
-    reason_parts.append(f"  - {blocked} step(s) blocked")
+    reason_parts.append(f"  - {pending} step(s) still pending")
 
 reason_parts.extend([
     "", f"Plan file: {plan_json}", "",

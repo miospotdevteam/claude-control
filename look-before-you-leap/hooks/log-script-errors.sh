@@ -82,12 +82,22 @@ PLUGIN_SCRIPT_MARKERS = [
 if not any(marker in command for marker in PLUGIN_SCRIPT_MARKERS):
     sys.exit(0)
 
-# Detect error type from response content
+# Detect error type from response content (case-sensitive markers first,
+# then case-insensitive fallbacks for exit code formats)
 has_crash = any(marker in response for marker in [
-    "Exit code", "Traceback", "Error:", "FileNotFoundError",
+    "Traceback", "Error:", "FileNotFoundError",
     "KeyError", "TypeError", "ValueError", "ModuleNotFoundError",
+    "SyntaxError", "ImportError", "AttributeError", "IndexError",
+    "PermissionError", "OSError", "RuntimeError",
 ])
-has_warning = "Warning:" in response
+# Also catch exit code in various formats Claude Code may use
+if not has_crash:
+    response_lower = response.lower()
+    has_crash = any(m in response_lower for m in [
+        "exit code: 1", "exit code: 2", "exit code 1", "exit code 2",
+        "exited with", "command failed",
+    ])
+has_warning = "Warning:" in response or "WARNING:" in response
 
 if not has_crash and not has_warning:
     sys.exit(0)
