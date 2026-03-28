@@ -307,6 +307,27 @@ findings while ignoring test findings is the #1 test-debt pattern. A test
 gap flagged twice across verification rounds is a pattern failure — it
 means you are systematically deprioritizing test coverage.
 
+### i18n contract
+
+When adding user-visible strings, locale files must be updated in the same
+step — not deferred. This applies to every string a user can see: labels,
+placeholders, error messages, tooltips, section headers, accessibility text.
+
+The check:
+
+1. Grep for new `t()` / `formatMessage` / translation calls in your changes
+2. For each new key, verify it exists in ALL locale files (not just English)
+3. English-only fallbacks (`t("key", "English text")`) count as **missing**
+   — they bypass the translation pipeline entirely
+4. Hardcoded default props on shared components (e.g., `accessibilityLabel=
+   "Close"`) also count as missing — they silently ship untranslated strings
+5. Before marking the step done, run a mechanical locale audit: list every
+   new translation key, cross-check every locale file, flag gaps
+
+The plan step that adds user-visible strings must include locale files in
+its `files` array. A step that adds UI copy without touching locale files
+is incomplete by definition.
+
 ### Install before import
 
 If you add a new import, verify the package exists in the project:
@@ -411,6 +432,29 @@ uses `slugStatus === "available"` as a gate; you write `slug.length > 0`.
 The old code strips leading/trailing hyphens from slugs; you only strip
 invalid characters. Always diff — never rely on recall.
 
+### Pattern parity diff
+
+When a step says "mirror", "parity", "reuse", or references another screen,
+component, or flow as a model, **build a parity table before coding** — not
+a prose comparison, a structured diff:
+
+| Dimension | Reference file(s) | Must match | Allowed deviation |
+|---|---|---|---|
+| Data source | `<file:line>` | query, params, filters | — |
+| Behaviors | `<file:line>` | CRUD ops, validation | — |
+| Disabled/error/loading states | `<file:line>` | guards, fallbacks | — |
+| Labels / i18n keys | `<file:line>` | key names, fallbacks | — |
+| Preconditions | `<file:line>` | auth, status gates | — |
+
+Fill in every row before writing code. After implementation, walk the table
+row by row and verify each "must match" cell is satisfied. If you
+intentionally deviate, fill the "Allowed deviation" column with the reason
+before verification — not after.
+
+This replaces the prose-based parity check. A table is auditable; prose is
+not. If you cannot fill the table, you haven't read the reference deeply
+enough.
+
 ### Trace the save path for every editable field
 
 After writing any UI with mutable state (forms, inline editing, settings
@@ -490,6 +534,29 @@ The check:
 This prevents the class of bug where a chart silently disappears when data
 is null, a detail page shows a permanent loading skeleton on API error, or
 a form sends `undefined` instead of `null` for cleared fields.
+
+### Async/state-transition matrix
+
+After implementing any UI with async data loading or multi-entity selection
+(tabs, lists, pickers where switching items triggers new fetches), fill in
+this matrix before marking the step done:
+
+| Transition | What happens | Handled? |
+|---|---|---|
+| Switch item while request in flight | Cancel/ignore stale? | ✓/✗ (how) |
+| New request fails | Error state shown? | ✓/✗ (how) |
+| Close and reopen the view | State reset or stale? | ✓/✗ (how) |
+| Selection changes during load | Request scoped to selection? | ✓/✗ (how) |
+| Stale response arrives late | Ignored or overwrites current? | ✓/✗ (how) |
+| Cosmetic default vs persisted | Default in form state or visual only? | ✓/✗ (how) |
+
+For each row: write "handled (mechanism)" or "not applicable (reason)".
+Empty cells are bugs. A cosmetic default that is not in form state causes
+data loss on save — the user sees a value, saves, and it disappears.
+
+This matrix catches the class of bug where switching between entities
+shows stale data from the previous selection, or where a late-arriving
+response overwrites the current view.
 
 ### Autonomy boundaries
 
@@ -780,3 +847,6 @@ If you catch yourself doing any of these, stop and reconsider:
 | Fixing a type error with the same approach that failed last reverify round | After the same category appears in 2 consecutive reverify logs, invoke `look-before-you-leap:systematic-debugging` |
 | Writing step descriptions, Codex consensus, file lists, or transcript refs into the plan mode scratch pad | Scratch pad is a POINTER: plan title, path, step count, one-liner context, "Read plan.json to begin execution." Nothing else — everything lives on disk |
 | Outputting explanatory text in the same response as EnterPlanMode or ExitPlanMode | Call the tool and NOTHING ELSE in that response — extra text interferes with the plan mode transition and causes the scratch pad to appear as a stashed message |
+| Adding user-visible strings without updating ALL locale files | Run a mechanical locale audit: grep new t() calls, check every locale file for matching keys — English fallbacks count as missing |
+| Implementing async UI without filling the state-transition matrix | Fill the matrix (switch item, request fails, close/reopen, stale response, cosmetic defaults) — empty cells are bugs |
+| Step says "mirror" or "parity" but you coded from memory instead of a diff table | Build a parity table (data source, behaviors, states, labels, preconditions) against the reference files before coding |

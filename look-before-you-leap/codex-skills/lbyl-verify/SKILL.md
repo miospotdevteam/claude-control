@@ -77,6 +77,12 @@ If the step modified or created files with user-visible strings:
    corresponding entries
 3. Flag any new user-visible string that does not exist in all locales
 4. English-only fallbacks (`t("key", "English text")`) count as missing
+5. Hardcoded default props on shared components (`accessibilityLabel=
+   "Close"`, `placeholder="Search"`) count as missing — they bypass the
+   translation pipeline
+6. **Mechanical audit**: run `grep -rn 't(' <changed-files>` to list every
+   new translation call, then cross-check each key against every locale
+   file. Flag any key missing from any locale as MISSING_I18N
 
 ### State transitions
 
@@ -92,6 +98,15 @@ If the step modified UI code:
 2. Trace the save path: for every editable field, verify onChange → state
    → mutation → API. If a field shows a value but the value isn't in state,
    saving will drop it.
+3. **Async-transition matrix**: for each async data source in the changed
+   UI, verify these transitions and flag any that are unhandled:
+   - Switch item while request in flight → stale response ignored?
+   - Request fails → error state shown or silent failure?
+   - Close and reopen view → state reset or stale cache?
+   - Stale response arrives late → ignored or overwrites current?
+   - Cosmetic default vs persisted → default in form state or visual only?
+   List each state producer (effect, URL init, wizard nav, event source)
+   with pending/success/failure/switched-away outcomes.
 
 ### Description parity
 
@@ -101,6 +116,18 @@ The step description often has more detail than the acceptance criteria.
 3. Verify each deliverable exists in the implementation
 4. Flag deliverables that are in the description but missing from the code
    — these are silent scope cuts
+
+### Companion file completeness
+
+If the step adds new behavior, verify companion artifacts exist:
+1. **Tests** — new logic, API endpoints, handlers must have at least one
+   targeted test. Flag missing tests as MISSING_TEST.
+2. **Locale entries** — new user-visible strings must have entries in all
+   locale files. Flag gaps as MISSING_I18N.
+3. **Consumer updates** — changed exports must have updated consumers.
+   Flag missed consumers as MISSED_CONSUMER.
+4. **Migrations** — new DB columns/tables must have migration files.
+A step that ships behavior without its companions is incomplete.
 
 ### Empty and edge states
 

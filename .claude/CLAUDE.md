@@ -2,6 +2,10 @@
 
 Single Claude Code plugin: `look-before-you-leap`. Enforces structured exploration, persistent plans, disciplined execution, and multi-discipline coverage for all coding tasks.
 
+# CRITICAL
+
+If while working on this plugin you encounter errors during excecution, fix those errors whithin this plugin.
+
 ## Repo Layout
 
 - `look-before-you-leap/` — The plugin (three-layer architecture: conductor, checklists, deep guides)

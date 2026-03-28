@@ -375,12 +375,23 @@ the `codex-dispatch` skill for the full flow.
   specific what-to-do with exact file paths and acceptance criteria. Plans
   describe *what* to build; the executing engineer writes the code.
 - **Exact file paths** — every step lists files in the `files` array
+- **Companion files** — every step that adds behavior must list its
+  companion artifacts in the `files` array: test files (for new logic),
+  locale files (for new user-visible strings), migration files (for new DB
+  columns), consumer files (for changed exports). A step that adds an API
+  endpoint without listing its test file is incomplete. A step that adds UI
+  copy without listing locale files is incomplete. If companion artifacts do
+  not exist yet and must be created, note that in the description.
 - **Exact commands with expected outcome** — in description or acceptance
   criteria, include the command and expected result
 - **Self-contained** — the plan.json is the ONLY thing the executing
   engineer reads. If it's not in the plan, it doesn't exist for them
 - **DRY / YAGNI** — cut anything not clearly needed right now
 - **Frequent commits** — after every green test or logical unit of work
+
+**Anti-pattern to avoid:** A step that lists only the "main" implementation
+files and omits required tests, locale files, migrations, or consumer
+updates. Treat the step as incomplete and expand the `files` array first.
 
 ### 5. Compute step dependency DAG
 
