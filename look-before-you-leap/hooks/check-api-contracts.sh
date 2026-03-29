@@ -12,20 +12,16 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # --- Read config ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 LIB_DIR="${SCRIPT_DIR}/lib"
 
 # Extract cwd and file path
-read -r FILE_PATH CWD <<< "$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-fp = data.get('tool_input', {}).get('file_path', '')
-cwd = data.get('cwd', '')
-print(fp, cwd)
-" <<< "$INPUT" 2>/dev/null)" || true
+FILE_PATH=$(hook_get_file_path)
+CWD=$(hook_get_cwd)
 
 # Skip if no file path
 if [ -z "$FILE_PATH" ]; then

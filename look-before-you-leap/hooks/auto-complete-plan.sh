@@ -11,14 +11,11 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # Extract file path from tool input
-FILE_PATH=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('file_path', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+FILE_PATH=$(hook_get_file_path)
 
 # Act on plan.json, progress.json, OR masterPlan.md inside .temp/plan-mode/active/
 if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
@@ -38,11 +35,7 @@ fi
 
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
-MIGRATE_CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+MIGRATE_CWD=$(hook_get_cwd)
 
 MIGRATE_ROOT="$(find_project_root "${MIGRATE_CWD:-$PWD}")"
 FALLBACK_DIR="$MIGRATE_ROOT/.temp/discovery"

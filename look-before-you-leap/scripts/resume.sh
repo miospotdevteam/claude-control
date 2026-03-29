@@ -9,28 +9,11 @@
 
 set -euo pipefail
 
-# Find plan directory (same logic as plan-status.sh)
-find_plan_dir() {
-  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# Source shared find_plan_dir from hooks/lib/
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+source "${SCRIPT_DIR}/../hooks/lib/find-root.sh"
 
-  if [[ "$script_dir" == *".temp/plan-mode/scripts" ]]; then
-    echo "$(dirname "$script_dir")"
-    return 0
-  fi
-
-  local dir="$PWD"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.temp/plan-mode" ]; then
-      echo "$dir/.temp/plan-mode"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-
-  echo ""
-}
-
-PLAN_DIR="$(find_plan_dir)"
+PLAN_DIR="$(find_plan_dir "$SCRIPT_DIR")"
 
 if [ -z "$PLAN_DIR" ] || [ ! -d "$PLAN_DIR" ]; then
   echo "No plans found."

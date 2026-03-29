@@ -16,7 +16,8 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # Fast bash-level check: does the command mention any plugin script?
 # This avoids spawning Python for 99% of Bash commands.
@@ -36,11 +37,7 @@ PLUGIN_REPO="$(find_plugin_repo)" || PLUGIN_REPO=""
 
 # Fallback: if plugin repo not found, use the project root (better than nothing)
 if [ -z "$PLUGIN_REPO" ]; then
-  CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+  CWD=$(hook_get_cwd)
   PLUGIN_REPO="$(find_project_root "${CWD:-$PWD}")"
 fi
 

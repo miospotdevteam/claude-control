@@ -32,7 +32,7 @@ output = {
             'For codex-impl steps:\n'
             '  bash \${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh <plan.json> <step>\n\n'
             'For ad-hoc Codex queries:\n'
-            '  codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \"<prompt>\"'
+            '  codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \"<prompt>\"'
         )
     }
 }

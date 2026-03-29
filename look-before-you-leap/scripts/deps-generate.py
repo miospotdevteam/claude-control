@@ -18,45 +18,7 @@ import re
 import subprocess
 import sys
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-READ_CONFIG = os.path.join(SCRIPT_DIR, "..", "hooks", "lib", "read-config.py")
-
-
-def read_config(project_root):
-    """Read project config via read-config.py (matches hook pattern)."""
-    try:
-        result = subprocess.run(
-            [sys.executable, READ_CONFIG, project_root],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return json.loads(result.stdout)
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
-        pass
-    return {}
-
-
-def module_slug(module_path):
-    """Convert module path to filename slug: apps/api -> apps-api"""
-    return module_path.replace("/", "-")
-
-
-def get_deps_dir(project_root, config):
-    dep_maps = config.get("dep_maps", {})
-    rel_dir = dep_maps.get("dir", ".claude/deps")
-    return os.path.join(project_root, rel_dir)
-
-
-def get_stale_modules(deps_dir):
-    """Read .stale marker file and return set of stale module slugs."""
-    stale_file = os.path.join(deps_dir, ".stale")
-    if not os.path.exists(stale_file):
-        return set()
-    try:
-        with open(stale_file) as f:
-            return {line.strip() for line in f if line.strip()}
-    except (FileNotFoundError, PermissionError):
-        return set()
+from deps_utils import read_config, module_slug, get_deps_dir, get_stale_modules
 
 
 def clear_stale(deps_dir, slug):
@@ -254,7 +216,7 @@ def resolve_import_path(specifier, importing_file, project_root, module_path,
     elif tsconfig_paths:
         # Try tsconfig path aliases
         resolved_abs = _resolve_alias(specifier, tsconfig_paths, module_abs,
-                                      base_url, project_root)
+                                      base_url)
 
     elif base_url:
         # No paths but baseUrl set: resolve relative to baseUrl
@@ -293,7 +255,7 @@ def _probe_path(candidate):
     return None
 
 
-def _resolve_alias(specifier, tsconfig_paths, module_abs, base_url, project_root):
+def _resolve_alias(specifier, tsconfig_paths, module_abs, base_url):
     """Resolve a specifier against tsconfig paths aliases.
 
     Handles patterns like {"@/*": ["./src/*"], "@components/*": ["./src/components/*"]}.

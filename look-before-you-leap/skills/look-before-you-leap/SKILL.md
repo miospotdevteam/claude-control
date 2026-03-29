@@ -124,7 +124,7 @@ workflow, it is **forbidden**. If you catch yourself reaching for
 ```bash
 # CORRECT — always use this:
 codex exec -C <project-root> \
-  --dangerously-bypass-approvals-and-sandbox --disable fast_mode "..."
+  --dangerously-bypass-approvals-and-sandbox "..."
 
 # WRONG — never do this:
 # mcp__codex__codex(prompt: "...", sandbox: "read-only")
@@ -227,7 +227,7 @@ At the START of exploration (before writing discovery.md), dispatch Codex
 in the background to explore in parallel with Claude:
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   "Explore the codebase for the task: <task-description>. Focus on: \
    1. All consumers of files in scope (trace import chains) \
    2. Blast radius — what breaks if these files change? \
@@ -256,7 +256,7 @@ for **gaps and disagreements only** — not a rehash of all findings.
 Keep Codex output scoped to structured bullet points.
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   "Read <plan-dir>/discovery.md. Focus ONLY on gaps and disagreements: \
    1. What did Claude's exploration miss? (bullet points, max 5) \
    2. Where do you disagree with Claude's findings? (cite specific lines) \
@@ -407,7 +407,7 @@ the one-shot attack pass — both agents must agree on the plan.
 If the plan has **≤5 steps**, dispatch a single call:
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For steps 1-N, return a structured proposal per step: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -421,7 +421,7 @@ If the plan has **>5 steps**, batch into groups of 5:
 
 ```bash
 # Batch 1: steps 1-5
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 1-5. For each, return: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -430,7 +430,7 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disabl
    Append results to <plan-dir>/consensus-round1.md under ## Steps 1-5"
 
 # Batch 2: steps 6-10 (adjust range for actual step count)
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 6-10. For each, return: \
    - ACCEPT / REJECT <reason> / MODIFY <changes> \
@@ -438,7 +438,7 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disabl
 
 # Continue batching until all steps are covered.
 # After all batches, also dispatch a cross-cutting check:
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   "Read <plan-dir>/consensus-round1.md (all batch results). \
    Flag: missing steps, wrong ordering across the full plan, \
    ownership assignments that contradict the routing matrix. \
@@ -465,7 +465,7 @@ If **≤5 disagreements**, use a single call. If **>5**, batch into groups
 of 5 disagreements per call, merging results between batches.
 
 ```bash
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox --disable fast_mode \
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For these remaining disagreements: [list ≤5 items] \
    - ACCEPT Claude's reasoning, or \

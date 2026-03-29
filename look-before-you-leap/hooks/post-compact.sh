@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+source "${BASH_SOURCE[0]%/*}/lib/plan-state.sh"
 PROJECT_ROOT="$(find_project_root)"
 
 PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
@@ -24,55 +25,22 @@ active_plan_summary=""
 
 if [ -d "$ACTIVE_DIR" ]; then
   # PPID-based plan routing: find the plan claimed by this session
-  latest_json=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+  latest_json=$(plan_resolve_session "$PROJECT_ROOT")
 
   if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
     plan_dir="$(dirname "$latest_json")"
     plan_name="$(basename "$plan_dir")"
 
-    export HOOK_PLAN_JSON="$latest_json"
-    export HOOK_PLAN_UTILS="$PLAN_UTILS"
-
-    plan_status_info=$(python3 << 'PYEOF'
-import json, os, sys
-
-plan_json = os.environ["HOOK_PLAN_JSON"]
-plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
-
-sys.path.insert(0, os.path.dirname(plan_utils_path))
-import plan_utils
-
-plan = plan_utils.read_plan(plan_json)
-counts = plan_utils.count_by_status(plan)
-
-next_step = plan_utils.get_next_step(plan)
-next_info = ""
-if next_step:
-    if next_step["status"] == "in_progress":
-        next_info = f"IN PROGRESS: Step {next_step['id']}: {next_step['title']}"
-    else:
-        next_info = f"NEXT: Step {next_step['id']}: {next_step['title']}"
-
-has_work = counts.get("pending", 0) + counts.get("in_progress", 0) + counts.get("blocked", 0) > 0
-
-print(json.dumps({
-    "done": counts.get("done", 0),
-    "active": counts.get("in_progress", 0),
-    "pending": counts.get("pending", 0),
-    "blocked": counts.get("blocked", 0),
-    "next_step": next_info,
-    "has_work": has_work,
-}))
-PYEOF
-    ) || true
+    plan_status_info=$(plan_get_status "$latest_json") || true
 
     if [ -n "$plan_status_info" ]; then
-      done_count=$(python3 -c "import json; print(json.loads('$plan_status_info').get('done', 0))" 2>/dev/null) || true
-      active_count=$(python3 -c "import json; print(json.loads('$plan_status_info').get('active', 0))" 2>/dev/null) || true
-      pending_count=$(python3 -c "import json; print(json.loads('$plan_status_info').get('pending', 0))" 2>/dev/null) || true
-      blocked_count=$(python3 -c "import json; print(json.loads('$plan_status_info').get('blocked', 0))" 2>/dev/null) || true
-      next_step=$(python3 -c "import json; print(json.loads('$plan_status_info').get('next_step', ''))" 2>/dev/null) || true
-      has_work=$(python3 -c "import json; print(json.loads('$plan_status_info').get('has_work', False))" 2>/dev/null) || true
+      plan_parse_status "$plan_status_info"
+      done_count="$PLAN_DONE"
+      active_count="$PLAN_ACTIVE"
+      pending_count="$PLAN_PENDING"
+      blocked_count="$PLAN_BLOCKED"
+      next_step="$PLAN_NEXT_STEP"
+      has_work="$PLAN_HAS_WORK"
     fi
 
     if [ "$has_work" = "True" ]; then
@@ -86,11 +54,7 @@ PYEOF
     fi
   else
     # Legacy fallback: find masterPlan.md
-    latest=""
-    latest=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | sort -rn | head -1 | awk '{print $2}')
-    if [ -z "$latest" ]; then
-      latest=$(find "$ACTIVE_DIR" -name "masterPlan.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
-    fi
+    latest=$(plan_find_latest_legacy "$ACTIVE_DIR")
 
     if [ -n "$latest" ] && [ -f "$latest" ]; then
       plan_name="$(basename "$(dirname "$latest")")"

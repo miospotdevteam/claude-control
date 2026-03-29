@@ -12,23 +12,18 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+source "${BASH_SOURCE[0]%/*}/lib/plan-state.sh"
+hook_read_input
 
 # Find project root and derive plan dir via PPID routing
-source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
-
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 
 # Find the plan for this session
-PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
-SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+SESSION_PLAN=$(plan_resolve_session "$PROJECT_ROOT")
 
 if [ -z "$SESSION_PLAN" ] || [ ! -f "$SESSION_PLAN" ]; then
   exit 0
@@ -42,11 +37,7 @@ if [ ! -f "$MARKER" ]; then
 fi
 
 # Extract tool name
-TOOL_NAME=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_name', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+TOOL_NAME=$(hook_get_tool_name)
 
 # Mint a handoff_approved receipt alongside marker removal
 source "${BASH_SOURCE[0]%/*}/lib/receipt-state.sh"

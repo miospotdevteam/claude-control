@@ -9,14 +9,11 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # Extract command
-COMMAND=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('command', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+COMMAND=$(hook_get_command)
 
 [ -z "$COMMAND" ] && exit 0
 

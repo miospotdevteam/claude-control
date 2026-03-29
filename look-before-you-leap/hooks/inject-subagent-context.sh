@@ -8,15 +8,13 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+source "${BASH_SOURCE[0]%/*}/lib/plan-state.sh"
 
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
@@ -26,7 +24,7 @@ PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 active_plan_path=""
 if [ -d "$ACTIVE_DIR" ]; then
-  active_plan_path=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+  active_plan_path=$(plan_resolve_session "$PROJECT_ROOT")
   # Fallback to find-active if no PPID match (e.g. legacy plans without locks)
   if [ -z "$active_plan_path" ]; then
     active_plan_path=$(python3 "$PLAN_UTILS" find-active "$PROJECT_ROOT" 2>/dev/null) || true
@@ -47,7 +45,7 @@ resolve_plan_dir() {
 
   [ -d "$ACTIVE_DIR" ] || return 0
 
-  session_plan=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+  session_plan=$(plan_resolve_session "$PROJECT_ROOT")
   if [ -n "$session_plan" ] && [ -f "$session_plan" ]; then
     dirname "$session_plan"
     return 0

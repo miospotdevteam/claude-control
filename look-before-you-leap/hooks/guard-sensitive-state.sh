@@ -23,14 +23,11 @@ STATE_ROOT="${HOME}/.claude/look-before-you-leap/state"
 # Quick exit if state root doesn't exist yet
 [ -d "$STATE_ROOT" ] || exit 0
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # Extract tool name
-TOOL_NAME=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_name', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+TOOL_NAME=$(hook_get_tool_name)
 
 [ -z "$TOOL_NAME" ] && exit 0
 
@@ -53,28 +50,13 @@ is_state_path() {
 }
 
 deny() {
-  local reason="$1"
-  python3 -c "
-import json, sys
-output = {
-    'hookSpecificOutput': {
-        'hookEventName': 'PreToolUse',
-        'permissionDecision': 'deny',
-        'permissionDecisionReason': sys.argv[1]
-    }
-}
-json.dump(output, sys.stdout)
-" "$reason"
+  hook_deny "$1"
   exit 0
 }
 
 # --- Check Read tool ---
 if [ "$TOOL_NAME" = "Read" ]; then
-  FILE_PATH=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('file_path', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+  FILE_PATH=$(hook_get_file_path)
 
   if is_state_path "$FILE_PATH"; then
     deny "BLOCKED: Direct read of receipt state files is not allowed. The state root at ${STATE_ROOT} contains the HMAC secret and signed receipts. Only plugin-owned scripts may access these files."
@@ -83,11 +65,7 @@ fi
 
 # --- Check Edit/Write tools ---
 if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
-  FILE_PATH=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('file_path', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+  FILE_PATH=$(hook_get_file_path)
 
   if is_state_path "$FILE_PATH"; then
     deny "BLOCKED: Direct modification of receipt state files is not allowed. The state root at ${STATE_ROOT} is managed by plugin scripts only. Do not attempt to edit, write, or create files here."
@@ -96,11 +74,7 @@ fi
 
 # --- Check Bash tool ---
 if [ "$TOOL_NAME" = "Bash" ]; then
-  COMMAND=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('command', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+  COMMAND=$(hook_get_command)
 
   [ -z "$COMMAND" ] && exit 0
 

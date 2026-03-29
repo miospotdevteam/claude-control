@@ -21,35 +21,24 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # Find project root first (needed for Bash path)
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 
 # Determine PLAN_DIR based on tool type
-TOOL_NAME=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_name', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+TOOL_NAME=$(hook_get_tool_name)
 
 PLAN_DIR=""
 
 if [[ "$TOOL_NAME" == "Edit" || "$TOOL_NAME" == "Write" ]]; then
   # Edit/Write: extract file_path and check if it's a plan file
-  FILE_PATH=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('file_path', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+  FILE_PATH=$(hook_get_file_path)
 
   if [[ "$FILE_PATH" == *"/.temp/plan-mode/active/"*"/plan.json" ]]; then
     PLAN_DIR="$(dirname "$FILE_PATH")"
@@ -63,11 +52,7 @@ elif [[ "$TOOL_NAME" == "Bash" ]]; then
   # Bash: check if command is a plan_utils call that marks a step done.
   # Extract the specific plan.json path from the command to handle multiple
   # active plans correctly (not just the first one found on disk).
-  COMMAND=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('command', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+  COMMAND=$(hook_get_command)
 
   export HOOK_COMMAND="$COMMAND"
   export HOOK_PROJECT_ROOT="$PROJECT_ROOT"

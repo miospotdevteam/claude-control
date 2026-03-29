@@ -20,19 +20,16 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
-COMMAND=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('command', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+COMMAND=$(hook_get_command)
 
 [ -z "$COMMAND" ] && exit 0
 
 # --- Early allow: known plugin wrapper scripts ---
 # NOTE: grant-bypass.sh is NOT in this list — it's blocked separately below.
-WRAPPER_RE='(run-codex-verify|run-codex-implement|write-discovery-receipt|write-claude-verify-receipt)\.sh'
+WRAPPER_RE='(run-codex-verify|run-codex-implement|write-discovery-receipt|write-claude-verify-receipt|init-plan-dir|install-codex-skills)\.sh'
 CMD_TRIMMED="${COMMAND#"${COMMAND%%[![:space:]]*}"}"
 if [[ "$CMD_TRIMMED" =~ ^bash[[:space:]] ]] && [[ "$CMD_TRIMMED" =~ $WRAPPER_RE ]]; then
   if [[ "$CMD_TRIMMED" != *'&&'* && "$CMD_TRIMMED" != *'||'* && \
@@ -78,11 +75,7 @@ fi
 # Pass via env to avoid quoting issues
 export HOOK_COMMAND="$COMMAND"
 
-HOOK_CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+HOOK_CWD=$(hook_get_cwd)
 
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 PROJECT_ROOT="$(find_project_root "${HOOK_CWD:-$PWD}")"

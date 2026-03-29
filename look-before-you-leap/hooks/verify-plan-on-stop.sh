@@ -13,26 +13,24 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # Prevent infinite loop: if stop hook already fired, allow stopping
 STOP_HOOK_ACTIVE=$(python3 -c "
 import json, sys
 data = json.loads(sys.stdin.read())
 print('true' if data.get('stop_hook_active', False) else 'false')
-" <<< "$INPUT" 2>/dev/null) || true
+" <<< "$HOOK_INPUT" 2>/dev/null) || true
 
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   exit 0
 fi
 
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+source "${BASH_SOURCE[0]%/*}/lib/plan-state.sh"
 
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
@@ -45,7 +43,7 @@ fi
 # Find this session's plan via PPID routing
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
-latest_json=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+latest_json=$(plan_resolve_session "$PROJECT_ROOT")
 
 # Allow stopping during plan review (per-plan handoff pending = waiting for user in Orbit)
 if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then

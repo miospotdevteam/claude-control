@@ -35,57 +35,8 @@ if [ ! -f "$PLAN_JSON" ]; then
 fi
 
 # Validate ownership FIRST — direction lock must reject before anything else
-export LBYL_PLAN_JSON="$PLAN_JSON"
-export LBYL_STEP_NUM="$STEP_NUM"
-export LBYL_GROUP_IDX="$GROUP_IDX"
-FILE_SCOPE=$(python3 << 'PYEOF' || exit 1
-import json, os, sys
-
-plan_json = os.environ["LBYL_PLAN_JSON"]
-step_num = int(os.environ["LBYL_STEP_NUM"])
-group_idx_str = os.environ.get("LBYL_GROUP_IDX", "")
-
-with open(plan_json) as f:
-    plan = json.load(f)
-
-step = None
-for s in plan.get("steps", []):
-    if s["id"] == step_num:
-        step = s
-        break
-
-if not step:
-    print(f"ERROR: Step {step_num} not found in plan.json", file=sys.stderr)
-    sys.exit(1)
-
-step_owner = step.get("owner", "claude")
-
-if group_idx_str:
-    # Group-scoped: validate group-level ownership
-    group_idx = int(group_idx_str)
-    sub_plan = step.get("subPlan")
-    if not sub_plan or not sub_plan.get("groups"):
-        print(f"ERROR: Step {step_num} has no subPlan.groups", file=sys.stderr)
-        sys.exit(1)
-    groups = sub_plan["groups"]
-    if group_idx < 0 or group_idx >= len(groups):
-        print(f"ERROR: Group index {group_idx} out of range (0-{len(groups)-1})", file=sys.stderr)
-        sys.exit(1)
-    group = groups[group_idx]
-    effective_owner = group.get("owner", step_owner)
-    if effective_owner != "claude":
-        print(f"ERROR: Cannot verify a {effective_owner}-owned group (group {group_idx}: '{group['name']}'). Codex verifies Claude's work only.", file=sys.stderr)
-        sys.exit(1)
-    # Output the group's files as scope for the prompt
-    print(" ".join(group.get("files", [])))
-else:
-    # Step-scoped: validate step-level ownership
-    if step_owner != "claude":
-        print(f"ERROR: Cannot verify a {step_owner}-owned step. Codex verifies Claude's work only. Claude must verify codex-impl steps independently.", file=sys.stderr)
-        sys.exit(1)
-    print("")  # empty = whole step scope
-PYEOF
-) || exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+FILE_SCOPE=$(python3 "$SCRIPT_DIR/validate_step_ownership.py" "$PLAN_JSON" "$STEP_NUM" $GROUP_IDX --direction verify) || exit 1
 
 if ! command -v codex >/dev/null 2>&1; then
   echo "Error: codex CLI not found. Install with: npm install -g @openai/codex" >&2
@@ -112,18 +63,8 @@ trap cleanup_inflight EXIT
 STREAM_FILE="$PLAN_DIR/.codex-stream-${SUFFIX}.jsonl"
 RESULT_FILE="$PLAN_DIR/.codex-result-${SUFFIX}.txt"
 
-# Find project root: walk up from plan.json looking for .git or CLAUDE.md
-find_project_root() {
-  local dir="$1"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.git" ] || [ -f "$dir/CLAUDE.md" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  echo "$1"
-}
+# Source canonical find_project_root from hooks/lib/
+source "${SCRIPT_DIR}/../hooks/lib/find-root.sh"
 
 PROJECT_ROOT="$(find_project_root "$PLAN_DIR")"
 
@@ -184,7 +125,6 @@ fi
 codex exec \
   -C "$PROJECT_ROOT" \
   --dangerously-bypass-approvals-and-sandbox \
-  --disable fast_mode \
   --json \
   -o "$RESULT_FILE" \
   "$PROMPT" \

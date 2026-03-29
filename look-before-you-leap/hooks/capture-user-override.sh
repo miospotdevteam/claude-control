@@ -9,23 +9,13 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # Extract the user's prompt text
-PROMPT=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-prompt = data.get('user_prompt')
-if prompt is None:
-    prompt = data.get('prompt', '')
-print(prompt)
-" <<< "$INPUT" 2>/dev/null) || true
+PROMPT=$(hook_get_prompt)
 
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 [ -z "$PROMPT" ] && exit 0
 
@@ -44,7 +34,6 @@ esac
 
 # Mint a bypass receipt
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 source "${SCRIPT_DIR}/lib/find-root.sh"
 source "${SCRIPT_DIR}/lib/receipt-state.sh"

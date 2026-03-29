@@ -13,22 +13,19 @@
 set -euo pipefail
 
 # Find active plan directory for this session
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+source "${BASH_SOURCE[0]%/*}/lib/plan-state.sh"
+hook_read_input
 
-INPUT=$(cat)
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
-PLAN_DIR="$PROJECT_ROOT/.temp/plan-mode"
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 
 # Find the active plan for this session
-SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+SESSION_PLAN=$(plan_resolve_session "$PROJECT_ROOT")
 if [ -z "$SESSION_PLAN" ] || [ ! -f "$SESSION_PLAN" ]; then
   # No active plan — nothing to guard
   exit 0

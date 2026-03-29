@@ -13,13 +13,10 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
-COMMAND=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('command', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+COMMAND=$(hook_get_command)
 
 [ -z "$COMMAND" ] && exit 0
 
@@ -47,12 +44,9 @@ else
 fi
 
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+source "${BASH_SOURCE[0]%/*}/lib/plan-state.sh"
 
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
@@ -69,7 +63,7 @@ resolve_plan_dir() {
   local dir=""
   local lock_pid=""
 
-  session_plan=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+  session_plan=$(plan_resolve_session "$PROJECT_ROOT")
   if [ -n "$session_plan" ] && [ -f "$session_plan" ]; then
     dirname "$session_plan"
     return 0

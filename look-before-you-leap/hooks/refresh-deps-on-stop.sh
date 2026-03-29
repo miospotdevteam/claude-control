@@ -9,15 +9,11 @@
 
 set -euo pipefail
 
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+hook_read_input
 
-INPUT=$(cat)
-
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/lib" && pwd)"

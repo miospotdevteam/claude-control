@@ -9,15 +9,21 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # Extract grep pattern and file type/glob filters
-read -r PATTERN FILE_TYPE FILE_GLOB <<< "$(python3 -c "
+PATTERN=$(hook_get_pattern) || exit 0
+FILE_TYPE=$(python3 -c "
 import json, sys
 data = json.loads(sys.stdin.read())
-ti = data.get('tool_input', {})
-print(ti.get('pattern', ''), ti.get('type', ''), ti.get('glob', ''))
-" <<< "$INPUT" 2>/dev/null)" || exit 0
+print(data.get('tool_input', {}).get('type', ''))
+" <<< "$HOOK_INPUT" 2>/dev/null) || true
+FILE_GLOB=$(python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+print(data.get('tool_input', {}).get('glob', ''))
+" <<< "$HOOK_INPUT" 2>/dev/null) || true
 
 # Quick exit: only care about patterns that look like import/consumer searches
 # Match: import, from, require — common patterns when searching for consumers
@@ -42,11 +48,7 @@ esac
 # Check if dep maps are configured
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 CONFIG_FILE="$PROJECT_ROOT/.claude/look-before-you-leap.local.md"

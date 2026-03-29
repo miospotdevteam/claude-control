@@ -11,14 +11,11 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
+source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+hook_read_input
 
 # Extract file path
-FILE_PATH=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('tool_input', {}).get('file_path', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+FILE_PATH=$(hook_get_file_path)
 
 [ -z "$FILE_PATH" ] && exit 0
 
@@ -38,11 +35,7 @@ esac
 # Find project root
 source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
 
-CWD=$(python3 -c "
-import json, sys
-data = json.loads(sys.stdin.read())
-print(data.get('cwd', ''))
-" <<< "$INPUT" 2>/dev/null) || true
+CWD=$(hook_get_cwd)
 
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/lib" && pwd)"

@@ -31,7 +31,6 @@ CLI usage:
 import fcntl
 import json
 import os
-import signal
 import sys
 
 
@@ -1020,6 +1019,8 @@ Step introspection commands:
   active-step <plan.json>                         Show the in-progress step
   effective-owner <plan.json> <step_id> [group]   Get effective owner of step/group
   step-files <plan.json> <step_id> [group]        List files for step/group
+  validate-step-target <plan.json> <step_id> [group]  JSON: owner, mode, files for step/group
+  plan-summary <plan.json>                        JSON: counts, next step, plan title
 
 Progress commands:
   init-progress <plan.json>                       Create fresh progress.json for new plan
@@ -1232,6 +1233,53 @@ def main():
         prog = _ensure_progress(plan_path)
         write_progress(plan_path, prog)
         print(json.dumps({"migrated": progress_path_for(plan_path)}))
+
+    elif command == "validate-step-target":
+        if len(sys.argv) < 4:
+            print(
+                "Usage: plan-utils.py validate-step-target <plan.json> "
+                "<step_id> [group_index]",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        step_id = int(sys.argv[3])
+        group_idx = int(sys.argv[4]) if len(sys.argv) > 4 else None
+        plan = read_plan(plan_path)
+        step = get_step(plan, step_id)
+        if step is None:
+            print(json.dumps({"error": f"step {step_id} not found"}))
+            sys.exit(1)
+        owner = effective_owner(step, group_idx)
+        mode = step.get("mode", "claude-impl")
+        files = step_files(step, group_idx)
+        print(json.dumps({
+            "owner": owner,
+            "mode": mode,
+            "files": files,
+            "step_id": step_id,
+            "group_index": group_idx,
+        }))
+
+    elif command == "plan-summary":
+        plan = read_plan(plan_path)
+        progress = read_progress(plan_path)
+        merged = merge_plan_progress(plan, progress)
+        counts = count_by_status(merged)
+        next_s = get_next_step(merged)
+        next_title = ""
+        if next_s:
+            next_title = next_s.get("title", f"Step {next_s.get('id', '?')}")
+            if next_s["status"] == "in_progress":
+                next_title += " [resuming]"
+        print(json.dumps({
+            "title": plan.get("title", plan.get("name", "")),
+            "done": counts.get("done", 0),
+            "active": counts.get("in_progress", 0),
+            "pending": counts.get("pending", 0),
+            "blocked": counts.get("blocked", 0),
+            "next_step": next_title,
+            "total": len(merged.get("steps", [])),
+        }))
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)

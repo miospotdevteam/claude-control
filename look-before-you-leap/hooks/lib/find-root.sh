@@ -46,6 +46,31 @@ find_plugin_repo() {
   return 1
 }
 
+# find_plan_dir [script_dir]
+#   Locates .temp/plan-mode/ from the script's own location or by walking up
+#   from $PWD. Used by plan-status.sh and resume.sh.
+find_plan_dir() {
+  local script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)}"
+
+  # If we're inside .temp/plan-mode/scripts/, use the parent
+  if [[ "$script_dir" == *".temp/plan-mode/scripts" ]]; then
+    echo "$(dirname "$script_dir")"
+    return 0
+  fi
+
+  # Otherwise, look for .temp/plan-mode/ from the project root
+  local dir="$PWD"
+  while [ "$dir" != "/" ]; do
+    if [ -d "$dir/.temp/plan-mode" ]; then
+      echo "$dir/.temp/plan-mode"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+
+  echo ""
+}
+
 find_project_root() {
   local dir="${1:-$PWD}"
   local first_root=""
