@@ -216,13 +216,33 @@ def is_temp_path(path, root):
         return '.temp/' in path or path.endswith('.temp')
 
 
+def is_plugin_path(path):
+    """Check if path is inside CLAUDE_PLUGIN_ROOT.
+
+    Plugin paths are resources being executed (scripts, skills), not mutation
+    targets. They should not trigger cross-root blocking when they appear as
+    arguments in chained commands (e.g., bash init-plan-dir.sh && mkdir -p ...).
+    """
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not plugin_root:
+        return False
+    try:
+        rp = os.path.realpath(path)
+        rr = os.path.realpath(plugin_root)
+        return rp.startswith(rr + '/') or rp == rr
+    except (OSError, ValueError):
+        return path.startswith(plugin_root + '/') or path == plugin_root
+
+
 def classify_paths(paths):
-    """Classify extracted paths into inside/outside root, filtering .temp."""
+    """Classify extracted paths into inside/outside root, filtering .temp and plugin."""
     outside = []
     inside = []
     for p in paths:
         if is_temp_path(p, project_root):
             continue  # .temp paths are always allowed
+        if is_plugin_path(p):
+            continue  # Plugin resource paths are not mutation targets
         if is_inside_project(p, project_root):
             inside.append(p)
         else:
