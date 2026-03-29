@@ -111,10 +111,11 @@ Report your results as:
 - ISSUES: anything that did not go as expected, or 'none'"
 fi
 
-# Run codex exec
+# Run codex exec (fast_mode disabled for thorough implementation)
 codex exec \
   -C "$PROJECT_ROOT" \
   --dangerously-bypass-approvals-and-sandbox \
+  --disable fast_mode \
   --json \
   -o "$RESULT_FILE" \
   "$PROMPT" \

@@ -67,16 +67,23 @@ LOG_BASE = os.path.join(os.environ.get("HOOK_PLUGIN_REPO", "."), "usage-errors",
 command = data.get("tool_input", {}).get("command", "")
 response = str(data.get("tool_response", ""))
 
-# Guard: verify the COMMAND itself (not the response) references a plugin script.
-# The bash fast-path matches against the full JSON (command + response), so grep
-# output containing script names would pass. This Python guard ensures the command
-# is actually invoking a plugin script before we check for crashes/warnings.
-PLUGIN_SCRIPT_MARKERS = [
-    "plan_utils.py", "deps-query.py", "deps-generate.py",
-    "init-plan-dir.sh", "plan-status.sh", "resume.sh",
-    "look-before-you-leap/scripts/",
+# Guard: verify the COMMAND is actually EXECUTING a plugin script, not just
+# referencing one in a path argument (e.g., "git diff -- look-before-you-leap/scripts/...").
+# Match execution patterns: python3/bash/sh followed by script, or direct script invocation.
+import re
+PLUGIN_EXEC_PATTERNS = [
+    r'\bpython3?\s+\S*plan_utils\.py\b',
+    r'\bpython3?\s+\S*deps-query\.py\b',
+    r'\bpython3?\s+\S*deps-generate\.py\b',
+    r'\bbash\s+\S*init-plan-dir\.sh\b',
+    r'\bbash\s+\S*plan-status\.sh\b',
+    r'\bbash\s+\S*resume\.sh\b',
+    r'\bbash\s+\S*run-codex-verify\.sh\b',
+    r'\bbash\s+\S*run-codex-implement\.sh\b',
+    r'\bbash\s+\S*install-codex-skills\.sh\b',
+    r'\bbash\s+\S*write-discovery-receipt\.sh\b',
 ]
-if not any(marker in command for marker in PLUGIN_SCRIPT_MARKERS):
+if not any(re.search(pat, command) for pat in PLUGIN_EXEC_PATTERNS):
     sys.exit(0)
 
 # Detect error type from response content (case-sensitive markers first,

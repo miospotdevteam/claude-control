@@ -466,7 +466,44 @@ def update_step_status(plan_path, step_id, new_status):
     _update_step_in_progress(
         plan_path, step_id, lambda sp: sp.__setitem__("status", new_status)
     )
+
+    # After marking a step done, check if all steps are now complete
+    if new_status == "done":
+        _check_plan_completion(plan_path)
+
     return True
+
+
+def _check_plan_completion(plan_path):
+    """Check if all steps are done and print completion guidance."""
+    plan = read_plan(plan_path)
+    if not is_complete(plan):
+        return
+
+    plan_dir = os.path.dirname(plan_path)
+    plan_name = os.path.basename(plan_dir)
+    active_parent = os.path.dirname(plan_dir)
+    completed_dir = os.path.join(os.path.dirname(active_parent), "completed")
+    done_count = sum(1 for s in plan.get("steps", []) if s["status"] == "done")
+
+    print(
+        f"\n*** ALL {done_count} STEPS DONE in plan '{plan_name}' ***\n\n"
+        "STOP. Before closing this plan, complete ALL of the following:\n\n"
+        "1. VERIFY: Run the project's verification commands (type checker, "
+        "linter, tests). If any fail, the plan is NOT done — fix them first.\n"
+        "2. RE-READ the user's original request word by word. Is every "
+        "requirement actually implemented and working? If not, the plan is "
+        "NOT done.\n"
+        "3. UPDATE the completedSummary via plan_utils.py add-summary "
+        "(writes to progress.json).\n"
+        "4. REPORT to the user what was completed, what was verified, and "
+        "any caveats.\n\n"
+        "Only AFTER steps 1-4 are done, move the plan:\n"
+        f"  mv '{plan_dir}' '{completed_dir}/{plan_name}'\n\n"
+        "WARNING: Do NOT move the plan just because steps are marked done. "
+        "If you have ANY doubt, re-check.",
+        file=sys.stderr,
+    )
 
 
 def complete_step(plan_path, step_id, result_text, project_root=None):
@@ -567,6 +604,10 @@ def complete_step(plan_path, step_id, result_text, project_root=None):
     _update_step_in_progress(
         plan_path, step_id, lambda sp: sp.__setitem__("status", "done")
     )
+
+    # Check if plan is now fully complete
+    _check_plan_completion(plan_path)
+
     return True
 
 

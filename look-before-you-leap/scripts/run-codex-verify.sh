@@ -121,10 +121,11 @@ Report PASS if all criteria are met, or report structured findings with:
 - Failure category: INCOMPLETE_WORK, MISSED_CONSUMER, TYPE_SAFETY, SILENT_SCOPE_CUT, WRONG_PATTERN, MISSING_TEST, MISSING_I18N, or OTHER"
 fi
 
-# Run codex exec
+# Run codex exec (fast_mode disabled for thorough verification)
 codex exec \
   -C "$PROJECT_ROOT" \
   --dangerously-bypass-approvals-and-sandbox \
+  --disable fast_mode \
   --json \
   -o "$RESULT_FILE" \
   "$PROMPT" \

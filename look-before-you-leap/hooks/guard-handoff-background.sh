@@ -35,7 +35,7 @@ SESSION_PLAN_DIR="$(dirname "$SESSION_PLAN")"
 
 blockers=""
 
-# --- Layer 1: PID markers ---
+# --- Layer 1: PID markers (direction-locked scripts) ---
 for pid_file in "$SESSION_PLAN_DIR"/.codex-inflight-*.pid; do
   [ -f "$pid_file" ] || continue
   inflight_pid=$(cat "$pid_file" 2>/dev/null) || continue
@@ -64,6 +64,23 @@ for stream_file in "$SESSION_PLAN_DIR"/.codex-stream-*.jsonl; do
     blockers="${blockers}  - [stream] ${suffix} (stream exists, no result yet)\n"
   fi
 done
+
+# --- Layer 3: Generic codex exec processes (plan consensus, design review) ---
+# These are background codex calls that don't use direction-locked scripts,
+# so they have no PID markers or stream files. Detect by checking for live
+# codex processes targeting this project.
+if command -v pgrep >/dev/null 2>&1; then
+  codex_pids=$(pgrep -f "codex exec" 2>/dev/null) || true
+  if [ -n "$codex_pids" ]; then
+    while IFS= read -r cpid; do
+      [ -n "$cpid" ] || continue
+      # Verify it's actually running (pgrep can be stale)
+      if kill -0 "$cpid" 2>/dev/null; then
+        blockers="${blockers}  - [process] codex exec (PID: ${cpid})\n"
+      fi
+    done <<< "$codex_pids"
+  fi
+fi
 
 if [ -n "$blockers" ]; then
   export HOOK_BLOCKERS="$blockers"
