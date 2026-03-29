@@ -830,6 +830,7 @@ If you catch yourself doing any of these, stop and reconsider:
 | Fixing one part of a multi-part Codex finding and re-verifying | Number every distinct issue, address ALL before re-verifying |
 | User said "explore with Codex" but you explored alone first | Dispatch to Codex FIRST — do not explore solo then ask Codex to rubber-stamp your conclusion. The user chose a tool; respect the choice |
 | Calling `mcp__codex__codex` or any Codex MCP tool | ALL Codex interactions go through `codex exec` via Bash — the MCP tool bypasses direction-locked scripts, sandbox enforcement, and error logging |
+| Running `codex exec` without `-o <file>` to capture output | Always use `-o` — asking Codex to "write to file X" in the prompt is unreliable. The `-o` flag captures output deterministically via the CLI |
 | Using `codex exec` directly for plan step execution instead of invoking `codex-dispatch` skill | Invoke `Skill(skill: "look-before-you-leap:codex-dispatch")` — it handles direction-locked scripts, JSONL monitoring, result parsing, and error logging |
 | Setting `codexVerify: false` | `codexVerify` is always `true` — no exceptions, no mode-based exemptions. The field is structural, not opt-in |
 | Running `run-codex-verify.sh` on a `codex-impl` step | Codex must not verify its own work — for `owner: "codex"` steps, Claude verifies independently (read files, run tsc/lint/tests, check consumers) |

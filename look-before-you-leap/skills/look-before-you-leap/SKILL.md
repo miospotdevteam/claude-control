@@ -130,6 +130,34 @@ codex exec -C <project-root> \
 # mcp__codex__codex(prompt: "...", sandbox: "read-only")
 ```
 
+### Always use `-o` to capture Codex output
+
+**Never ask Codex to write files via its prompt.** Asking Codex to
+"append results to file X" or "write your findings to file Y" depends
+on Codex choosing to use file-writing tools — which is unreliable,
+especially in fast mode. Instead, always use the `-o` flag:
+
+```bash
+# CORRECT — deterministic output capture via CLI:
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <output-file> \
+  "Read <input-file>. Return your analysis as structured bullet points."
+# Then Claude reads <output-file> and appends where needed
+
+# WRONG — depends on Codex choosing to write files:
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  "Read <input-file>. Write your findings to <output-file>."
+```
+
+The `-o` flag writes Codex's final message to the specified file. This
+works regardless of fast mode, model, or sandbox configuration. Claude
+then reads the output file and processes it (append to discovery.md,
+merge into consensus, etc.).
+
+The direction-locked scripts (`run-codex-verify.sh`, `run-codex-implement.sh`)
+already use `-o` correctly. This rule applies to ALL generic `codex exec`
+calls: exploration, convergence, consensus review, design review.
+
 ### Exploration protocol
 
 Follow **engineering-discipline Phase 1** (Orient Before You Touch Anything).
@@ -228,16 +256,26 @@ in the background to explore in parallel with Claude:
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-exploration.md \
   "Explore the codebase for the task: <task-description>. Focus on: \
    1. All consumers of files in scope (trace import chains) \
    2. Blast radius — what breaks if these files change? \
    3. Test infrastructure — what tests cover this code? \
    4. Edge cases and error paths in the current implementation \
    5. Cross-module dependencies that might be missed \
-   Write your findings to <plan-dir>/discovery.md using heredoc append: \
-   cat <<'EOF' >> discovery.md \
-   then your markdown content, then EOF on its own line. \
-   Use the format: ## [Codex: <topic>] then bullet points with findings."
+   Output your findings using the format: \
+   ## [Codex: <topic>] then bullet points with findings."
+```
+
+**IMPORTANT**: Always use `-o <file>` to capture Codex output. Never ask
+Codex to write files via its prompt — that depends on Codex choosing to
+use file-writing tools, which is unreliable (especially in fast mode).
+The `-o` flag captures output deterministically via the CLI.
+
+After Codex completes, Claude reads the output file and appends it to
+`discovery.md`:
+```bash
+cat <plan-dir>/codex-exploration.md >> <plan-dir>/discovery.md
 ```
 
 While Codex runs, Claude explores simultaneously — focusing on:
@@ -245,8 +283,6 @@ While Codex runs, Claude explores simultaneously — focusing on:
 - UI architecture and component structure
 - Project config, sibling files, CLAUDE.md
 - State producers and message emitters
-
-Both write to the shared `discovery.md` using append (`>>`).
 
 **Phase 2 — Convergence round:**
 
@@ -257,14 +293,17 @@ Keep Codex output scoped to structured bullet points.
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-convergence.md \
   "Read <plan-dir>/discovery.md. Focus ONLY on gaps and disagreements: \
    1. What did Claude's exploration miss? (bullet points, max 5) \
    2. Where do you disagree with Claude's findings? (cite specific lines) \
    3. What blast radius was underestimated? (file:consumer count) \
    4. Cross-cutting concerns connecting both sets of findings? (max 3) \
-   Keep output to structured bullets — no prose summaries. \
-   Append under ## [Codex: Convergence] in discovery.md"
+   Keep output to structured bullets — no prose summaries."
 ```
+
+After Codex completes, Claude reads `codex-convergence.md` and appends
+its content under `## [Codex: Convergence]` in `discovery.md`.
 
 If discovery.md exceeds ~100 lines, tell Codex which sections to read
 (e.g., "Read ## [Codex: Consumers] and ## [Claude: Patterns] only")
@@ -408,6 +447,7 @@ If the plan has **≤5 steps**, dispatch a single call:
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-consensus-round1.md \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For steps 1-N, return a structured proposal per step: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -417,35 +457,41 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    ownership assignments that contradict the routing matrix."
 ```
 
-If the plan has **>5 steps**, batch into groups of 5:
+If the plan has **>5 steps**, batch into groups of 5. Each batch uses
+`-o` to capture output to a separate file, then Claude merges them:
 
 ```bash
 # Batch 1: steps 1-5
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-consensus-batch-1.md \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 1-5. For each, return: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
    - REJECT <reason>: step should be removed or fundamentally rethought \
-   - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering) \
-   Append results to <plan-dir>/consensus-round1.md under ## Steps 1-5"
+   - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering)"
 
 # Batch 2: steps 6-10 (adjust range for actual step count)
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-consensus-batch-2.md \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 6-10. For each, return: \
-   - ACCEPT / REJECT <reason> / MODIFY <changes> \
-   Append results to <plan-dir>/consensus-round1.md under ## Steps 6-10"
+   - ACCEPT / REJECT <reason> / MODIFY <changes>"
 
 # Continue batching until all steps are covered.
-# After all batches, also dispatch a cross-cutting check:
-codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
-  "Read <plan-dir>/consensus-round1.md (all batch results). \
-   Flag: missing steps, wrong ordering across the full plan, \
-   ownership assignments that contradict the routing matrix. \
-   Append cross-cutting notes under ## Cross-Cutting."
 ```
 
-Merge all batch results before proceeding to Round 2.
+After all batches complete, Claude reads each output file and merges
+them into `consensus-round1.md`. Then dispatch a cross-cutting check:
+
+```bash
+codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-consensus-cross-cutting.md \
+  "Read <plan-dir>/consensus-round1.md (merged batch results). \
+   Flag: missing steps, wrong ordering across the full plan, \
+   ownership assignments that contradict the routing matrix."
+```
+
+Claude appends cross-cutting notes to `consensus-round1.md`.
 
 **Round 2 — Claude responds:**
 
@@ -466,6 +512,7 @@ of 5 disagreements per call, merging results between batches.
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-consensus-round3.md \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For these remaining disagreements: [list ≤5 items] \
    - ACCEPT Claude's reasoning, or \
