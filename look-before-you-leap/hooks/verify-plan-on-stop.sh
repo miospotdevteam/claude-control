@@ -88,6 +88,33 @@ pending = counts.get("pending", 0)
 active = counts.get("in_progress", 0)
 blocked = counts.get("blocked", 0)
 
+# Codex-inflight bypass: if ALL in-progress steps have at least one live
+# Codex background process, Claude is idle — allow stopping.
+if active > 0:
+    import pathlib
+    plan_dir = pathlib.Path(plan_json).parent
+    in_progress_steps = plan_utils.active_steps(plan)
+    all_delegated = True
+    for step in in_progress_steps:
+        sid = step["id"]
+        # Match exact step ID: step-N.pid and step-N-group-*.pid (not step-N0, step-N1, etc.)
+        markers = list(plan_dir.glob(f".codex-inflight-step-{sid}.pid"))
+        markers += list(plan_dir.glob(f".codex-inflight-step-{sid}-group-*.pid"))
+        has_live = False
+        for marker in markers:
+            try:
+                pid = int(marker.read_text().strip())
+                os.kill(pid, 0)  # Check if process is alive (signal 0)
+                has_live = True
+                break
+            except (ValueError, OSError, ProcessLookupError):
+                continue
+        if not has_live:
+            all_delegated = False
+            break
+    if all_delegated:
+        sys.exit(0)
+
 # Only block on in_progress steps (real lost-work risk).
 # Pending steps haven't started — no progress to lose.
 if active == 0:
