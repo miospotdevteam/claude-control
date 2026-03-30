@@ -214,6 +214,15 @@ def detect_from_deps(deps, root_scripts=None, package_manager=""):
             result["orm"] = name
             break
 
+    # Code quality
+    code_quality_map = {
+        "knip": "knip",
+    }
+    for dep, name in code_quality_map.items():
+        if dep in deps:
+            result["code_quality"] = name
+            break
+
     return result
 
 

@@ -47,6 +47,14 @@ if command -v codex >/dev/null 2>&1; then
   CODEX_PATH="$(command -v codex)"
 fi
 
+# --- Section 1.4b: Knip availability check ---
+# Project-local check (knip is a devDependency, not a global CLI).
+# O(1) file stat — no subprocess spawned.
+KNIP_AVAILABLE="false"
+if [ -x "$PROJECT_ROOT/node_modules/.bin/knip" ]; then
+  KNIP_AVAILABLE="true"
+fi
+
 # Pre-populate codex preflight marker in active plan dir (if one exists)
 if [ -d "$PLAN_DIR/active" ]; then
   # Find plan dir for this session — must match track-codex-exploration.sh resolver:
@@ -349,6 +357,7 @@ export HOOK_PLUGIN_ROOT="$PLUGIN_ROOT"
 export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
 export CODEX_AVAILABLE
 export CODEX_PATH
+export KNIP_AVAILABLE
 
 python3 << 'PYEOF'
 import json
@@ -529,7 +538,7 @@ try:
         if stack.get("monorepo"):
             profile_parts.append("Monorepo: yes")
         frameworks = []
-        for key in ("frontend", "backend", "validation", "styling", "testing", "orm"):
+        for key in ("frontend", "backend", "validation", "styling", "testing", "orm", "code_quality"):
             if stack.get(key):
                 frameworks.append(f"{key}={stack[key]}")
         if frameworks:
@@ -616,6 +625,27 @@ else:
         "plan consensus, and step verification via Codex are unavailable. Document "
         "this in discovery.md under `## Codex Availability` and pass "
         "`codexStatus=unavailable` to the discovery receipt."
+    ])
+
+# Knip availability — inject so Claude knows whether dead-code detection is possible
+knip_available = os.environ.get("KNIP_AVAILABLE", "false")
+if knip_available == "true":
+    parts.extend([
+        "", "---", "",
+        "**Knip: AVAILABLE**\n\n"
+        "Knip (dead-code detection) is installed in this project. Use it after "
+        "removing exports, consolidating modules, deleting files, or refactoring "
+        "to verify no orphaned code remains. Prefer the project's knip script "
+        "(check `package.json` scripts) over running knip directly. Fallback: "
+        "`bunx knip --reporter compact` or `npx knip --reporter compact`."
+    ])
+else:
+    parts.extend([
+        "", "---", "",
+        "**Knip: NOT AVAILABLE**\n\n"
+        "Knip is not installed in this project. To add dead-code detection, "
+        "install it as a devDependency: `bun add -d knip` / `npm install -D knip` / "
+        "`pnpm add -D knip` / `yarn add -D knip`."
     ])
 
 if active_summary:

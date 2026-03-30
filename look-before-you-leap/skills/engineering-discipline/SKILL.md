@@ -612,6 +612,10 @@ for framework-specific commands, but the general approach is:
    still builds
 5. **Consumer tests** — if you changed shared code, also run tests in
    consumer packages to catch integration breakage
+6. **Dead code check (conditional)** — if knip is available (check session
+   context) and your step removed exports, consolidated modules, or deleted
+   files, run the project's knip script or `bunx knip --reporter compact`
+   to verify no orphaned code remains
 
 **How to find the right commands**: Check `package.json` scripts,
 `Makefile`, `Cargo.toml`, `pyproject.toml`, or `CLAUDE.md` / `README.md`
@@ -819,6 +823,7 @@ If you catch yourself doing any of these, stop and reconsider:
 | Writing any closed-set value from memory (enum, schema field, API shape, signature) | Re-read the source definition and copy the exact value — memory drifts, source files don't |
 | Assuming a tool/function accepts a parameter without reading its schema | Use `ToolSearch` for MCP tools; read the function declaration for internal code |
 | Writing a file path without resolving from the target directory | Resolve relative to where the consumer reads/writes, not where you're editing |
+| Removing exports/files without running knip (when available) | Run knip to verify nothing is orphaned — dead exports and unused deps hide silently |
 | Reimplementing existing behavior without reading the source | Open the original, list what it does, verify parity in your new code |
 | Rendering editable fields without tracing the save path | For every editable field: trace onChange → state → mutation → API → DB |
 | Writing simpler preconditions than the operation you're wrapping | Read the handler, list its gates, replicate them exactly |

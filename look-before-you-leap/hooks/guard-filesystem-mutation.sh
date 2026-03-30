@@ -303,6 +303,18 @@ if not temp_redirect:
             sys.exit(0)
 
     # Check nested bash scripts (could write files)
+    # But first: codex exec -o <path> is safe if path is inside .temp/
+    # (codex exec is caught by NESTED_SCRIPT_PATTERNS as an invoked binary,
+    # but -o is a CLI flag, not a shell redirect — the temp_redirect check misses it)
+    codex_o_match = re.search(r"\bcodex\b.*\s-o\s+[\"']?(\S+)", cmd)
+    if codex_o_match:
+        codex_out = codex_o_match.group(1).strip('"').strip("'")
+        if not os.path.isabs(codex_out):
+            codex_out = os.path.join(cwd, codex_out)
+        if is_temp_path(codex_out, project_root):
+            print(json.dumps({"class": "safe", "paths": []}))
+            sys.exit(0)
+
     for pattern in NESTED_SCRIPT_PATTERNS:
         if re.search(pattern, cmd):
             print(json.dumps({"class": "file_write", "paths": []}))
