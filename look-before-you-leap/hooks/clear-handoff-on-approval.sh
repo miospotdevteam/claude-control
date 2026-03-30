@@ -62,24 +62,41 @@ fi
 # orbit_await_review — clear only on approval
 if [[ "$TOOL_NAME" == *"orbit_await_review"* ]]; then
   # Parse tool_result for approval status
+  # tool_result can arrive as: str, list (MCP content array), or dict
   approved=$(python3 -c "
 import json, sys
 
 data = json.loads(sys.stdin.read())
 result = data.get('tool_result', '')
 
-# tool_result may be a string (MCP response text) or structured
-if isinstance(result, str) and 'approved' in result:
-    # Try to parse as JSON to confirm it's the status field
+def check_approved(text):
+    if not isinstance(text, str) or 'approved' not in text:
+        return False
     try:
-        parsed = json.loads(result)
-        if parsed.get('status') == 'approved':
+        parsed = json.loads(text)
+        if isinstance(parsed, dict) and parsed.get('status') == 'approved':
+            return True
+    except (json.JSONDecodeError, ValueError):
+        pass
+    if '\"status\": \"approved\"' in text or '\"status\":\"approved\"' in text:
+        return True
+    return False
+
+if isinstance(result, str):
+    if check_approved(result):
+        print('yes')
+        sys.exit(0)
+elif isinstance(result, list):
+    # MCP content array: [{\"type\": \"text\", \"text\": \"...\"}]
+    for item in result:
+        if isinstance(item, dict) and check_approved(item.get('text', '')):
             print('yes')
             sys.exit(0)
-    except (json.JSONDecodeError, AttributeError):
-        pass
-    # Fallback: check for the pattern in the raw string
-    if '\"status\": \"approved\"' in result or '\"status\":\"approved\"' in result:
+elif isinstance(result, dict):
+    if result.get('status') == 'approved':
+        print('yes')
+        sys.exit(0)
+    if check_approved(result.get('text', '')):
         print('yes')
         sys.exit(0)
 
