@@ -296,23 +296,23 @@ cmd_for_write_check = re.sub(r'\d+>&\d+', '', cmd_for_write_check)
 # Allow if redirect target is inside .temp/
 temp_redirect = re.search(r">\s*[\"']?[^\"']*[/.]temp/", cmd_for_write_check)
 
+# Check codex exec -o BEFORE file-write patterns. Codex prompts contain
+# code snippets (arrow functions with =>, .catch blocks, etc.) that
+# trigger false positives in FILE_WRITE_PATTERNS. The -o flag is a CLI
+# output capture, not a shell redirect — safe when targeting .temp/.
+codex_o_match = re.search(r"\bcodex\b.*\s-o\s+[\"']?(\S+)", cmd)
+if codex_o_match:
+    codex_out = codex_o_match.group(1).strip('"').strip("'")
+    if not os.path.isabs(codex_out):
+        codex_out = os.path.join(cwd, codex_out)
+    if is_temp_path(codex_out, project_root):
+        print(json.dumps({"class": "safe", "paths": []}))
+        sys.exit(0)
+
 if not temp_redirect:
     for pattern in FILE_WRITE_PATTERNS:
         if re.search(pattern, cmd_for_write_check):
             print(json.dumps({"class": "file_write", "paths": []}))
-            sys.exit(0)
-
-    # Check nested bash scripts (could write files)
-    # But first: codex exec -o <path> is safe if path is inside .temp/
-    # (codex exec is caught by NESTED_SCRIPT_PATTERNS as an invoked binary,
-    # but -o is a CLI flag, not a shell redirect — the temp_redirect check misses it)
-    codex_o_match = re.search(r"\bcodex\b.*\s-o\s+[\"']?(\S+)", cmd)
-    if codex_o_match:
-        codex_out = codex_o_match.group(1).strip('"').strip("'")
-        if not os.path.isabs(codex_out):
-            codex_out = os.path.join(cwd, codex_out)
-        if is_temp_path(codex_out, project_root):
-            print(json.dumps({"class": "safe", "paths": []}))
             sys.exit(0)
 
     for pattern in NESTED_SCRIPT_PATTERNS:
