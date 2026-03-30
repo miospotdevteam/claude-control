@@ -178,6 +178,10 @@ if [ -d "$ACTIVE_DIR" ]; then
     plan_dir="$(dirname "$latest_json")"
     plan_name="$(basename "$plan_dir")"
 
+    # Initialize before conditional parse to avoid unbound variable with set -u
+    done_count=0 active_count=0 pending_count=0 blocked_count=0
+    next_step="" has_work=""
+
     # Read status from plan.json via plan-state.sh
     plan_status_info=$(plan_get_status "$latest_json") || true
 
@@ -211,6 +215,10 @@ if [ -d "$ACTIVE_DIR" ]; then
 
       export HOOK_PLAN_JSON="$other_plan"
       export HOOK_PLAN_UTILS="$PLAN_UTILS"
+
+      # Initialize before conditional parse to avoid unbound variable with set -u
+      done_count=0 active_count=0 pending_count=0 blocked_count=0
+      next_step=""
 
       other_status_info=$(plan_get_status "$other_plan") || true
 
@@ -249,10 +257,10 @@ if [ -d "$ACTIVE_DIR" ]; then
 
         next_step=""
         if [ "$active_count" -gt 0 ]; then
-          next_step=$(grep -B5 -E '\[~\]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
+          next_step=$(awk '/^### Step/{h=$0} /\[~\]/{print h; exit}' "$latest" | sed 's/^### //' || true)
           [ -n "$next_step" ] && next_step="IN PROGRESS: $next_step"
         elif [ "$pending_count" -gt 0 ]; then
-          next_step=$(grep -B5 -E '\[ \]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
+          next_step=$(awk '/^### Step/{h=$0} /\[ \]/{print h; exit}' "$latest" | sed 's/^### //' || true)
           [ -n "$next_step" ] && next_step="NEXT: $next_step"
         fi
 

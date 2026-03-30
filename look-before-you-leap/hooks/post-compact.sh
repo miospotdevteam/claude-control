@@ -31,6 +31,10 @@ if [ -d "$ACTIVE_DIR" ]; then
     plan_dir="$(dirname "$latest_json")"
     plan_name="$(basename "$plan_dir")"
 
+    # Initialize before conditional parse to avoid unbound variable with set -u
+    done_count=0 active_count=0 pending_count=0 blocked_count=0
+    next_step="" has_work=""
+
     plan_status_info=$(plan_get_status "$latest_json") || true
 
     if [ -n "$plan_status_info" ]; then
@@ -68,22 +72,36 @@ if [ -d "$ACTIVE_DIR" ]; then
 
         next_step=""
         if [ "$active_count" -gt 0 ]; then
-          next_step=$(grep -B5 -E '\[~\]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
+          next_step=$(awk '/^### Step/{h=$0} /\[~\]/{print h; exit}' "$latest" | sed 's/^### //' || true)
           [ -n "$next_step" ] && next_step="IN PROGRESS: $next_step"
         elif [ "$pending_count" -gt 0 ]; then
-          next_step=$(grep -B5 -E '\[ \]' "$latest" | grep -E '^### Step' | head -1 | sed 's/^### //' || true)
+          next_step=$(awk '/^### Step/{h=$0} /\[ \]/{print h; exit}' "$latest" | sed 's/^### //' || true)
           [ -n "$next_step" ] && next_step="NEXT: $next_step"
         fi
 
-        # Legacy path: claim for this session
+        # Legacy path: check ownership before claiming
         plan_dir="$(dirname "$latest")"
-        echo "$PPID" > "$plan_dir/.session-lock"
-        active_plan_summary="CONTEXT WAS COMPACTED — ACTIVE PLAN EXISTS"
-        active_plan_summary+=$'\n'"Plan: $plan_name"
-        active_plan_summary+=$'\n'"File: $latest"
-        active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
-        [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
-        active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
+        lock_file="$plan_dir/.session-lock"
+        own_plan=true
+
+        if [ -f "$lock_file" ]; then
+          lock_pid=$(cat "$lock_file" 2>/dev/null) || true
+          if [ -n "$lock_pid" ] && [ "$lock_pid" != "$PPID" ]; then
+            if kill -0 "$lock_pid" 2>/dev/null; then
+              own_plan=false
+            fi
+          fi
+        fi
+
+        if $own_plan; then
+          echo "$PPID" > "$lock_file"
+          active_plan_summary="CONTEXT WAS COMPACTED — ACTIVE PLAN EXISTS"
+          active_plan_summary+=$'\n'"Plan: $plan_name"
+          active_plan_summary+=$'\n'"File: $latest"
+          active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
+          [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
+          active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
+        fi
       fi
     fi
   fi
