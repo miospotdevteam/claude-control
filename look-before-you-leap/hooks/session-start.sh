@@ -123,6 +123,35 @@ if [ -d "$PROJECT_ROOT/.temp/plan-mode" ]; then
   done
 fi
 
+# --- Section 1.8b: Clean up stale codex markers from previous sessions ---
+# Kill any still-running codex processes and remove stale markers.
+# This catches leftovers from sessions that didn't clean up properly
+# (e.g., handoff without guard-handoff-background.sh firing).
+if [ -d "$PROJECT_ROOT/.temp/plan-mode/active" ]; then
+  for plan_d in "$PROJECT_ROOT/.temp/plan-mode/active"/*/; do
+    [ -d "$plan_d" ] || continue
+    # Clean PID markers: kill live processes, remove markers
+    for pid_file in "$plan_d".codex-inflight-*.pid; do
+      [ -f "$pid_file" ] || continue
+      stale_pid=$(cat "$pid_file" 2>/dev/null) || true
+      if [ -n "$stale_pid" ] && kill -0 "$stale_pid" 2>/dev/null; then
+        kill "$stale_pid" 2>/dev/null || true
+      fi
+      rm -f "$pid_file"
+    done
+    # Clean incomplete streams (no matching result file)
+    for stream_file in "$plan_d".codex-stream-*.jsonl; do
+      [ -f "$stream_file" ] || continue
+      stream_name="$(basename "$stream_file")"
+      result_name="${stream_name/.codex-stream-/.codex-result-}"
+      result_name="${result_name%.jsonl}.txt"
+      if [ ! -f "$plan_d/$result_name" ]; then
+        rm -f "$stream_file"
+      fi
+    done
+  done
+fi
+
 # --- Section 1.9: Clean up stale signed bypass receipts (dead PIDs) ---
 # Only delete receipts whose session PID is dead. Receipts from other LIVE
 # sessions must be preserved (they belong to other Claude instances).

@@ -252,7 +252,7 @@ to the discovery receipt.
 **Phase 1 — Parallel exploration (mandatory when Codex available):**
 
 At the START of exploration (before writing discovery.md), dispatch Codex
-in the background to explore in parallel with Claude:
+in the foreground to explore. Claude waits for the result:
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
@@ -278,7 +278,7 @@ After Codex completes, Claude reads the output file and appends it to
 cat <plan-dir>/codex-exploration.md >> <plan-dir>/discovery.md
 ```
 
-While Codex runs, Claude explores simultaneously — focusing on:
+After Codex completes, Claude explores the areas Codex did not cover:
 - Patterns, conventions, existing solutions
 - UI architecture and component structure
 - Project config, sibling files, CLAUDE.md
@@ -536,11 +536,10 @@ Orbit MCP. The `writing-plans` skill handles the details, but the flow is:
    blocks until the user approves or requests changes
 3. Handle the response (approved → proceed, changes_requested → iterate)
 4. Once approved — proceed with plan mode handoff:
-   **Pre-flight**: Kill ALL running background tasks before starting
-   the handoff (background Bash commands, background Agents, pending
-   Codex exec). They are no longer needed after plan approval. If any
-   survive, their results leak into the new session after context
-   clears and corrupt the fresh start.
+   **Pre-flight**: All codex calls are foreground, so there should be
+   no background tasks. If any exist (from non-codex background work),
+   kill them before handoff — stale results leak into the new session
+   after context clears and corrupt the fresh start.
    a. Call `EnterPlanMode` — do NOT output any text in the same response.
    b. After entering plan mode, a system message tells you the scratch pad
       file path (under `~/.claude/plans/`). Write to THAT file — NOT to
@@ -693,7 +692,7 @@ LOOP:
        IF step.owner == "claude":
          Dispatch as foreground sub-agent via Agent tool
        ELSE IF step.owner == "codex":
-         Dispatch via run-codex-implement.sh in background
+         Dispatch via run-codex-implement.sh (foreground)
      Wait for all to complete
   5. Verify all completed steps (Codex verify for claude-impl, Claude verify for codex-impl)
   6. Fix findings sequentially, re-verify as needed
@@ -751,7 +750,7 @@ Standard flow — implement, then run Codex verification.
 **`owner: "codex"` (Codex implements, Claude verifies):**
 
 1. Invoke `Skill(skill: "look-before-you-leap:codex-dispatch")` —
-   the skill runs `run-codex-implement.sh` in the background
+   the skill runs `run-codex-implement.sh` in the foreground
 2. Codex implements the step via `codex exec`
 3. After Codex reports completion, Claude does a full verification pass:
    - Read all files Codex modified (`git diff --name-only`)
@@ -1018,9 +1017,9 @@ in the result field.
    ```bash
    bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step-number>
    ```
-   Run this in the background (`Bash run_in_background: true`). While
-   Codex runs, you can begin exploring the next step (read files, check
-   consumers) — but do NOT start editing code.
+   Run this in the foreground. Do NOT use `run_in_background` or wrap
+   in an Agent — background codex calls cause handoff corruption (stale
+   transcripts leak into the next session).
 3. **Read the result** from `.codex-result-step-N.txt`. If findings:
    - Codex auto-logs findings to `usage-errors/codex-findings/`
    - Do NOT dismiss a Codex finding as "pre-existing," "out of scope,"

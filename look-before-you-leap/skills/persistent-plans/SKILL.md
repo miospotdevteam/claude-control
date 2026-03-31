@@ -416,7 +416,7 @@ This is a loop. Follow it mechanically.
 │        - claude-impl: dispatch as foreground sub-agent  │
 │          via Agent tool (implements + own verification)  │
 │        - codex-impl: dispatch via run-codex-implement.sh│
-│          in background                                  │
+│          (foreground — no background codex)              │
 │     c. Wait for all to complete                         │
 │     d. Verify all (Codex verify for claude-impl,        │
 │        Claude verify for codex-impl)                    │

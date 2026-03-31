@@ -33,63 +33,55 @@ fi
 
 SESSION_PLAN_DIR="$(dirname "$SESSION_PLAN")"
 
-blockers=""
+cleaned=""
 
-# --- Layer 1: PID markers (direction-locked scripts) ---
+# --- Layer 1: PID markers (direction-locked scripts) — auto-kill live processes ---
 for pid_file in "$SESSION_PLAN_DIR"/.codex-inflight-*.pid; do
   [ -f "$pid_file" ] || continue
   inflight_pid=$(cat "$pid_file" 2>/dev/null) || continue
   if [ -n "$inflight_pid" ] && kill -0 "$inflight_pid" 2>/dev/null; then
+    # Kill the live codex process — it's stale during handoff
+    kill "$inflight_pid" 2>/dev/null || true
     marker_name="$(basename "$pid_file")"
     step_info="${marker_name#.codex-inflight-}"
     step_info="${step_info%.pid}"
-    blockers="${blockers}  - [pid] ${step_info} (PID: ${inflight_pid})\n"
-  else
-    # PID is dead — clean up stale marker
-    rm -f "$pid_file"
+    cleaned="${cleaned}  - [killed] ${step_info} (PID: ${inflight_pid})\n"
   fi
+  # Clean up marker regardless (dead or just killed)
+  rm -f "$pid_file"
 done
 
-# --- Layer 2: Incomplete streams (stream exists, result does not) ---
+# --- Layer 2: Incomplete streams (stream exists, result does not) — clean up ---
 for stream_file in "$SESSION_PLAN_DIR"/.codex-stream-*.jsonl; do
   [ -f "$stream_file" ] || continue
   stream_name="$(basename "$stream_file")"
-  # .codex-stream-step-N.jsonl -> .codex-result-step-N.txt
   result_name="${stream_name/.codex-stream-/.codex-result-}"
   result_name="${result_name%.jsonl}.txt"
   result_file="$SESSION_PLAN_DIR/$result_name"
   if [ ! -f "$result_file" ]; then
     suffix="${stream_name#.codex-stream-}"
     suffix="${suffix%.jsonl}"
-    blockers="${blockers}  - [stream] ${suffix} (stream exists, no result yet)\n"
+    cleaned="${cleaned}  - [cleaned] ${suffix} (stale stream, no result)\n"
+    rm -f "$stream_file"
   fi
 done
 
-# Layer 3 removed: system-wide pgrep -f "codex exec" was catching codex
-# processes from OTHER sessions/projects, blocking handoff with false positives.
-# Layers 1+2 (PID markers + stream files) are session-scoped to the plan
-# directory and cover all direction-locked scripts. Background codex calls
-# (consensus, design review) are managed by Claude via background agents —
-# the handoff instructions require killing them before EnterPlanMode.
-
-if [ -n "$blockers" ]; then
-  export HOOK_BLOCKERS="$blockers"
+# Auto-kill complete — report what was cleaned if anything, then allow handoff
+if [ -n "$cleaned" ]; then
+  export HOOK_CLEANED="$cleaned"
   python3 << 'PYEOF'
 import json, os, sys
 
-blockers = os.environ.get("HOOK_BLOCKERS", "")
+cleaned = os.environ.get("HOOK_CLEANED", "")
 
 output = {
     "hookSpecificOutput": {
         "hookEventName": "PreToolUse",
-        "permissionDecision": "deny",
+        "permissionDecision": "allow",
         "permissionDecisionReason": (
-            "BLOCKED: Cannot enter plan mode — background tasks are still running.\n\n"
-            "Active tasks:\n"
-            f"{blockers}\n"
-            "Kill ALL background tasks before handoff. Stale results "
-            "leak into the post-handoff session and corrupt execution.\n\n"
-            "After killing background tasks, retry EnterPlanMode."
+            "Auto-cleaned stale background tasks before handoff:\n"
+            f"{cleaned}\n"
+            "Handoff proceeding."
         )
     }
 }
@@ -98,5 +90,5 @@ PYEOF
   exit 0
 fi
 
-# No blockers — allow handoff
+# Nothing to clean — allow handoff
 exit 0

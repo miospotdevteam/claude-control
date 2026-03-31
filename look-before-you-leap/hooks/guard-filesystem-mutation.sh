@@ -123,7 +123,7 @@ MUTATING_COMMANDS = [
 
 # --- File-writing patterns (require active plan, from enforce-plan-bash) ---
 FILE_WRITE_PATTERNS = [
-    r'[^-]>\s*\S',              # redirect: > file (but not ->)
+    r'[^-=]>\s*\S',             # redirect: > file (but not -> or =>)
     r'>>\s*\S',                  # append: >> file
     r'\bsed\b.*\s-i',           # sed in-place
     r'\bawk\b.*-i',             # awk in-place (gawk)
@@ -296,18 +296,45 @@ cmd_for_write_check = re.sub(r'\d+>&\d+', '', cmd_for_write_check)
 # Allow if redirect target is inside .temp/
 temp_redirect = re.search(r">\s*[\"']?[^\"']*[/.]temp/", cmd_for_write_check)
 
-# Check codex exec -o BEFORE file-write patterns. Codex prompts contain
+# Check codex exec BEFORE file-write patterns. Codex prompts contain
 # code snippets (arrow functions with =>, .catch blocks, etc.) that
-# trigger false positives in FILE_WRITE_PATTERNS. The -o flag is a CLI
-# output capture, not a shell redirect — safe when targeting .temp/.
-codex_o_match = re.search(r"\bcodex\b.*\s-o\s+[\"']?(\S+)", cmd)
-if codex_o_match:
-    codex_out = codex_o_match.group(1).strip('"').strip("'")
-    if not os.path.isabs(codex_out):
-        codex_out = os.path.join(cwd, codex_out)
-    if is_temp_path(codex_out, project_root):
-        print(json.dumps({"class": "safe", "paths": []}))
-        sys.exit(0)
+# trigger false positives in FILE_WRITE_PATTERNS.
+# - codex exec -o <path>: CLI output capture, safe when targeting .temp/
+# - codex exec (bare): writes to stdout, safe unless shell-redirected
+# Replace quoted strings with placeholder to preserve command structure
+# while removing prompt content that triggers false positives.
+# Using _Q_ instead of empty string so -o "_Q_" still has an argument.
+stripped = re.sub(r'"[^"]*"', '_Q_', cmd)
+stripped = re.sub(r"'[^']*'", '_Q_', stripped)
+codex_exec_match = re.search(r"\bcodex\s+exec\b", stripped, re.DOTALL)
+if codex_exec_match:
+    # Check for shell operators outside quotes that could write files
+    has_redirect = re.search(r'[^-=]>\s*\S', stripped)
+    has_pipe = re.search(r'(?<!\|)\|(?!\|)', stripped)  # | but not ||
+    has_compound = re.search(r'(&&|\|\||;)', stripped)  # chained commands (incl ||)
+    if not has_redirect and not has_pipe and not has_compound:
+        # No shell-level file writing. Check -o target.
+        codex_o_match = re.search(r"\bcodex\b.*\s-o\s+(\S+)", stripped, re.DOTALL)
+        if codex_o_match:
+            codex_out = codex_o_match.group(1)
+            if codex_out == '_Q_':
+                # -o target was quoted — extract real path from original cmd
+                o_orig = re.search(r'\s-o\s+"([^"]+)"', cmd)
+                codex_out = o_orig.group(1) if o_orig else ''
+            # -o target — safe only when targeting .temp/
+            if not os.path.isabs(codex_out):
+                codex_out = os.path.join(cwd, codex_out)
+            if is_temp_path(codex_out, project_root):
+                print(json.dumps({"class": "safe", "paths": []}))
+                sys.exit(0)
+            # -o to non-.temp/ — this is a file write via CLI flag
+            print(json.dumps({"class": "file_write", "paths": []}))
+            sys.exit(0)
+        else:
+            # Bare codex exec (no -o, no redirect, no pipe) — stdout only
+            print(json.dumps({"class": "safe", "paths": []}))
+            sys.exit(0)
+    # Has redirect/pipe/compound — fall through to file_write checks
 
 if not temp_redirect:
     for pattern in FILE_WRITE_PATTERNS:

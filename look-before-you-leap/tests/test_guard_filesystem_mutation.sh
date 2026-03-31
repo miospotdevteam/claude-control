@@ -58,6 +58,18 @@ assert_denied() {
   fi
 }
 
+assert_warned() {
+  local desc="$1"
+  local output
+  output=$(cat "$HOOK_OUT_FILE")
+  if [[ "$output" == *'"permissionDecision"'*'"allow"'* && "$output" == *'WARNING'* ]]; then
+    pass
+    echo "  PASS: $desc"
+  else
+    fail "$desc — expected allow+WARNING, got: $output"
+  fi
+}
+
 run_hook() {
   local json_input="$1"
   : > "$HOOK_OUT_FILE"
@@ -145,26 +157,26 @@ assert_allowed "rm ../file from subdir is inside project (allowed)"
 
 # ============================================================
 echo ""
-echo "=== Destructive inside project denied (no receipt) ==="
+echo "=== Destructive inside project warned (no receipt) ==="
 # ============================================================
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "rm -rf '"$FAKE_PROJECT"'/src"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_denied "rm -rf inside project denied"
+assert_warned "rm -rf inside project warned"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "rm -r '"$FAKE_PROJECT"'/src"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_denied "rm -r inside project denied"
+assert_warned "rm -r inside project warned"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "find '"$FAKE_PROJECT"' -name \"*.tmp\" -delete"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_denied "find -delete inside project denied (absolute path)"
+assert_warned "find -delete inside project warned (absolute path)"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "find . -name \"*.tmp\" -delete"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_denied "find . -delete inside project denied (relative path)"
+assert_warned "find . -delete inside project warned (relative path)"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "find . -type f -delete"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_denied "find . -type f -delete denied"
+assert_warned "find . -type f -delete warned"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "git clean -fd"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_denied "git clean -fd inside project denied"
+assert_warned "git clean -fd inside project warned"
 
 # ============================================================
 echo ""
@@ -340,6 +352,83 @@ assert_allowed "Nested script allowed with plan"
 
 # Clean up fake plan
 rm -rf "$FAKE_PROJECT/.temp/plan-mode/active/test-plan"
+
+# ============================================================
+echo ""
+echo "=== codex exec safe-exit (multiline, bare, => in prompt) ==="
+# ============================================================
+
+# codex exec -o with multiline command (re.DOTALL fix)
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec -C /some/project --dangerously-bypass-approvals-and-sandbox -o '"$FAKE_PROJECT"'/.temp/plan-mode/active/test/codex-out.md \"Read the plan.\nFor each step, return:\n- ACCEPT\n- REJECT\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "codex exec -o multiline is safe (re.DOTALL)"
+
+# codex exec without -o, prompt contains =>
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec \"verify that () => handlers work and .catch => blocks are correct\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "codex exec bare with => in prompt is safe"
+
+# codex exec without -o, no special chars
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec \"check the types in this project\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "codex exec bare simple prompt is safe"
+
+# codex exec with real shell redirect OUTSIDE quotes — should be blocked
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec \"check types\" > /tmp/output.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec with shell redirect > is file_write"
+
+# codex exec piped to tee — should be blocked (pipe bypass)
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec \"check types\" | tee /tmp/codex-pipe-out.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec piped to tee is file_write"
+
+# codex exec with || (logical OR, not pipe) — should be safe
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec \"check types\" || echo fallback"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "codex exec with || is safe (logical OR not pipe)"
+
+# codex exec with -o and > inside quoted prompt — should be safe (not real flags)
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec \"explain why -o /tmp is mentioned and whether a > b and () => x are okay\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "codex exec with -o and > inside prompt is safe"
+
+# codex exec -o with shell redirect AFTER — should be blocked
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec -o '"$FAKE_PROJECT"'/.temp/out.md \"check types\" > /tmp/redirected.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec -o with shell redirect is file_write"
+
+# codex exec -o piped to tee — should be blocked
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec -o '"$FAKE_PROJECT"'/.temp/out.md \"check types\" | tee /tmp/piped.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec -o piped to tee is file_write"
+
+# codex exec -o to /tmp (outside .temp/) — should be blocked
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec -o /tmp/codex-global-out.md \"check types\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec -o outside .temp/ is file_write"
+
+# codex exec -o to project root (inside project but not .temp/) — should be blocked
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec -o '"$FAKE_PROJECT"'/codex-local-out.md \"check types\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec -o inside project but not .temp/ is file_write"
+
+# codex exec with && compound command — should be blocked
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec \"check types\" && sed -i s/a/b/g file.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec && sed -i is file_write"
+
+# codex exec with ; compound command — should be blocked
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec \"check types\"; tee file.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec ; tee is file_write"
+
+# codex exec with || fallback to file writer — should be blocked
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec \"check types\" || tee /tmp/fallback.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec || tee is file_write"
+
+# "codex exec" inside a python3 -c string should NOT trigger codex safe-exit
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "python3 -c \"open('"'"'/tmp/file'"'"','"'"'w'"'"').write('"'"'codex exec'"'"')\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec inside python string is still file_write"
+
+# codex exec -o with quoted path outside .temp/ — should be blocked (conservative)
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec -o \"/tmp/codex-global-out.md\" \"check types\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec -o quoted path outside .temp/ is file_write"
+
+# codex exec -o with quoted .temp/ path — should be allowed
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec -o \"'"$FAKE_PROJECT"'/.temp/plan-mode/active/test/codex-out.md\" \"check types\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "codex exec -o quoted .temp/ path is safe"
+
+# => in non-codex command should NOT trigger redirect false positive
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "echo \"const fn = () => { return 42 }\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "=> in echo is not a redirect"
 
 # ============================================================
 echo ""
