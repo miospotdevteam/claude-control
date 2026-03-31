@@ -8,7 +8,7 @@ description: "Orchestrates all Codex interactions for the look-before-you-leap p
 This skill orchestrates ALL Codex interactions during plan execution.
 Claude never calls `codex exec` directly for step verification or
 implementation — it invokes this skill, which selects the correct
-direction-locked script, runs it in the background, monitors output,
+direction-locked script, runs it in the foreground, monitors output,
 and enforces the verification protocol.
 
 ---
@@ -78,8 +78,8 @@ Output files (in the plan directory):
 2. **Dispatch Codex verification:**
    ```
    Bash(
-     command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step-number>",
-     run_in_background: true
+     command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step-number>"
+     # Must be foreground — background codex leaks into new sessions after handoff
    )
    ```
 3. **Monitor JSONL** — periodically read the stream file
@@ -101,8 +101,8 @@ Output files (in the plan directory):
 1. **Dispatch Codex implementation:**
    ```
    Bash(
-     command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh <plan.json> <step-number> [group-index]",
-     run_in_background: true
+     command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh <plan.json> <step-number> [group-index]"
+     # Must be foreground — background codex leaks into new sessions after handoff
    )
    ```
 2. **Monitor JSONL** — watch for file changes, commands, issues
@@ -115,8 +115,8 @@ Output files (in the plan directory):
 
 ## JSONL Monitoring
 
-While Codex runs in the background, periodically read the stream file
-to report progress to the user:
+While Codex runs, periodically read the stream file to report progress
+to the user:
 
 ```bash
 # Read latest events (use step-N-group-G suffix for group-scoped runs)
@@ -353,7 +353,8 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    Format: ## [Codex: <topic>] then bullet points with findings."
 ```
 
-Run in the background while Claude explores simultaneously.
+Run in the foreground — Claude waits for the result before exploring
+areas Codex did not cover.
 
 **Phase 2 — Convergence (foreground):**
 
@@ -556,12 +557,12 @@ All context lives on disk (plan.json + progress.json, discovery.md, source files
 
 | Situation | Action |
 |---|---|
-| `claude-impl` step done | Run `run-codex-verify.sh` in background |
-| `codex-impl` step starting | Run `run-codex-implement.sh` in background |
+| `claude-impl` step done | Run `run-codex-verify.sh` in foreground |
+| `codex-impl` step starting | Run `run-codex-implement.sh` in foreground |
 | Codex returns PASS | Write `### Criterion:` result, add `### Verdict\nCodex: PASS`, mark done |
 | Codex returns findings | Fix issues, re-run `run-codex-verify.sh` |
 | Codex implements step | Claude verifies independently (read files, run tests) |
-| Co-exploration (discovery) | Dispatch Phase 1 in background, Phase 2 after |
+| Co-exploration (discovery) | Dispatch Phase 1 in foreground, Phase 2 after |
 | Plan consensus (planning) | Max 3 rounds of structured debate |
 | `collab-split` step | Dispatch per-group with group-idx arg, verify by owner |
 | `dual-pass` step | Claude pass, then Codex pass, synthesize |
