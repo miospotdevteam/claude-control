@@ -8,7 +8,7 @@ description: "Orchestrates all Codex interactions for the look-before-you-leap p
 This skill orchestrates ALL Codex interactions during plan execution.
 Claude never calls `codex exec` directly for step verification or
 implementation — it invokes this skill, which selects the correct
-direction-locked script, runs it in the foreground, monitors output,
+direction-locked script, runs it in the background, monitors output,
 and enforces the verification protocol.
 
 ---
@@ -79,7 +79,7 @@ Output files (in the plan directory):
    ```
    Bash(
      command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step-number>"
-     # Must be foreground — background codex leaks into new sessions after handoff
+     run_in_background: true
    )
    ```
 3. **Monitor JSONL** — periodically read the stream file
@@ -102,7 +102,7 @@ Output files (in the plan directory):
    ```
    Bash(
      command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh <plan.json> <step-number> [group-index]"
-     # Must be foreground — background codex leaks into new sessions after handoff
+     run_in_background: true
    )
    ```
 2. **Monitor JSONL** — watch for file changes, commands, issues
@@ -353,10 +353,11 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    Format: ## [Codex: <topic>] then bullet points with findings."
 ```
 
-Run in the foreground — Claude waits for the result before exploring
-areas Codex did not cover.
+Run in the background (`run_in_background: true`) — Claude explores
+simultaneously while Codex runs. Read the output file when Codex
+completes, then proceed to convergence.
 
-**Phase 2 — Convergence (foreground):**
+**Phase 2 — Convergence (background):**
 
 After both agents finish, dispatch Codex for a focused convergence review.
 The prompt must ask for **gaps and disagreements only** — not a rehash of
@@ -557,12 +558,12 @@ All context lives on disk (plan.json + progress.json, discovery.md, source files
 
 | Situation | Action |
 |---|---|
-| `claude-impl` step done | Run `run-codex-verify.sh` in foreground |
-| `codex-impl` step starting | Run `run-codex-implement.sh` in foreground |
+| `claude-impl` step done | Run `run-codex-verify.sh` in background |
+| `codex-impl` step starting | Run `run-codex-implement.sh` in background |
 | Codex returns PASS | Write `### Criterion:` result, add `### Verdict\nCodex: PASS`, mark done |
 | Codex returns findings | Fix issues, re-run `run-codex-verify.sh` |
 | Codex implements step | Claude verifies independently (read files, run tests) |
-| Co-exploration (discovery) | Dispatch Phase 1 in foreground, Phase 2 after |
+| Co-exploration (discovery) | Dispatch Phase 1 in background, Phase 2 after |
 | Plan consensus (planning) | Max 3 rounds of structured debate |
 | `collab-split` step | Dispatch per-group with group-idx arg, verify by owner |
 | `dual-pass` step | Claude pass, then Codex pass, synthesize |

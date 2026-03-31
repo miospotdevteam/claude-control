@@ -74,6 +74,48 @@ if [ "$has_dep_maps" != "yes" ]; then
   exit 0
 fi
 
+# Allow grep for patterns containing path alias prefixes (@/, ~/, #/).
+# Dep maps rely on madge's tsconfig resolution which can be incomplete when
+# tsconfig uses extends chains, monorepo path mappings, or custom resolvers.
+# These aliases are the #1 source of dep-map blind spots — let grep through.
+case "$PATTERN" in
+  *'@/'*|*'~/'*|*'#/'*)
+    exit 0
+    ;;
+esac
+
+# Also check the project's tsconfig.json for custom path aliases.
+# If the grep pattern contains any configured alias prefix, allow it.
+if [ -n "$PROJECT_ROOT" ]; then
+  custom_hit=$(python3 -c "
+import json, re, os, sys
+project_root = sys.argv[1]
+pattern = sys.argv[2]
+for tc in ['tsconfig.json', 'tsconfig.base.json']:
+    path = os.path.join(project_root, tc)
+    if not os.path.exists(path):
+        continue
+    try:
+        with open(path) as f:
+            content = f.read()
+        content = re.sub(r'//.*?$', '', content, flags=re.MULTILINE)
+        content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+        data = json.loads(content)
+        paths = data.get('compilerOptions', {}).get('paths', {})
+        for key in paths:
+            prefix = key.replace('/*', '/').replace('*', '')
+            if prefix and prefix != '/' and prefix in pattern:
+                print('yes')
+                sys.exit(0)
+    except Exception:
+        pass
+" "$PROJECT_ROOT" "$PATTERN" 2>/dev/null) || true
+
+  if [ "$custom_hit" = "yes" ]; then
+    exit 0
+  fi
+fi
+
 # Dep maps ARE configured and the pattern looks like an import/consumer search.
 # DENY the grep — Claude must use deps-query.py instead.
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
@@ -93,6 +135,7 @@ output = {
             "Grep is only allowed for:\n"
             "- Non-TypeScript files\n"
             "- String references (config keys, env vars, literal text)\n"
+            "- Aliased imports (@/, ~/, #/, or tsconfig paths aliases)\n"
             "- Projects without dep maps configured"
         )
     }

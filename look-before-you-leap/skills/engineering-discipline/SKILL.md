@@ -856,4 +856,4 @@ If you catch yourself doing any of these, stop and reconsider:
 | Adding user-visible strings without updating ALL locale files | Run a mechanical locale audit: grep new t() calls, check every locale file for matching keys — English fallbacks count as missing |
 | Implementing async UI without filling the state-transition matrix | Fill the matrix (switch item, request fails, close/reopen, stale response, cosmetic defaults) — empty cells are bugs |
 | Step says "mirror" or "parity" but you coded from memory instead of a diff table | Build a parity table (data source, behaviors, states, labels, preconditions) against the reference files before coding |
-| Running codex exec with `run_in_background: true` or wrapping it in an Agent | ALL codex calls MUST be foreground Bash — background codex causes handoff corruption (stale 54K-token transcripts leak into new sessions) |
+| Entering plan mode handoff with background codex still running and no guard hook | The `guard-handoff-background.sh` hook auto-kills stale codex processes on `EnterPlanMode` — but verify it cleaned up before writing the scratch pad |

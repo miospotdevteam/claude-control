@@ -632,10 +632,9 @@ MCP:
 
 After the plan is approved via Orbit:
 
-**Pre-flight**: All codex calls are foreground, so there should be no
-background tasks. The `guard-handoff-background.sh` hook auto-kills any
-stale codex processes and cleans markers on `EnterPlanMode`. If non-codex
-background work exists, kill it before handoff.
+**Pre-flight**: The `guard-handoff-background.sh` hook auto-kills any
+running codex processes and cleans markers on `EnterPlanMode`. If
+non-codex background work exists, kill it before handoff.
 
 1. **Call `EnterPlanMode`** — do NOT output any text in the same response.
    Call the tool and nothing else. The handoff marker (`.handoff-pending`)
