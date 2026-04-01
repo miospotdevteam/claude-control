@@ -535,12 +535,18 @@ Codex before presenting to the user. Both agents must agree on the plan.
 batch into groups of 5 items, never retry oversized prompts, cap output
 scope to structured bullets.
 
+**IMPORTANT: Run all consensus `codex exec` calls in foreground (no
+`run_in_background`).** Background Codex notifications arriving during
+`EnterPlanMode`/`ExitPlanMode` break the plan mode handoff. Wait for each
+call to complete before proceeding.
+
 **Round 1 — Codex reviews:**
 
 If the plan has **≤5 steps**, dispatch a single call:
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-consensus-round1.md \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For steps 1-N, return a structured proposal per step: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -550,35 +556,39 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    ownership assignments that contradict the routing matrix."
 ```
 
+Claude reads `codex-consensus-round1.md` after the call completes.
+
 If the plan has **>5 steps**, batch into groups of 5:
 
 ```bash
 # Batch 1: steps 1-5
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-consensus-batch-1.md \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 1-5. For each, return: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
    - REJECT <reason>: step should be removed or fundamentally rethought \
-   - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering) \
-   Append results to <plan-dir>/consensus-round1.md under ## Steps 1-5"
+   - MODIFY <changes>: step needs specific changes (sizing, criteria, ownership, ordering)"
 
 # Batch 2: steps 6-10 (adjust range for actual step count)
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-consensus-batch-2.md \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 6-10. For each, return: \
-   - ACCEPT / REJECT <reason> / MODIFY <changes> \
-   Append results to <plan-dir>/consensus-round1.md under ## Steps 6-10"
+   - ACCEPT / REJECT <reason> / MODIFY <changes>"
 
 # Continue batching until all steps are covered.
-# After all batches, also dispatch a cross-cutting check:
+# After all batches, Claude merges batch files into consensus-round1.md,
+# then dispatches a cross-cutting check:
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
-  "Read <plan-dir>/consensus-round1.md (all batch results). \
+  -o <plan-dir>/codex-consensus-cross-cutting.md \
+  "Read <plan-dir>/consensus-round1.md (merged batch results). \
    Flag: missing steps, wrong ordering across the full plan, \
-   ownership assignments that contradict the routing matrix. \
-   Append cross-cutting notes under ## Cross-Cutting."
+   ownership assignments that contradict the routing matrix."
 ```
 
-Merge all batch results before proceeding to Round 2.
+Claude reads each `-o` output file after the call completes and merges
+batch results into `consensus-round1.md`. Append cross-cutting notes.
 
 **Round 2 — Claude responds** to each proposal (ACCEPT / REJECT with
 reasoning / COUNTER-PROPOSE). Update plan files with accepted changes.
@@ -590,6 +600,7 @@ call, merging results between batches.
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  -o <plan-dir>/codex-consensus-round3.md \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For these remaining disagreements: [list ≤5 items] \
    - ACCEPT Claude's reasoning, or \

@@ -22,6 +22,7 @@ CLI usage:
     python3 plan-utils.py add-deviation <plan.json> <deviation_text>
     python3 plan-utils.py is-fresh <plan.json>
     python3 plan-utils.py is-complete <plan.json>
+    python3 plan-utils.py claim-session <plan.json> <pid>
     python3 plan-utils.py find-active <project_root>
     python3 plan-utils.py update-codex-session <plan.json> <threadId> <phase> [step_id]
     python3 plan-utils.py get-codex-session <plan.json> [step_id]
@@ -38,9 +39,21 @@ import sys
 # progress.json helpers
 # ---------------------------------------------------------------------------
 
+def normalize_plan_path(plan_path):
+    """Resolve a plan path against the current working directory."""
+    return os.path.abspath(os.path.expanduser(os.fspath(plan_path)))
+
+
 def progress_path_for(plan_path):
     """Derive the progress.json path from a plan.json path."""
+    plan_path = normalize_plan_path(plan_path)
     return os.path.join(os.path.dirname(plan_path), "progress.json")
+
+
+def session_lock_path_for(plan_path):
+    """Derive the .session-lock path from a plan.json path."""
+    plan_path = normalize_plan_path(plan_path)
+    return os.path.join(os.path.dirname(plan_path), ".session-lock")
 
 
 def read_progress(plan_path):
@@ -97,6 +110,7 @@ def _ensure_progress(plan_path):
     If progress.json doesn't exist yet, extracts mutable state from
     plan.json to bootstrap it (preserving in-flight status/results).
     """
+    plan_path = normalize_plan_path(plan_path)
     prog_path = progress_path_for(plan_path)
     if os.path.isfile(prog_path):
         with open(prog_path) as f:
@@ -253,6 +267,7 @@ def read_plan(plan_path):
     Returns the merged view — immutable definition + mutable progress.
     Legacy plans without progress.json return plan.json contents as-is.
     """
+    plan_path = normalize_plan_path(plan_path)
     with open(plan_path) as f:
         plan = json.load(f)
     progress = read_progress(plan_path)
@@ -263,6 +278,7 @@ def read_plan(plan_path):
 
 def read_plan_definition(plan_path):
     """Read only the immutable plan definition (plan.json)."""
+    plan_path = normalize_plan_path(plan_path)
     with open(plan_path) as f:
         return json.load(f)
 
@@ -272,9 +288,18 @@ def write_plan(plan_path, plan):
 
     After approval, use mutation functions that write to progress.json.
     """
+    plan_path = normalize_plan_path(plan_path)
     with open(plan_path, "w") as f:
         json.dump(plan, f, indent=2, ensure_ascii=False)
         f.write("\n")
+
+
+def claim_session(plan_path, pid):
+    """Write the session PID to the plan's .session-lock file."""
+    lock_path = session_lock_path_for(plan_path)
+    with open(lock_path, "w", encoding="utf-8") as f:
+        f.write(f"{pid}\n")
+    return lock_path
 
 
 def get_step(plan, step_id):
@@ -1068,6 +1093,7 @@ Progress commands:
   migrate-progress <plan.json>                    Extract mutable state from plan.json → progress.json
 
 Plan discovery commands:
+  claim-session <plan.json> <pid>                Write .session-lock for a session PID
   find-active <project_root>                      Find most recent active plan
   find-for-session <project_root> <ppid>          Find plan for a session PID
   find-unclaimed <project_root>                   Find plans with dead locks""")
@@ -1117,6 +1143,15 @@ def main():
         return
 
     plan_path = sys.argv[2]
+
+    if command == "claim-session":
+        if len(sys.argv) < 4:
+            print("Usage: plan-utils.py claim-session <plan.json> <pid>", file=sys.stderr)
+            sys.exit(1)
+        pid = sys.argv[3]
+        lock_path = claim_session(plan_path, pid)
+        print(json.dumps({"claimed": lock_path}))
+        return
 
     if command == "status":
         cli_status(plan_path)
@@ -1268,7 +1303,11 @@ def main():
         plan_def = read_plan_definition(plan_path)
         prog = init_progress(plan_def)
         write_progress(plan_path, prog)
-        print(json.dumps({"created": progress_path_for(plan_path)}))
+        lock_path = claim_session(plan_path, os.getppid())
+        print(json.dumps({
+            "created": progress_path_for(plan_path),
+            "claimed": lock_path,
+        }))
 
     elif command == "migrate-progress":
         prog = _ensure_progress(plan_path)

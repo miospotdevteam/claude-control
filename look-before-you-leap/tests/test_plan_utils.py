@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -153,6 +154,90 @@ class PlanUtilsCliTests(unittest.TestCase):
             self.assertIn("incomplete progress item(s)", completed.stderr)
             self.assertIn("has no files field", completed.stderr)
             self.assertEqual(self.read_plan(plan_path)["steps"][0]["status"], "done")
+
+
+class SessionClaimTests(unittest.TestCase):
+    def write_plan(self, temp_dir, plan, *, active_name=None):
+        plan_dir = Path(temp_dir)
+        if active_name is not None:
+            plan_dir = plan_dir / ".temp" / "plan-mode" / "active" / active_name
+            plan_dir.mkdir(parents=True, exist_ok=True)
+        plan_path = plan_dir / "plan.json"
+        plan_path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+        return plan_path
+
+    def read_plan(self, plan_path):
+        return plan_utils.read_plan(str(plan_path))
+
+    def run_cli(self, *args, cwd=None):
+        return subprocess.run(
+            [sys.executable, str(PLAN_UTILS), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=cwd,
+        )
+
+    def test_claim_session_creates_session_lock_with_pid(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, make_plan())
+
+            claimed = self.run_cli("claim-session", str(plan_path), "4242")
+
+            self.assertEqual(claimed.returncode, 0, claimed.stderr)
+            lock_path = Path(temp_dir) / ".session-lock"
+            self.assertTrue(lock_path.exists())
+            self.assertEqual(lock_path.read_text(encoding="utf-8").strip(), "4242")
+            self.assertEqual(json.loads(claimed.stdout)["claimed"], str(lock_path))
+
+    def test_init_progress_creates_session_lock_as_side_effect(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(
+                temp_dir,
+                make_plan(progress=[{"task": "Write tests", "status": "pending", "files": []}]),
+            )
+
+            result = self.run_cli("init-progress", str(plan_path))
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            lock_path = Path(temp_dir) / ".session-lock"
+            self.assertTrue(lock_path.exists())
+            self.assertEqual(
+                lock_path.read_text(encoding="utf-8").strip(),
+                str(os.getpid()),
+            )
+
+    def test_find_for_session_finds_claimed_plan(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, make_plan(), active_name="demo")
+
+            claimed = self.run_cli("claim-session", str(plan_path), "5151")
+            self.assertEqual(claimed.returncode, 0, claimed.stderr)
+
+            found = self.run_cli("find-for-session", temp_dir, "5151")
+
+            self.assertEqual(found.returncode, 0, found.stderr)
+            self.assertEqual(found.stdout.strip(), str(plan_path))
+
+    def test_set_result_accepts_relative_plan_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, make_plan())
+
+            result = self.run_cli("set-result", "plan.json", "1", "relative result", cwd=temp_dir)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(self.read_plan(plan_path)["steps"][0]["result"], "relative result")
+
+    def test_next_step_outputs_valid_json(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, make_plan())
+
+            result = self.run_cli("next-step", str(plan_path))
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["id"], 1)
+            self.assertEqual(payload["title"], "Regression target")
 
 
 class CompleteStepTests(unittest.TestCase):

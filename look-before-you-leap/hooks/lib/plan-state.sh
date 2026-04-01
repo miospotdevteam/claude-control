@@ -16,7 +16,29 @@ _PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 # Returns: plan.json path on stdout (empty if none found)
 plan_resolve_session() {
   local project_root="$1"
-  python3 "$_PLAN_UTILS" find-for-session "$project_root" "$PPID" 2>/dev/null || true
+  local session_plan=""
+  local active_dir="${project_root}/.temp/plan-mode/active"
+  local dir_count=0
+  local only_dir=""
+  local dir=""
+
+  session_plan=$(python3 "$_PLAN_UTILS" find-for-session "$project_root" "$PPID" 2>/dev/null) || true
+  if [ -n "$session_plan" ]; then
+    echo "$session_plan"
+    return 0
+  fi
+
+  [ -d "$active_dir" ] || return 0
+
+  for dir in "$active_dir"/*; do
+    [ -d "$dir" ] || continue
+    dir_count=$((dir_count + 1))
+    only_dir="$dir"
+  done
+
+  if [ "$dir_count" -eq 1 ] && [ -f "$only_dir/plan.json" ]; then
+    echo "$only_dir/plan.json"
+  fi
 }
 
 # Extract plan directory from a plan.json path.

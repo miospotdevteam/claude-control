@@ -386,6 +386,24 @@ PROJ_ID=$(receipt_project_id "$PROJECT_ROOT" 2>/dev/null) || true
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 SESSION_PLAN=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
+if [ -z "$SESSION_PLAN" ]; then
+  ACTIVE_DIR="$PROJECT_ROOT/.temp/plan-mode/active"
+  ACTIVE_DIR_COUNT=0
+  ONLY_ACTIVE_DIR=""
+  ACTIVE_PLAN_DIR=""
+
+  if [ -d "$ACTIVE_DIR" ]; then
+    for ACTIVE_PLAN_DIR in "$ACTIVE_DIR"/*; do
+      [ -d "$ACTIVE_PLAN_DIR" ] || continue
+      ACTIVE_DIR_COUNT=$((ACTIVE_DIR_COUNT + 1))
+      ONLY_ACTIVE_DIR="$ACTIVE_PLAN_DIR"
+    done
+  fi
+
+  if [ "$ACTIVE_DIR_COUNT" -eq 1 ] && [ -f "$ONLY_ACTIVE_DIR/plan.json" ]; then
+    SESSION_PLAN="$ONLY_ACTIVE_DIR/plan.json"
+  fi
+fi
 PLAN_ID=""
 if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
   PLAN_ID=$(receipt_plan_id "$SESSION_PLAN" 2>/dev/null) || true

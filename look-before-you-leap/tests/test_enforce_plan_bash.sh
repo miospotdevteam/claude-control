@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Tests for enforce-plan-bash.sh PreToolUse hook
+# Tests for Bash/Edit plan enforcement hooks.
 #
-# Tests codex wrapper script exemptions, bare codex exec handling,
-# file-write detection, and plan-state gating.
+# guard-filesystem-mutation.sh now subsumes the old enforce-plan-bash.sh
+# behavior for Bash commands, while enforce-plan.sh still gates Edit/Write.
 #
 # IMPORTANT: Tests that check plan-based allow must NOT wrap run_hook in
 # $() because that creates a subshell with a different PID, breaking the
@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-HOOK="${PLUGIN_ROOT}/hooks/enforce-plan-bash.sh"
+HOOK="${PLUGIN_ROOT}/hooks/guard-filesystem-mutation.sh"
 EDIT_HOOK="${PLUGIN_ROOT}/hooks/enforce-plan.sh"
 
 PASS=0
@@ -98,7 +98,7 @@ run_edit_hook() {
   make_edit_input "$file_path" "$cwd" | bash "$EDIT_HOOK" > "$HOOK_OUT_FILE" 2>/dev/null || true
 }
 
-setup_with_plan() {
+write_demo_plan() {
   local root="$1"
   mkdir -p "$root/.git" "$root/.temp/plan-mode/active/demo"
   cat > "$root/.temp/plan-mode/active/demo/plan.json" << 'JSON'
@@ -113,6 +113,16 @@ setup_with_plan() {
   "deviations": []
 }
 JSON
+}
+
+setup_with_plan_no_lock() {
+  local root="$1"
+  write_demo_plan "$root"
+}
+
+setup_with_plan() {
+  local root="$1"
+  write_demo_plan "$root"
   # Session lock must match the hook's $PPID, which is this script's $$
   echo "$$" > "$root/.temp/plan-mode/active/demo/.session-lock"
 }
@@ -145,23 +155,23 @@ cleanup() {
 }
 
 # ============================================================
-echo "=== Test: Known Codex wrapper scripts pass without plan ==="
+echo "=== Test: Wrapper basenames outside plugin root do not bypass ==="
 # ============================================================
 
 ROOT=$(make_root)
 mkdir -p "$ROOT/.git" "$ROOT/.temp/plan-mode"
 
 run_hook "bash /some/path/run-codex-verify.sh plan.json 1" "$ROOT"
-assert_allowed_file "run-codex-verify.sh without plan"
+assert_denied_file "run-codex-verify.sh outside plugin root denied"
 
 run_hook "bash /some/path/run-codex-implement.sh plan.json 2" "$ROOT"
-assert_allowed_file "run-codex-implement.sh without plan"
+assert_denied_file "run-codex-implement.sh outside plugin root denied"
 
 run_hook "bash /plugin/scripts/write-discovery-receipt.sh arg" "$ROOT"
-assert_allowed_file "write-discovery-receipt.sh without plan"
+assert_denied_file "write-discovery-receipt.sh outside plugin root denied"
 
 run_hook "bash /plugin/scripts/write-claude-verify-receipt.sh arg" "$ROOT"
-assert_allowed_file "write-claude-verify-receipt.sh without plan"
+assert_denied_file "write-claude-verify-receipt.sh outside plugin root denied"
 
 cleanup "$ROOT"
 
@@ -201,6 +211,19 @@ setup_with_plan "$ROOT"
 
 run_hook "codex exec --fast 'review' > .codex-result.txt" "$ROOT"
 assert_allowed_file "codex exec with redirect, has plan"
+
+cleanup "$ROOT"
+
+# ============================================================
+echo ""
+echo "=== Test: Edit fallback allows single active plan without session lock ==="
+# ============================================================
+
+ROOT=$(make_root)
+setup_with_plan_no_lock "$ROOT"
+
+run_edit_hook "src/owned.ts" "$ROOT"
+assert_allowed_file "edit allowed with single active plan and no session lock"
 
 cleanup "$ROOT"
 

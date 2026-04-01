@@ -76,6 +76,21 @@ run_hook() {
   echo "$json_input" | bash "$HOOK" > "$HOOK_OUT_FILE" 2>/dev/null || true
 }
 
+create_active_plan() {
+  local plan_name="$1"
+  local lock_pid="${2:-}"
+  local plan_dir="$FAKE_PROJECT/.temp/plan-mode/active/$plan_name"
+
+  mkdir -p "$plan_dir"
+  cat > "$plan_dir/plan.json" <<JSON
+{"name":"$plan_name","status":"active","steps":[]}
+JSON
+
+  if [ -n "$lock_pid" ]; then
+    echo "$lock_pid" > "$plan_dir/.session-lock"
+  fi
+}
+
 # ============================================================
 echo "=== Read-only commands pass through ==="
 # ============================================================
@@ -249,6 +264,42 @@ assert_denied "tee denied without plan"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "dd if=/dev/zero of='"$FAKE_PROJECT"'/file bs=1k count=1"}, "cwd": "'"$FAKE_PROJECT"'"}'
 assert_denied "dd of= denied without plan"
+
+# ============================================================
+echo ""
+echo "=== Session fallback resolution for file-writing commands ==="
+# ============================================================
+
+rm -rf "$FAKE_PROJECT/.temp/plan-mode/active"
+mkdir -p "$FAKE_PROJECT/.temp/plan-mode/active"
+create_active_plan "fallback-no-lock"
+
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec --fast \"review\" > .codex-result.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "codex exec redirect allowed with single active plan and no session lock"
+
+rm -rf "$FAKE_PROJECT/.temp/plan-mode/active"
+mkdir -p "$FAKE_PROJECT/.temp/plan-mode/active"
+create_active_plan "fallback-wrong-lock" "999999"
+
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec --fast \"review\" > .codex-result.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "codex exec redirect allowed with wrong session lock when only one active plan exists"
+
+rm -rf "$FAKE_PROJECT/.temp/plan-mode/active"
+mkdir -p "$FAKE_PROJECT/.temp/plan-mode/active"
+create_active_plan "ambiguous-a"
+create_active_plan "ambiguous-b"
+
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec --fast \"review\" > .codex-result.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec redirect denied when multiple active plans make fallback ambiguous"
+
+rm -rf "$FAKE_PROJECT/.temp/plan-mode/active"
+mkdir -p "$FAKE_PROJECT/.temp/plan-mode/active"
+
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec --fast \"review\" > .codex-result.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "codex exec redirect denied when no active plan exists"
+
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "codex exec -o '"$FAKE_PROJECT"'/.temp/plan-mode/active/test/codex-out.md \"check types\""}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "codex exec -o .temp path remains safe without plan"
 
 # ============================================================
 echo ""
