@@ -548,8 +548,9 @@ Orbit MCP. The `writing-plans` skill handles the details, but the flow is:
       execution." Nothing else — no step descriptions, no Codex consensus,
       no file lists.
    c. Call `ExitPlanMode` — do NOT output any text in the same response.
-   The handoff marker is auto-cleared by a hook when `EnterPlanMode` is
-   called or when `orbit_await_review` returns approved.
+   The pending-review marker is cleared only when
+   `orbit_await_review` returns approved. `EnterPlanMode` happens after
+   approval; it does not clear a pending review marker.
 
    **IMPORTANT**: Do not output explanatory text alongside `EnterPlanMode`
    or `ExitPlanMode` calls. Extra text can interfere with the plan mode

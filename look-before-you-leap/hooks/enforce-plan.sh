@@ -145,8 +145,27 @@ if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
   HANDOFF_MARKER="$SESSION_PLAN_DIR/.handoff-pending"
 
   if [ -f "$HANDOFF_MARKER" ]; then
+    # Approval receipts are authoritative. If approval was recorded but the
+    # marker lingered, clear it here so the session can recover cleanly.
+    if [ -n "${PROJ_ID:-}" ]; then
+      SESSION_PLAN_NAME=$(receipt_plan_id "$SESSION_PLAN" 2>/dev/null) || true
+      if [ -n "$SESSION_PLAN_NAME" ] && receipt_check "handoff_approved" "$PROJ_ID" "$SESSION_PLAN_NAME" 2>/dev/null; then
+        rm -f "$HANDOFF_MARKER"
+      fi
+    fi
+  fi
+
+  if [ -f "$HANDOFF_MARKER" ]; then
     # Read the plan path stored in the marker
     PLAN_PATH=$(cat "$HANDOFF_MARKER" 2>/dev/null) || true
+    if [ -z "$PLAN_PATH" ] || [ "$PLAN_PATH" = "unknown" ]; then
+      PLAN_PATH="${SESSION_PLAN_DIR}/masterPlan.md"
+    elif [[ "$PLAN_PATH" == *"/plan.json" ]]; then
+      MASTER_PLAN_CANDIDATE="$(dirname "$PLAN_PATH")/masterPlan.md"
+      if [ -f "$MASTER_PLAN_CANDIDATE" ]; then
+        PLAN_PATH="$MASTER_PLAN_CANDIDATE"
+      fi
+    fi
 
     # Auto-clear if plan has progressed
     if [ -n "$PLAN_PATH" ]; then
@@ -200,8 +219,9 @@ output = {
             "- changes_requested → update plan, re-submit\n"
             "- timeout → ask user to review when ready\n\n"
             "## Step 4: Plan mode handoff\n\n"
-            "The handoff marker is auto-cleared by a hook when you call "
-            "EnterPlanMode (or when orbit_await_review returns approved).\n\n"
+            "The pending-review marker is cleared only when "
+            "orbit_await_review returns approved. EnterPlanMode happens "
+            "after approval; it does not clear a pending review marker.\n\n"
             "FIRST: Kill ALL running background tasks (background Bash, "
             "Agents, Codex exec). They are no longer needed. Stale results "
             "leak into the new session after context clears.\n\n"
@@ -215,7 +235,7 @@ output = {
             "IMPORTANT: Do not output explanatory text alongside "
             "EnterPlanMode or ExitPlanMode calls. Extra text can cause "
             "the plan mode transition to fail.\n\n"
-            "If Orbit is unavailable, ask the user to run /bypass."
+            "If Orbit is unavailable, ask the user to run exactly /bypass."
         )
     }
 }

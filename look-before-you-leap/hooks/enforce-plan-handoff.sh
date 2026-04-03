@@ -11,8 +11,8 @@
 # Claude reads feedback, iterates if needed, then proceeds to execution
 # via plan mode handoff (EnterPlanMode → summarize → ExitPlanMode).
 #
-# The marker is cleared by clear-handoff-on-approval.sh (on Orbit approval
-# or EnterPlanMode). It is NOT auto-cleared on session start.
+# The marker is cleared by clear-handoff-on-approval.sh when Orbit approval
+# is recorded. It is NOT auto-cleared on session start or EnterPlanMode.
 # Bypass: ask the user to run /bypass
 #
 # Input: JSON on stdin with tool_name, tool_input.file_path, cwd
@@ -133,8 +133,9 @@ output = {
             "- **If status is `timeout`**: Tell the user the review timed out "
             "and ask them to review when ready.\n\n"
             "## Step D: Plan mode handoff (post-approval)\n\n"
-            "The handoff marker is auto-cleared by a hook when you call "
-            "EnterPlanMode (or when orbit_await_review returns approved).\n\n"
+            "The pending-review marker is cleared only when "
+            "orbit_await_review returns approved. EnterPlanMode happens "
+            "after approval; it does not clear a pending review marker.\n\n"
             "**BEFORE calling EnterPlanMode**: The "
             "guard-handoff-background.sh hook auto-kills any running codex "
             "processes and cleans markers. If non-codex background work "
@@ -165,7 +166,7 @@ output = {
             "message instead of the plan mode UI.\n\n"
             "Code edits are BLOCKED until this handoff is complete (or "
             "bypassed).\n"
-            "To bypass, ask the user to run /bypass."
+            "To bypass, ask the user to run exactly /bypass."
         )
     }
 }

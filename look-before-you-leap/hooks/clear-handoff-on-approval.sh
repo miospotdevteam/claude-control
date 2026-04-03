@@ -18,44 +18,32 @@ hook_read_input
 
 # Find project root and derive plan dir via PPID routing
 CWD=$(hook_get_cwd)
-
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
-
-# Find the plan for this session
-SESSION_PLAN=$(plan_resolve_session "$PROJECT_ROOT")
-
-if [ -z "$SESSION_PLAN" ] || [ ! -f "$SESSION_PLAN" ]; then
-  exit 0
-fi
-
-MARKER="$(dirname "$SESSION_PLAN")/.handoff-pending"
-
-# No marker — nothing to do
-if [ ! -f "$MARKER" ]; then
-  exit 0
-fi
 
 # Extract tool name
 TOOL_NAME=$(hook_get_tool_name)
 
+if [[ "$TOOL_NAME" != *"orbit_await_review"* ]]; then
+  exit 0
+fi
+
 # Mint a handoff_approved receipt alongside marker removal
 source "${BASH_SOURCE[0]%/*}/lib/receipt-state.sh"
 mint_handoff_receipt() {
+  local target_plan="$1"
   receipt_bootstrap 2>/dev/null || true
   local proj_id
   proj_id=$(receipt_project_id "$PROJECT_ROOT" 2>/dev/null) || true
   local plan_name
-  plan_name=$(receipt_plan_id "$SESSION_PLAN" 2>/dev/null) || true
+  plan_name=$(receipt_plan_id "$target_plan" 2>/dev/null) || true
   if [ -n "$proj_id" ] && [ -n "$plan_name" ]; then
     receipt_sign "handoff_approved" "$proj_id" "$plan_name" >/dev/null 2>&1 || true
   fi
 }
 
-# orbit_await_review — clear only on approval
-if [[ "$TOOL_NAME" == *"orbit_await_review"* ]]; then
-  # Parse tool_result for approval status
-  # tool_result can arrive as: str, list (MCP content array), or dict
-  approved=$(python3 -c "
+# Parse tool_result for approval status.
+# tool_result can arrive as: str, list (MCP content array), or dict.
+approved=$(python3 -c "
 import json, sys
 
 data = json.loads(sys.stdin.read())
@@ -95,8 +83,50 @@ elif isinstance(result, dict):
 print('no')
 " <<< "$INPUT" 2>/dev/null) || true
 
-  if [ "$approved" = "yes" ]; then
-    mint_handoff_receipt
-    rm -f "$MARKER"
-  fi
+# Approval did not happen — nothing to do.
+if [ "$approved" != "yes" ]; then
+  exit 0
 fi
+
+# Prefer the session plan, but fall back to the reviewed sourcePath so an
+# approval is still honored if PPID routing missed for this one hook call.
+SESSION_PLAN=$(plan_resolve_session "$PROJECT_ROOT")
+SOURCE_PLAN=$(python3 -c "
+import json, os, sys
+
+data = json.loads(sys.stdin.read())
+source = data.get('tool_input', {}).get('sourcePath', '')
+cwd = data.get('cwd') or os.getcwd()
+
+if not source:
+    print('')
+    raise SystemExit(0)
+
+if not os.path.isabs(source):
+    source = os.path.join(cwd, source)
+
+source = os.path.normpath(os.path.abspath(os.path.expanduser(source)))
+base = os.path.basename(source)
+
+if base == 'plan.json':
+    candidate = source
+elif base == 'masterPlan.md':
+    candidate = os.path.join(os.path.dirname(source), 'plan.json')
+else:
+    candidate = ''
+
+print(candidate if candidate and os.path.isfile(candidate) else '')
+" <<< "$INPUT" 2>/dev/null) || true
+
+TARGET_PLAN="$SESSION_PLAN"
+if [ -z "$TARGET_PLAN" ] || [ ! -f "$TARGET_PLAN" ]; then
+  TARGET_PLAN="$SOURCE_PLAN"
+fi
+
+if [ -z "$TARGET_PLAN" ] || [ ! -f "$TARGET_PLAN" ]; then
+  exit 0
+fi
+
+MARKER="$(dirname "$TARGET_PLAN")/.handoff-pending"
+mint_handoff_receipt "$TARGET_PLAN"
+[ -f "$MARKER" ] && rm -f "$MARKER"

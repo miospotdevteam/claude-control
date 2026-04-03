@@ -648,9 +648,10 @@ running codex processes and cleans markers on `EnterPlanMode`. If
 non-codex background work exists, kill it before handoff.
 
 1. **Call `EnterPlanMode`** — do NOT output any text in the same response.
-   Call the tool and nothing else. The handoff marker (`.handoff-pending`)
-   is auto-cleared by a hook when `EnterPlanMode` is called or when
-   `orbit_await_review` returns approved.
+   Call the tool and nothing else. The pending-review marker
+   (`.handoff-pending`) is cleared only when `orbit_await_review`
+   returns approved. `EnterPlanMode` happens after approval; it does not
+   clear a pending review marker.
 2. **Read the scratch pad path** from the plan mode system message that
    appears after EnterPlanMode succeeds. The path is under `~/.claude/plans/`
    — it is NOT masterPlan.md and NOT plan.json.

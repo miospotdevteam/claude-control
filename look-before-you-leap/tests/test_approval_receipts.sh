@@ -414,6 +414,163 @@ rm -rf "$TEST_ROOT"
 
 # ============================================================
 echo ""
+echo "=== Test: clear-handoff-on-approval.sh clears marker from reviewed sourcePath ==="
+# ============================================================
+
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/approval-test.XXXXXX")
+PLAN_DIR="$TEST_ROOT/.temp/plan-mode/active/review-plan"
+mkdir -p "$TEST_ROOT/.git" "$PLAN_DIR"
+
+cat > "$PLAN_DIR/plan.json" <<'EOF'
+{
+  "name": "review-plan",
+  "steps": [
+    {"id": 1, "title": "Step 1", "status": "pending"}
+  ]
+}
+EOF
+
+cat > "$PLAN_DIR/masterPlan.md" <<'EOF'
+# Review plan
+- [ ] Step 1
+EOF
+
+echo "$PLAN_DIR/masterPlan.md" > "$PLAN_DIR/.handoff-pending"
+
+HOOK_INPUT=$(python3 -c "
+import json
+print(json.dumps({
+    'tool_name': 'orbit_await_review',
+    'tool_input': {'sourcePath': '$PLAN_DIR/masterPlan.md'},
+    'tool_result': {'status': 'approved', 'threads': []},
+    'cwd': '$TEST_ROOT'
+}))
+")
+
+echo "$HOOK_INPUT" | bash "${PLUGIN_ROOT}/hooks/clear-handoff-on-approval.sh" >/dev/null 2>&1 || true
+
+if [ ! -f "$PLAN_DIR/.handoff-pending" ]; then
+  pass
+  echo "  PASS: clear-handoff-on-approval clears marker from sourcePath fallback"
+else
+  fail "clear-handoff-on-approval did not clear marker via sourcePath fallback"
+fi
+
+PROJ_ID=$(python3 "$RECEIPT_UTILS" project-id "$TEST_ROOT" 2>/dev/null) || true
+HANDOFF_RECEIPT="$STATE_ROOT/$PROJ_ID/review-plan/handoff_approved-default.json"
+if [ -f "$HANDOFF_RECEIPT" ]; then
+  pass
+  echo "  PASS: sourcePath fallback also minted handoff receipt"
+else
+  fail "sourcePath fallback did not mint handoff receipt"
+fi
+
+rm -rf "$TEST_ROOT"
+
+# ============================================================
+echo ""
+echo "=== Test: enforce-plan.sh clears stale handoff marker after approval receipt ==="
+# ============================================================
+
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/approval-test.XXXXXX")
+PLAN_DIR="$TEST_ROOT/.temp/plan-mode/active/review-plan"
+mkdir -p "$TEST_ROOT/.git" "$PLAN_DIR"
+
+cat > "$PLAN_DIR/plan.json" <<'EOF'
+{
+  "name": "review-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Step 1", "status": "pending"}
+  ]
+}
+EOF
+
+cat > "$PLAN_DIR/masterPlan.md" <<'EOF'
+# Review plan
+- [ ] Step 1
+EOF
+
+echo "$$" > "$PLAN_DIR/.session-lock"
+echo "$PLAN_DIR/plan.json" > "$PLAN_DIR/.handoff-pending"
+
+PROJ_ID=$(python3 "$RECEIPT_UTILS" project-id "$TEST_ROOT" 2>/dev/null) || true
+python3 "$RECEIPT_UTILS" sign "handoff_approved" "$PROJ_ID" "review-plan" >/dev/null 2>&1
+
+HOOK_INPUT=$(python3 -c "
+import json
+print(json.dumps({
+    'tool_name': 'Edit',
+    'tool_input': {'file_path': '$TEST_ROOT/src/foo.ts'},
+    'cwd': '$TEST_ROOT'
+}))
+")
+
+HOOK_EXIT=0
+echo "$HOOK_INPUT" | bash "${PLUGIN_ROOT}/hooks/enforce-plan.sh" >/dev/null 2>&1 || HOOK_EXIT=$?
+
+if [ "$HOOK_EXIT" -eq 0 ] && [ ! -f "$PLAN_DIR/.handoff-pending" ]; then
+  pass
+  echo "  PASS: enforce-plan.sh trusts handoff receipt and clears stale marker"
+else
+  fail "enforce-plan.sh did not recover from stale handoff marker after approval"
+fi
+
+rm -rf "$TEST_ROOT"
+
+# ============================================================
+echo ""
+echo "=== Test: enforce-plan.sh points review to masterPlan.md when marker stores plan.json ==="
+# ============================================================
+
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/approval-test.XXXXXX")
+PLAN_DIR="$TEST_ROOT/.temp/plan-mode/active/review-plan"
+mkdir -p "$TEST_ROOT/.git" "$PLAN_DIR"
+
+cat > "$PLAN_DIR/plan.json" <<'EOF'
+{
+  "name": "review-plan",
+  "steps": [
+    {"id": 1, "title": "Step 1", "status": "pending"}
+  ]
+}
+EOF
+
+cat > "$PLAN_DIR/masterPlan.md" <<'EOF'
+# Review plan
+- [ ] Step 1
+EOF
+
+echo "$$" > "$PLAN_DIR/.session-lock"
+echo "$PLAN_DIR/plan.json" > "$PLAN_DIR/.handoff-pending"
+
+HOOK_INPUT=$(python3 -c "
+import json
+print(json.dumps({
+    'tool_name': 'Edit',
+    'tool_input': {'file_path': '$TEST_ROOT/src/foo.ts'},
+    'cwd': '$TEST_ROOT'
+}))
+")
+
+HOOK_RESULT=$(echo "$HOOK_INPUT" | bash "${PLUGIN_ROOT}/hooks/enforce-plan.sh" 2>/dev/null) || true
+
+if echo "$HOOK_RESULT" | python3 -c "
+import json, sys
+reason = json.loads(sys.stdin.read()).get('hookSpecificOutput', {}).get('permissionDecisionReason', '')
+expected = '$PLAN_DIR/masterPlan.md'
+sys.exit(0 if expected in reason else 1)
+" 2>/dev/null; then
+  pass
+  echo "  PASS: enforce-plan.sh directs Orbit review to masterPlan.md"
+else
+  fail "enforce-plan.sh still points Orbit review at plan.json"
+fi
+
+rm -rf "$TEST_ROOT"
+
+# ============================================================
+echo ""
 echo "=== Test: guard-filesystem-mutation.sh denies file_write with stale bypass ==="
 # ============================================================
 
