@@ -190,6 +190,12 @@ if [ -d "$ACTIVE_DIR" ]; then
   # PPID-based plan routing: find the plan claimed by this session
   latest_json=$(plan_resolve_session "$PROJECT_ROOT")
 
+  # Approved handoff recovery: when a prior live session still owns the lock,
+  # reattach to the approved fresh plan for this new session.
+  if [ -z "$latest_json" ]; then
+    latest_json=$(plan_resolve_approved_handoff "$PROJECT_ROOT" "$PPID")
+  fi
+
   # If no plan claimed by this PPID, try to auto-claim an unclaimed (orphaned) plan
   if [ -z "$latest_json" ]; then
     unclaimed_line=$(python3 "$PLAN_UTILS" find-unclaimed "$PROJECT_ROOT" 2>/dev/null | head -1) || true

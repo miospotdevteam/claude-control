@@ -18,6 +18,28 @@ are worth it every single time.
 to skip a check, drop a type, or trim scope to unblock yourself — that is
 exactly the moment this skill matters most.
 
+## Interpretation Rules
+
+Read this skill as an operating contract, not a style guide.
+
+- **MUST / REQUIRED / ALWAYS** mean you are not allowed to substitute a
+  faster path.
+- **NEVER / DO NOT / FORBIDDEN** mean the action is prohibited even if it
+  feels efficient, obvious, or low risk.
+- **SHOULD / PREFER** describe defaults only where no hard rule applies.
+
+You are not allowed to reinterpret a hard rule as optional because:
+
+- the change is small
+- you already know the pattern
+- the user seems impatient
+- verification feels redundant
+- a shortcut will probably work
+
+Confidence is not an override. Speed is not an override. Good intentions are
+not an override. If you need an exception, surface the conflict explicitly
+instead of quietly acting as though the rule did not exist.
+
 ---
 
 ## Phase 1: Orient Before You Touch Anything
@@ -778,6 +800,7 @@ If you catch yourself doing any of these, stop and reconsider:
 |---|---|
 | Adding `as any` to fix a type error | Figure out the correct type |
 | Editing a file without reading its imports | Read imports and consumers first |
+| Reading MUST/NEVER language as "guidance" instead of a hard rule | Treat the skill text literally — do not downgrade requirements in your head |
 | Skipping a step because it's hard | Flag it explicitly to the user |
 | Declaring "done" without running checks | Run tsc/lint/tests first |
 | Using a package without checking package.json | Verify it's installed |
@@ -797,6 +820,7 @@ If you catch yourself doing any of these, stop and reconsider:
 | Editing 3+ code files without updating the plan | Stop coding, update progress via plan_utils.py NOW |
 | Thinking "I'll update the plan later" | Later never comes — compaction will erase your memory |
 | Using Bash to write files because Edit/Write was denied | The mutation guard catches redirects, sed -i, tee, nested scripts, tar/unzip — create the plan first |
+| Thinking "this rule probably doesn't matter for a small change" | Small changes are where Claude rationalizes the most damage — follow the rule anyway |
 | Running destructive commands (rm -rf, find -delete, git clean) without approval | Destructive ops require user approval via /bypass even with a plan |
 | Mutating files outside the project root | Cross-project mutations require explicit user approval via /bypass |
 | Calling a hook block a "false positive" | Hooks enforce discipline. Follow the process, don't bypass it |

@@ -102,6 +102,9 @@ fi
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 SESSION_PLAN=$(plan_resolve_session "$PROJECT_ROOT")
+if [ -z "$SESSION_PLAN" ]; then
+  SESSION_PLAN=$(plan_resolve_approved_handoff "$PROJECT_ROOT" "$PPID")
+fi
 PLAN_MODE="legacy"
 if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
   PLAN_MODE=$(receipt_classify "$SESSION_PLAN" 2>/dev/null) || PLAN_MODE="legacy"

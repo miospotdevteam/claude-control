@@ -11,6 +11,22 @@ implementation — it invokes this skill, which selects the correct
 direction-locked script, runs it in the background, monitors output,
 and enforces the verification protocol.
 
+## Hard Routing Rules
+
+This skill is not advisory. It is the required path for Codex work.
+
+- If a plan step is Codex-owned, Claude does NOT substitute itself because
+  the work seems small or straightforward.
+- If a Claude-owned step requires Codex verification, Claude does NOT
+  self-certify and move on.
+- If a dispatch hangs or fails, that is NOT permission to skip Codex and
+  declare success anyway.
+- If Codex is unavailable, you must prove that with `command -v codex`
+  in the current environment before recording any skip.
+
+Do not treat "Codex later", "Codex probably unavailable", or "I already
+checked enough myself" as acceptable substitutes for the actual dispatch.
+
 ---
 
 ## Prerequisites
@@ -25,9 +41,9 @@ by the SessionStart hook via `install-codex-skills.sh`):
 - `lbyl-verify` — teaches Codex the verification protocol
 - `lbyl-implement` — teaches Codex the implementation protocol
 
-If `codex` is not available (`command -v codex` fails), skip Codex
-interactions gracefully and note the skip in the step's `### Verdict`
-section (e.g., `### Verdict\nCodex: skipped — codex CLI not installed`).
+Only if `command -v codex` was just run in the current environment and
+failed may you skip Codex interactions. When that happens, note the skip in
+the step's `### Verdict` section (e.g., `### Verdict\nCodex: skipped — codex CLI not installed`).
 
 ---
 

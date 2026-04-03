@@ -520,6 +520,213 @@ rm -rf "$TEST_ROOT"
 
 # ============================================================
 echo ""
+echo "=== Test: session-start.sh recovers approved handoff across live foreign lock ==="
+# ============================================================
+
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/approval-test.XXXXXX")
+APPROVED_DIR="$TEST_ROOT/.temp/plan-mode/active/approved-plan"
+OTHER_DIR="$TEST_ROOT/.temp/plan-mode/active/other-plan"
+OUTPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/approval-session-start.XXXXXX")
+mkdir -p "$TEST_ROOT/.git" "$APPROVED_DIR" "$OTHER_DIR"
+
+cat > "$APPROVED_DIR/plan.json" <<'EOF'
+{
+  "name": "approved-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Approved step", "status": "pending"}
+  ]
+}
+EOF
+
+cat > "$APPROVED_DIR/masterPlan.md" <<'EOF'
+# Approved plan
+- [ ] Approved step
+EOF
+
+cat > "$OTHER_DIR/plan.json" <<'EOF'
+{
+  "name": "other-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Other step", "status": "pending"}
+  ]
+}
+EOF
+
+echo "$PPID" > "$APPROVED_DIR/.session-lock"
+echo "$PPID" > "$OTHER_DIR/.session-lock"
+echo "$APPROVED_DIR/masterPlan.md" > "$APPROVED_DIR/.handoff-pending"
+
+PROJ_ID=$(python3 "$RECEIPT_UTILS" project-id "$TEST_ROOT" 2>/dev/null) || true
+python3 "$RECEIPT_UTILS" sign "handoff_approved" "$PROJ_ID" "approved-plan" >/dev/null 2>&1
+
+pushd "$TEST_ROOT" >/dev/null
+bash "${PLUGIN_ROOT}/hooks/session-start.sh" > "$OUTPUT_FILE" 2>/dev/null || true
+popd >/dev/null
+
+if python3 -c "
+import json
+with open('$OUTPUT_FILE') as f:
+    data = json.load(f)
+ctx = data.get('hookSpecificOutput', {}).get('additionalContext', '')
+assert 'ACTIVE PLAN DETECTED' in ctx
+assert 'approved-plan' in ctx
+print('OK')
+" 2>/dev/null | grep -q "OK"; then
+  pass
+  echo "  PASS: session-start.sh recovered approved handoff plan"
+else
+  fail "session-start.sh did not recover approved handoff. Tail: $(tail -5 "$OUTPUT_FILE")"
+fi
+
+lock_content=$(cat "$APPROVED_DIR/.session-lock" 2>/dev/null || true)
+if [ "$lock_content" = "$$" ] && [ ! -f "$APPROVED_DIR/.handoff-pending" ]; then
+  pass
+  echo "  PASS: approved plan was re-claimed and stale handoff marker cleared"
+else
+  fail "session-start.sh did not claim approved plan correctly (lock='$lock_content')"
+fi
+
+rm -f "$OUTPUT_FILE"
+rm -rf "$TEST_ROOT"
+
+# ============================================================
+echo ""
+echo "=== Test: post-compact.sh recovers approved handoff across live foreign lock ==="
+# ============================================================
+
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/approval-test.XXXXXX")
+APPROVED_DIR="$TEST_ROOT/.temp/plan-mode/active/approved-plan"
+OTHER_DIR="$TEST_ROOT/.temp/plan-mode/active/other-plan"
+OUTPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/approval-post-compact.XXXXXX")
+mkdir -p "$TEST_ROOT/.git" "$APPROVED_DIR" "$OTHER_DIR"
+
+cat > "$APPROVED_DIR/plan.json" <<'EOF'
+{
+  "name": "approved-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Approved step", "status": "pending"}
+  ]
+}
+EOF
+
+cat > "$OTHER_DIR/plan.json" <<'EOF'
+{
+  "name": "other-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Other step", "status": "pending"}
+  ]
+}
+EOF
+
+echo "$PPID" > "$APPROVED_DIR/.session-lock"
+echo "$PPID" > "$OTHER_DIR/.session-lock"
+echo "$APPROVED_DIR/plan.json" > "$APPROVED_DIR/.handoff-pending"
+
+PROJ_ID=$(python3 "$RECEIPT_UTILS" project-id "$TEST_ROOT" 2>/dev/null) || true
+python3 "$RECEIPT_UTILS" sign "handoff_approved" "$PROJ_ID" "approved-plan" >/dev/null 2>&1
+
+pushd "$TEST_ROOT" >/dev/null
+bash "${PLUGIN_ROOT}/hooks/post-compact.sh" > "$OUTPUT_FILE" 2>/dev/null || true
+popd >/dev/null
+
+if python3 -c "
+import json
+with open('$OUTPUT_FILE') as f:
+    data = json.load(f)
+ctx = data.get('hookSpecificOutput', {}).get('additionalContext', '')
+assert 'CONTEXT WAS COMPACTED' in ctx
+assert 'approved-plan' in ctx
+print('OK')
+" 2>/dev/null | grep -q "OK"; then
+  pass
+  echo "  PASS: post-compact.sh recovered approved handoff plan"
+else
+  fail "post-compact.sh did not recover approved handoff. Tail: $(tail -5 "$OUTPUT_FILE")"
+fi
+
+lock_content=$(cat "$APPROVED_DIR/.session-lock" 2>/dev/null || true)
+if [ "$lock_content" = "$$" ] && [ ! -f "$APPROVED_DIR/.handoff-pending" ]; then
+  pass
+  echo "  PASS: post-compact.sh re-claimed approved plan and cleared marker"
+else
+  fail "post-compact.sh did not claim approved plan correctly (lock='$lock_content')"
+fi
+
+rm -f "$OUTPUT_FILE"
+rm -rf "$TEST_ROOT"
+
+# ============================================================
+echo ""
+echo "=== Test: enforce-plan.sh reclaims approved handoff before no-plan denial ==="
+# ============================================================
+
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/approval-test.XXXXXX")
+APPROVED_DIR="$TEST_ROOT/.temp/plan-mode/active/approved-plan"
+OTHER_DIR="$TEST_ROOT/.temp/plan-mode/active/other-plan"
+mkdir -p "$TEST_ROOT/.git" "$TEST_ROOT/src" "$APPROVED_DIR" "$OTHER_DIR"
+
+cat > "$APPROVED_DIR/plan.json" <<'EOF'
+{
+  "name": "approved-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Approved step", "status": "pending"}
+  ]
+}
+EOF
+
+cat > "$OTHER_DIR/plan.json" <<'EOF'
+{
+  "name": "other-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Other step", "status": "pending"}
+  ]
+}
+EOF
+
+echo "$PPID" > "$APPROVED_DIR/.session-lock"
+echo "$PPID" > "$OTHER_DIR/.session-lock"
+echo "$APPROVED_DIR/plan.json" > "$APPROVED_DIR/.handoff-pending"
+
+PROJ_ID=$(python3 "$RECEIPT_UTILS" project-id "$TEST_ROOT" 2>/dev/null) || true
+python3 "$RECEIPT_UTILS" sign "handoff_approved" "$PROJ_ID" "approved-plan" >/dev/null 2>&1
+
+HOOK_INPUT=$(python3 -c "
+import json
+print(json.dumps({
+    'tool_name': 'Edit',
+    'tool_input': {'file_path': '$TEST_ROOT/src/foo.ts'},
+    'cwd': '$TEST_ROOT'
+}))
+")
+
+HOOK_EXIT=0
+echo "$HOOK_INPUT" | bash "${PLUGIN_ROOT}/hooks/enforce-plan.sh" >/dev/null 2>&1 || HOOK_EXIT=$?
+
+if [ "$HOOK_EXIT" -eq 0 ]; then
+  pass
+  echo "  PASS: enforce-plan.sh allowed edit by reclaiming approved handoff plan"
+else
+  fail "enforce-plan.sh still denied after approved handoff recovery (exit=$HOOK_EXIT)"
+fi
+
+lock_content=$(cat "$APPROVED_DIR/.session-lock" 2>/dev/null || true)
+if [ "$lock_content" = "$$" ] && [ ! -f "$APPROVED_DIR/.handoff-pending" ]; then
+  pass
+  echo "  PASS: enforce-plan.sh claimed approved plan and cleared stale marker"
+else
+  fail "enforce-plan.sh did not claim approved plan correctly (lock='$lock_content')"
+fi
+
+rm -rf "$TEST_ROOT"
+
+# ============================================================
+echo ""
 echo "=== Test: enforce-plan.sh points review to masterPlan.md when marker stores plan.json ==="
 # ============================================================
 

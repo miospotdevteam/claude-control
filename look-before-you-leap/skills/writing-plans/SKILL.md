@@ -26,6 +26,15 @@ caller to complete discovery first (including Codex co-exploration or
 documented fallback). This gate ensures Claude cannot skip exploration
 and jump straight to planning.
 
+If this gate is closed, STOP. Do NOT write:
+
+- a "quick plan"
+- a checklist as a substitute for plan.json
+- a verbal outline "for now"
+- a partial masterPlan.md to fill in later
+
+Those are all plan-writing attempts. The gate blocks them too.
+
 If no `discovery.md` exists in the plan directory, go back to Step 1
 (Explore) first. If discovery.md exists but is thin (missing blast radius
 counts, no consumer lists, vague scope), warn the user that the plan
@@ -136,6 +145,10 @@ steps should route to Codex. The only valid all-claude-impl plan is one
 where every step requires visual taste, creative judgment, or user
 interaction — and even then, test-writing sub-steps should still route
 to Codex.
+
+Treat an all-claude-impl first draft as a planning failure, not as an
+acceptable outcome. Re-read the routing matrix and classify again until
+you can justify each Claude-owned step against the matrix explicitly.
 
 #### Classification rules
 

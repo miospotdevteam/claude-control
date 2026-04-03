@@ -16,6 +16,27 @@ injected alongside this one:
 
 **You must follow both companion skills for every coding task.**
 
+## Hard Interpretation Rules
+
+**This plugin defines operational rules, not suggestions.** Treat the
+capitalized words literally:
+
+- **MUST / REQUIRED / ALWAYS** = binding requirement
+- **NEVER / FORBIDDEN / DO NOT** = hard prohibition
+- **SHOULD / PREFER** = default only when no hard rule applies
+
+Do NOT silently downgrade a hard rule because:
+
+- the task looks small
+- you think you already understand the repo
+- you believe your shortcut is faster
+- you are under time pressure
+- the user did not explicitly repeat the rule this turn
+
+If a hard rule blocks progress, follow the documented fallback or stop and
+state the exact blocker. Do NOT improvise a side path that preserves your
+momentum while violating the rule.
+
 ---
 
 ## Step 0: Discover Available Skills
@@ -82,7 +103,8 @@ Before exploring, classify the task:
   a new abstraction, or has more than one reasonable design approach. Invoke
   `look-before-you-leap:brainstorming` — it produces a `design.md` that
   feeds into Step 2. Examples: "add priority to tasks", "build a dashboard",
-  "add team permissions". If in doubt, brainstorm — it's cheap.
+  "add team permissions". If classification is ambiguous, route to
+  brainstorming. Ambiguity is not permission to explore directly.
 - **Explore directly** if the task is a bug fix, a rename/refactor, a
   config change, or the implementation path is unambiguous (e.g., "add
   field X to existing type Y and propagate").

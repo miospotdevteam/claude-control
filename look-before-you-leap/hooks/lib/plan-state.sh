@@ -41,6 +41,85 @@ plan_resolve_session() {
   fi
 }
 
+# Recover a fresh, Orbit-approved plan across session handoff.
+# This is used when normal PPID routing cannot find a plan, typically because
+# a prior session still owns the .session-lock during handoff. Approval receipts
+# are authoritative for fresh plans awaiting execution, so we can reattach the
+# new session to the approved plan and clear any stale handoff marker.
+#
+# Args:
+#   $1 = project_root
+#   $2 = optional claim PID (writes .session-lock + clears .handoff-pending)
+# Returns:
+#   plan.json path on stdout (empty if no approved fresh plan found)
+plan_resolve_approved_handoff() {
+  local project_root="$1"
+  local claim_pid="${2:-}"
+  local active_dir="${project_root}/.temp/plan-mode/active"
+  local candidates=""
+  local plan_path=""
+  local plan_name=""
+  local proj_id=""
+  local is_fresh=""
+
+  [ -d "$active_dir" ] || return 0
+
+  # shellcheck source=/dev/null
+  source "${BASH_SOURCE[0]%/*}/receipt-state.sh"
+  receipt_bootstrap >/dev/null 2>&1 || true
+  proj_id=$(receipt_project_id "$project_root" 2>/dev/null) || true
+  [ -n "$proj_id" ] || return 0
+
+  candidates=$(python3 - "$active_dir" << 'PYEOF'
+import os
+import sys
+
+active_dir = sys.argv[1]
+candidates = []
+
+for entry in os.listdir(active_dir):
+    plan_dir = os.path.join(active_dir, entry)
+    plan_path = os.path.join(plan_dir, "plan.json")
+    if not os.path.isfile(plan_path):
+        continue
+    mtime = 0
+    for name in ("plan.json", "progress.json"):
+        candidate = os.path.join(plan_dir, name)
+        if os.path.isfile(candidate):
+            mtime = max(mtime, os.path.getmtime(candidate))
+    candidates.append((mtime, plan_path))
+
+for _, path in sorted(candidates, reverse=True):
+    print(path)
+PYEOF
+  ) || true
+
+  while IFS= read -r plan_path; do
+    [ -n "$plan_path" ] || continue
+    [ -f "$plan_path" ] || continue
+
+    plan_name=$(receipt_plan_id "$plan_path" 2>/dev/null) || true
+    [ -n "$plan_name" ] || continue
+
+    if ! receipt_check "handoff_approved" "$proj_id" "$plan_name" 2>/dev/null; then
+      continue
+    fi
+
+    is_fresh=$(plan_is_fresh "$plan_path" 2>/dev/null) || true
+    if [ "$is_fresh" != "true" ]; then
+      continue
+    fi
+
+    if [ -n "$claim_pid" ]; then
+      echo "$claim_pid" > "$(dirname "$plan_path")/.session-lock"
+      rm -f "$(dirname "$plan_path")/.handoff-pending"
+    fi
+
+    echo "$plan_path"
+    return 0
+  done <<< "$candidates"
+}
+
 # Extract plan directory from a plan.json path.
 # Args: $1 = plan.json path
 # Returns: directory path on stdout

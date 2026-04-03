@@ -27,6 +27,12 @@ if [ -d "$ACTIVE_DIR" ]; then
   # PPID-based plan routing: find the plan claimed by this session
   latest_json=$(plan_resolve_session "$PROJECT_ROOT")
 
+  # Approved handoff recovery mirrors session-start: if a previous live
+  # session still owns the lock, reclaim the approved fresh plan here.
+  if [ -z "$latest_json" ]; then
+    latest_json=$(plan_resolve_approved_handoff "$PROJECT_ROOT" "$PPID")
+  fi
+
   if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
     plan_dir="$(dirname "$latest_json")"
     plan_name="$(basename "$plan_dir")"
