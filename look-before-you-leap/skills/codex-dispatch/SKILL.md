@@ -342,6 +342,7 @@ direction-locked scripts) since there is no step ownership yet.
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-exploration.md \
+  </dev/null \
   "Explore the codebase for the task: <task-description>. Focus on: \
    1. All consumers of files in scope (trace import chains) \
    2. Blast radius — what breaks if these files change? \
@@ -354,6 +355,8 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
 Run in the background (`run_in_background: true`) — Claude explores
 simultaneously while Codex runs. After Codex completes, Claude reads
 `codex-exploration.md` and appends its content to `discovery.md`.
+Always close stdin with `</dev/null>` when invoking `codex exec` from
+the Bash tool; otherwise Codex can hang waiting for additional stdin.
 
 **Phase 2 — Convergence (background):**
 
@@ -364,6 +367,7 @@ all findings. Keep Codex output scoped to structured bullet points.
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-convergence.md \
+  </dev/null \
   "Read <plan-dir>/discovery.md. Focus ONLY on gaps and disagreements: \
    1. What did Claude's exploration miss? (bullet points, max 5) \
    2. Where do you disagree with Claude's findings? (cite specific lines) \
@@ -420,6 +424,7 @@ If the plan has **≤5 steps**, dispatch a single call:
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-round1.md \
+  </dev/null \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For steps 1-N, return a structured proposal per step: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -435,6 +440,7 @@ If the plan has **>5 steps**, batch into groups of 5:
 # Batch 1: steps 1-5
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-batch-1.md \
+  </dev/null \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 1-5. For each, return: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -444,6 +450,7 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
 # Batch 2: steps 6-10 (adjust range for actual step count)
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-batch-2.md \
+  </dev/null \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 6-10. For each, return: \
    - ACCEPT / REJECT <reason> / MODIFY <changes>"
@@ -453,6 +460,7 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
 # then dispatches a cross-cutting check:
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-cross-cutting.md \
+  </dev/null \
   "Read <plan-dir>/consensus-round1.md (merged batch results). \
    Flag: missing steps, wrong ordering across the full plan, \
    ownership assignments that contradict the routing matrix."
@@ -473,6 +481,7 @@ of 5 disagreements per call, merging results between batches.
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-round3.md \
+  </dev/null \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For these remaining disagreements: [list ≤5 items] \
    - ACCEPT Claude's reasoning, or \

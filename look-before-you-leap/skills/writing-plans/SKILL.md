@@ -538,7 +538,9 @@ scope to structured bullets.
 **IMPORTANT: Run all consensus `codex exec` calls in foreground (no
 `run_in_background`).** Background Codex notifications arriving during
 `EnterPlanMode`/`ExitPlanMode` break the plan mode handoff. Wait for each
-call to complete before proceeding.
+call to complete before proceeding. Also close stdin on every `codex exec`
+call with `</dev/null>`; otherwise Codex can hang waiting for additional
+stdin from the Bash tool.
 
 **Round 1 — Codex reviews:**
 
@@ -547,6 +549,7 @@ If the plan has **≤5 steps**, dispatch a single call:
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-round1.md \
+  </dev/null \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    For steps 1-N, return a structured proposal per step: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -564,6 +567,7 @@ If the plan has **>5 steps**, batch into groups of 5:
 # Batch 1: steps 1-5
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-batch-1.md \
+  </dev/null \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 1-5. For each, return: \
    - ACCEPT: step is well-sized, criteria are concrete, ownership is correct \
@@ -573,6 +577,7 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
 # Batch 2: steps 6-10 (adjust range for actual step count)
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-batch-2.md \
+  </dev/null \
   "Read the plan at <plan-dir>/masterPlan.md and <plan.json>. \
    Review ONLY steps 6-10. For each, return: \
    - ACCEPT / REJECT <reason> / MODIFY <changes>"
@@ -582,6 +587,7 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
 # then dispatches a cross-cutting check:
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-cross-cutting.md \
+  </dev/null \
   "Read <plan-dir>/consensus-round1.md (merged batch results). \
    Flag: missing steps, wrong ordering across the full plan, \
    ownership assignments that contradict the routing matrix."
@@ -601,6 +607,7 @@ call, merging results between batches.
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-round3.md \
+  </dev/null \
   "Read the updated plan at <plan-dir>/plan.json and Claude's responses \
    to your proposals. For these remaining disagreements: [list ≤5 items] \
    - ACCEPT Claude's reasoning, or \

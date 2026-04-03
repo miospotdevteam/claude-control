@@ -38,6 +38,7 @@ Then dispatch Codex in the background to explore in parallel:
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  </dev/null \
   "Explore the codebase for the task: <task-description>. Focus on: \
    1. All consumers of files in the feature area \
    2. Blast radius — what breaks if these files change? \
@@ -221,6 +222,7 @@ Once approved:
 3. **Run a mandatory Codex review of design.md** before writing-plans:
    ```bash
    codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+     </dev/null \
      "Read the design at <plan-dir>/design.md and the discovery at <plan-dir>/discovery.md. \
       Review for: \
       1. Technical feasibility — can this actually be built as described? \

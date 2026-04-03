@@ -124,6 +124,7 @@ workflow, it is **forbidden**. If you catch yourself reaching for
 ```bash
 # CORRECT — always use this:
 codex exec -C <project-root> \
+  </dev/null \
   --dangerously-bypass-approvals-and-sandbox "..."
 
 # WRONG — never do this:
@@ -141,11 +142,13 @@ especially in fast mode. Instead, always use the `-o` flag:
 # CORRECT — deterministic output capture via CLI:
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <output-file> \
+  </dev/null \
   "Read <input-file>. Return your analysis as structured bullet points."
 # Then Claude reads <output-file> and appends where needed
 
 # WRONG — depends on Codex choosing to write files:
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
+  </dev/null \
   "Read <input-file>. Write your findings to <output-file>."
 ```
 
@@ -153,6 +156,10 @@ The `-o` flag writes Codex's final message to the specified file. This
 works regardless of fast mode, model, or sandbox configuration. Claude
 then reads the output file and processes it (append to discovery.md,
 merge into consensus, etc.).
+
+Also close stdin with `</dev/null>` on every Bash-launched `codex exec`.
+If stdin stays open, Codex can hang on "Reading additional input from stdin..."
+even when a prompt argument was already provided.
 
 The direction-locked scripts (`run-codex-verify.sh`, `run-codex-implement.sh`)
 already use `-o` correctly. This rule applies to ALL generic `codex exec`

@@ -128,6 +128,7 @@ codex exec \
   --json \
   -o "$RESULT_FILE" \
   "$PROMPT" \
+  < /dev/null \
   > "$STREAM_FILE" 2>&1
 
 CODEX_EXIT=$?
