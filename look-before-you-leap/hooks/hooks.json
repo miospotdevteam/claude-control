@@ -165,16 +165,16 @@
           }
         ]
       },
-      {
-        "matcher": "orbit_await_review",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/clear-handoff-on-approval.sh",
-            "timeout": 10
-          }
-        ]
-      },
+            {
+                "matcher": "mcp__orbit__orbit_await_review|mcp__plugin_look-before-you-leap_orbit__orbit_await_review|orbit_await_review",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/clear-handoff-on-approval.sh",
+                        "timeout": 10
+                    }
+                ]
+            },
       {
         "matcher": "Edit|Write|Bash",
         "hooks": [

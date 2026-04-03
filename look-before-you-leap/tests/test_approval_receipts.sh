@@ -226,14 +226,20 @@ with open('${PLUGIN_ROOT}/hooks/hooks.json') as f:
 for entry in hooks:
     if 'clear-handoff-on-approval.sh' not in str(entry):
         continue
-    if entry.get('matcher') != 'orbit_await_review':
+    matcher = entry.get('matcher', '')
+    required = [
+        'mcp__orbit__orbit_await_review',
+        'mcp__plugin_look-before-you-leap_orbit__orbit_await_review',
+        'orbit_await_review',
+    ]
+    if all(item in matcher for item in required):
         raise SystemExit(1)
 raise SystemExit(0)
 " 2>/dev/null; then
-  pass
-  echo "  PASS: clear-handoff-on-approval only listens to orbit_await_review"
+  fail "clear-handoff-on-approval matcher is missing real Orbit MCP tool names"
 else
-  fail "clear-handoff-on-approval still listens to EnterPlanMode"
+  pass
+  echo "  PASS: clear-handoff-on-approval matcher covers real Orbit MCP tool names"
 fi
 
 # Check post-compact.sh
@@ -463,6 +469,61 @@ if [ -f "$HANDOFF_RECEIPT" ]; then
   echo "  PASS: sourcePath fallback also minted handoff receipt"
 else
   fail "sourcePath fallback did not mint handoff receipt"
+fi
+
+rm -rf "$TEST_ROOT"
+
+# ============================================================
+echo ""
+echo "=== Test: clear-handoff-on-approval.sh accepts live MCP Orbit payload shape ==="
+# ============================================================
+
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/approval-test.XXXXXX")
+PLAN_DIR="$TEST_ROOT/.temp/plan-mode/active/review-plan"
+mkdir -p "$TEST_ROOT/.git" "$PLAN_DIR"
+
+cat > "$PLAN_DIR/plan.json" <<'EOF'
+{
+  "name": "review-plan",
+  "steps": [
+    {"id": 1, "title": "Step 1", "status": "pending"}
+  ]
+}
+EOF
+
+cat > "$PLAN_DIR/masterPlan.md" <<'EOF'
+# Review plan
+- [ ] Step 1
+EOF
+
+echo "$PLAN_DIR/masterPlan.md" > "$PLAN_DIR/.handoff-pending"
+
+HOOK_INPUT=$(python3 -c "
+import json
+print(json.dumps({
+    'tool_name': 'mcp__orbit__orbit_await_review',
+    'tool_input': {'sourcePath': '$PLAN_DIR/masterPlan.md'},
+    'tool_result': [{'type': 'text', 'text': '{\\n  \"status\": \"approved\",\\n  \"threads\": []\\n}'}],
+    'cwd': '$TEST_ROOT'
+}))
+")
+
+echo "$HOOK_INPUT" | bash "${PLUGIN_ROOT}/hooks/clear-handoff-on-approval.sh" >/dev/null 2>&1 || true
+
+if [ ! -f "$PLAN_DIR/.handoff-pending" ]; then
+  pass
+  echo "  PASS: live MCP Orbit payload clears handoff marker"
+else
+  fail "live MCP Orbit payload did not clear handoff marker"
+fi
+
+PROJ_ID=$(python3 "$RECEIPT_UTILS" project-id "$TEST_ROOT" 2>/dev/null) || true
+HANDOFF_RECEIPT="$STATE_ROOT/$PROJ_ID/review-plan/handoff_approved-default.json"
+if [ -f "$HANDOFF_RECEIPT" ]; then
+  pass
+  echo "  PASS: live MCP Orbit payload minted handoff receipt"
+else
+  fail "live MCP Orbit payload did not mint handoff receipt"
 fi
 
 rm -rf "$TEST_ROOT"
