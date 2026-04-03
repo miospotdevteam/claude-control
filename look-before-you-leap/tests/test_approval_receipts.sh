@@ -100,31 +100,41 @@ HOOK="${PLUGIN_ROOT}/hooks/capture-user-override.sh"
 # Test "just do it" phrase
 echo '{"prompt": "just do it, no plan needed"}' | bash "$HOOK" 2>/dev/null || true
 
-if [ -f "$TEST_ROOT/.temp/plan-mode/.no-plan-$$" ]; then
+if find "$TEST_ROOT/.temp/plan-mode" -maxdepth 1 -name ".no-plan-*" | grep -q .; then
   pass
   echo "  PASS: 'just do it' creates legacy marker"
 else
   fail "'just do it' did not create legacy marker"
 fi
 
-rm -f "$TEST_ROOT/.temp/plan-mode/.no-plan-$$"
+find "$TEST_ROOT/.temp/plan-mode" -maxdepth 1 -name ".no-plan-*" -delete
 
-# Test "bypass" phrase
-echo '{"prompt": "bypass"}' | bash "$HOOK" 2>/dev/null || true
+# Test explicit slash command
+echo '{"prompt": "/bypass"}' | bash "$HOOK" 2>/dev/null || true
 
-if [ -f "$TEST_ROOT/.temp/plan-mode/.no-plan-$$" ]; then
+if find "$TEST_ROOT/.temp/plan-mode" -maxdepth 1 -name ".no-plan-*" | grep -q .; then
   pass
-  echo "  PASS: 'bypass' creates legacy marker"
+  echo "  PASS: '/bypass' creates legacy marker"
 else
-  fail "'bypass' did not create legacy marker"
+  fail "'/bypass' did not create legacy marker"
 fi
 
-rm -f "$TEST_ROOT/.temp/plan-mode/.no-plan-$$"
+find "$TEST_ROOT/.temp/plan-mode" -maxdepth 1 -name ".no-plan-*" -delete
+
+# Test filename / docs mention — should NOT create marker
+echo '{"prompt": "please review commands/bypass.md before we change it"}' | bash "$HOOK" 2>/dev/null || true
+
+if ! find "$TEST_ROOT/.temp/plan-mode" -maxdepth 1 -name ".no-plan-*" | grep -q .; then
+  pass
+  echo "  PASS: mentioning commands/bypass.md does not create marker"
+else
+  fail "mentioning commands/bypass.md created marker"
+fi
 
 # Test non-override phrase — should NOT create marker
 echo '{"prompt": "please write the code"}' | bash "$HOOK" 2>/dev/null || true
 
-if [ ! -f "$TEST_ROOT/.temp/plan-mode/.no-plan-$$" ]; then
+if ! find "$TEST_ROOT/.temp/plan-mode" -maxdepth 1 -name ".no-plan-*" | grep -q .; then
   pass
   echo "  PASS: non-override phrase does not create marker"
 else
@@ -202,6 +212,28 @@ if grep -q 'rm -f.*\.handoff-pending' "${PLUGIN_ROOT}/hooks/session-start.sh"; t
 else
   pass
   echo "  PASS: session-start.sh does not auto-clear handoff"
+fi
+
+# ============================================================
+echo ""
+echo "=== Test: clear-handoff-on-approval is NOT wired to EnterPlanMode ==="
+# ============================================================
+
+if python3 -c "
+import json
+with open('${PLUGIN_ROOT}/hooks/hooks.json') as f:
+    hooks = json.load(f)['hooks'].get('PostToolUse', [])
+for entry in hooks:
+    if 'clear-handoff-on-approval.sh' not in str(entry):
+        continue
+    if entry.get('matcher') != 'orbit_await_review':
+        raise SystemExit(1)
+raise SystemExit(0)
+" 2>/dev/null; then
+  pass
+  echo "  PASS: clear-handoff-on-approval only listens to orbit_await_review"
+else
+  fail "clear-handoff-on-approval still listens to EnterPlanMode"
 fi
 
 # Check post-compact.sh

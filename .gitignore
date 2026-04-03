@@ -5,3 +5,7 @@ codex-lessons/proposals/
 skill-review-standard-workspace/
 look-before-you-leap-workspace
 refactoring-workspace
+.DS_Store
+**/.DS_Store
+*.pyc
+**/__pycache__/

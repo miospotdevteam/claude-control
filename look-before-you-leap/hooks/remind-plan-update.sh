@@ -8,15 +8,34 @@
 #   - Incremented on each Edit/Write to a non-.temp file
 #   - Reset to 0 when any plan file (plan.json, masterPlan.md, etc.) is edited
 #
-# Input: JSON on stdin with tool_name, tool_input.file_path, cwd
+# Input: JSON on stdin with tool_name, tool_input.file_path|command, cwd
 
 set -euo pipefail
 
 source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
 hook_read_input
 
-# Extract file path from tool input
+# Extract file path / command from tool input
 FILE_PATH=$(hook_get_file_path)
+COMMAND=$(hook_get_command)
+
+PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PLAN_UTILS_PATH="${PLUGIN_ROOT}/scripts/plan_utils.py"
+
+# Reset checkpoint counter when progress is updated via Bash plan_utils.py
+if [ -z "$FILE_PATH" ] && [ -n "$COMMAND" ]; then
+  case "$COMMAND" in
+    *"$PLAN_UTILS_PATH"*update-step*|*"$PLAN_UTILS_PATH"*update-progress*|*"$PLAN_UTILS_PATH"*set-result*|*"$PLAN_UTILS_PATH"*complete-step*|*"$PLAN_UTILS_PATH"*add-summary*|*"$PLAN_UTILS_PATH"*add-deviation*)
+      source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+      CWD=$(hook_get_cwd)
+      PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
+      PLAN_MODE_DIR="$PROJECT_ROOT/.temp/plan-mode"
+      mkdir -p "$PLAN_MODE_DIR"
+      echo "0" > "$PLAN_MODE_DIR/.edit-count"
+      exit 0
+      ;;
+  esac
+fi
 
 [ -z "$FILE_PATH" ] && exit 0
 
@@ -87,7 +106,6 @@ fi
 # --- Inject reminder ---
 
 # Find the active plan path for the message (prefer plan.json)
-PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 latest_plan=$(python3 "$PLAN_UTILS" find-for-session "$PROJECT_ROOT" "$PPID" 2>/dev/null) || true
 

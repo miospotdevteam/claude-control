@@ -205,16 +205,19 @@ tl.from('.panel-1 .title', { opacity: 0, y: 50, duration: 0.3 })
   .from('.panel-2 .title', { opacity: 0, y: 50 });
 ```
 
-### Responsive ScrollTrigger
+### Responsive GSAP
+
+Prefer `gsap.matchMedia()` for responsive animation branches and cleanup.
 
 ```javascript
-ScrollTrigger.matchMedia({
-  '(min-width: 768px)': function() {
-    gsap.to('.hero', { x: 200, scrollTrigger: { ... } });
-  },
-  '(max-width: 767px)': function() {
-    gsap.to('.hero', { y: 100, scrollTrigger: { ... } });
-  },
+const mm = gsap.matchMedia();
+
+mm.add('(min-width: 768px)', () => {
+  gsap.to('.hero', { x: 200, scrollTrigger: { ... } });
+});
+
+mm.add('(max-width: 767px)', () => {
+  gsap.to('.hero', { y: 100, scrollTrigger: { ... } });
 });
 ```
 
@@ -382,7 +385,7 @@ ScrollTrigger.create({
 
 ---
 
-## 7. Motion (Framer Motion)
+## 7. Motion (`motion/react`)
 
 ### React Components
 

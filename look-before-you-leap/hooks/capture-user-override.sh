@@ -19,16 +19,32 @@ CWD=$(hook_get_cwd)
 
 [ -z "$PROMPT" ] && exit 0
 
-# Check for override phrases (case-insensitive)
-PROMPT_LOWER=$(printf '%s' "$PROMPT" | tr '[:upper:]' '[:lower:]')
+# Check for explicit override phrases.
+# Keep this intentionally narrow: filenames like commands/bypass.md or quoted
+# documentation should not mint a bypass receipt.
+IS_OVERRIDE=$(PROMPT_TEXT="$PROMPT" python3 << 'PYEOF'
+import os
+import re
 
-# Match known override phrases
-IS_OVERRIDE="no"
-case "$PROMPT_LOWER" in
-  *"just do it"*|*"skip the plan"*|*"no plan"*|*"bypass"*|*"skip plan"*)
-    IS_OVERRIDE="yes"
-    ;;
-esac
+prompt = os.environ["PROMPT_TEXT"].strip().lower()
+
+phrase_patterns = (
+    r"(^|[^a-z0-9])just do it([^a-z0-9]|$)",
+    r"(^|[^a-z0-9])skip the plan([^a-z0-9]|$)",
+    r"(^|[^a-z0-9])skip plan([^a-z0-9]|$)",
+    r"(^|[^a-z0-9])no plan([^a-z0-9]|$)",
+)
+
+explicit_bypass = (
+    prompt == "bypass"
+    or re.search(r"(^|[\s\"'])/bypass(?=$|[\s\"'!?.,:;])", prompt) is not None
+)
+
+matched_phrase = any(re.search(pattern, prompt) for pattern in phrase_patterns)
+
+print("yes" if explicit_bypass or matched_phrase else "no")
+PYEOF
+)
 
 [ "$IS_OVERRIDE" != "yes" ] && exit 0
 

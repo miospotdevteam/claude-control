@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -326,14 +327,57 @@ class CompleteStepTests(unittest.TestCase):
                 env=env, capture_output=True, check=True,
             )
 
-            result = self.run_cli(
-                "complete-step", str(plan_path), "1",
-                STRUCTURED_RESULT, str(project_root)
+            with patch.dict(os.environ, {"HOME": temp_dir}):
+                result = self.run_cli(
+                    "complete-step", str(plan_path), "1",
+                    STRUCTURED_RESULT, str(project_root)
+                )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                self.read_plan(plan_path)["steps"][0]["status"], "done"
             )
 
-            # This may still fail because the receipt is in temp HOME
-            # but plan_utils reads from the real HOME. The test validates
-            # the gating logic works for the no-receipt case above.
+    def test_complete_step_strict_collab_split_requires_both_owner_receipts(self):
+        """Mixed-owner collab-split steps require both receipt families."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan = make_plan(result=STRUCTURED_RESULT)
+            plan["_receiptMode"] = "strict"
+            plan["steps"][0]["mode"] = "collab-split"
+            plan["steps"][0]["subPlan"] = {
+                "groups": [
+                    {"name": "Claude group", "owner": "claude", "files": ["a.ts"]},
+                    {"name": "Codex group", "owner": "codex", "files": ["b.ts"]},
+                ]
+            }
+            plan_path = self.write_plan(temp_dir, plan)
+
+            project_root = Path(temp_dir) / "project"
+            project_root.mkdir()
+            receipt_utils_path = PLUGIN_ROOT / "scripts" / "receipt_utils.py"
+            env = {**subprocess.os.environ, "HOME": temp_dir}
+            subprocess.run(
+                [sys.executable, str(receipt_utils_path), "bootstrap"],
+                env=env, capture_output=True, check=True,
+            )
+            proj_id = subprocess.run(
+                [sys.executable, str(receipt_utils_path), "project-id", str(project_root)],
+                env=env, capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            subprocess.run(
+                [sys.executable, str(receipt_utils_path),
+                 "sign", "codex_verify", proj_id, "fixture", "step=1"],
+                env=env, capture_output=True, check=True,
+            )
+
+            with patch.dict(os.environ, {"HOME": temp_dir}):
+                result = self.run_cli(
+                    "complete-step", str(plan_path), "1",
+                    STRUCTURED_RESULT, str(project_root)
+                )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("codex_impl receipt", result.stderr)
 
 
     def test_update_step_done_fails_strict_mode(self):

@@ -4,6 +4,11 @@ Answer ALL 8 questions before writing a plan. If a question doesn't apply,
 write "N/A" — do not skip it. You are NOT ready to plan until all 8 have
 concrete answers and your confidence is Medium or higher.
 
+Exploration feeds the plan artifacts directly: `plan.json` (immutable
+definition), `progress.json` (mutable execution state), and `masterPlan.md`
+(user-facing review document). Use the current workspace path convention
+`.temp/plan-mode/active/<plan-name>/` when referring to those files.
+
 ---
 
 ## Step 0a: Codex preflight (ALWAYS run first)
@@ -115,3 +120,10 @@ that should be verified?
 - **Low**: Stop. Explore more before planning.
 - **Medium**: Proceed but flag unknowns in the plan.
 - **High**: Proceed with full confidence.
+
+### Planning note
+
+The plan is only ready once the exploration answers support the exact files,
+review flow, and any strict receipt expectations that will appear in the
+plan. If the task needs strict completion gating, note that in discovery so
+the plan can document it explicitly.

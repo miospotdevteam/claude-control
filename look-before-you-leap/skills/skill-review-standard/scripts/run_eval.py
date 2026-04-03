@@ -53,11 +53,11 @@ Respond with ONLY valid JSON (no markdown fences, no extra text) in this exact f
 """
 
 
-def run_claude(prompt, timeout=300):
+def run_claude(prompt, timeout=300, model="sonnet"):
     """Invoke claude -p and return stdout. Returns None on failure."""
     try:
         result = subprocess.run(
-            ["claude", "-p", prompt],
+            ["claude", "--model", model, "-p", prompt],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -129,7 +129,7 @@ def run_single_eval(skill_dir, prompt, output_dir, run_index, model):
     )
 
     print(f"  Run {run_index}: generating output...", file=sys.stderr)
-    output = run_claude(gen_prompt)
+    output = run_claude(gen_prompt, model=model)
     if output is None:
         return False
 
@@ -144,7 +144,7 @@ def run_single_eval(skill_dir, prompt, output_dir, run_index, model):
     grader_prompt = GRADER_PROMPT_TEMPLATE.format(
         prompt=prompt, output=output[:10000]  # Cap at 10k chars for grading
     )
-    grade_text = run_claude(grader_prompt)
+    grade_text = run_claude(grader_prompt, model=model)
     if grade_text is None:
         return False
 

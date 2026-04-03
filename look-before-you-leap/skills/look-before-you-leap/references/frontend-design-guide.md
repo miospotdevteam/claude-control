@@ -143,9 +143,9 @@ font-family: 'Your Display', Impact, 'Arial Black', sans-serif;
 }
 ```
 
-**React with framer-motion / motion:**
+**React with Motion (`motion/react`):**
 ```jsx
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 
 // Staggered entrance
 <motion.div
@@ -514,7 +514,7 @@ When the output is a single `.html` file:
 
 - Fonts via `next/font` (zero layout shift) or `@fontsource`
 - CSS modules for component styles, or Tailwind with config extensions
-- Motion via `framer-motion` / `motion` for orchestrated animations
+- Motion via `motion/react` for orchestrated animations
 - Image optimization via `next/image` or framework equivalent
 - Server components where possible to reduce client bundle
 

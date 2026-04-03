@@ -562,7 +562,7 @@ export class ApiRateLimitError extends ApiError {
 The MCP Inspector provides a web UI for testing your server interactively:
 
 ```bash
-npx @anthropic-ai/mcp-inspector
+npx @modelcontextprotocol/inspector
 ```
 
 This opens a browser UI where you can:

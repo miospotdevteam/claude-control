@@ -111,6 +111,45 @@ bash -n "$STOP_HOOK" 2>/dev/null && pass && echo "  PASS: verify-plan-on-stop.sh
 
 # ============================================================
 echo ""
+echo "=== Test: strict plan denies completion without receipts ==="
+# ============================================================
+
+ROOT=$(mktemp -d "${TMPDIR:-/tmp}/guard-plan.XXXXXX")
+HOME_DIR=$(mktemp -d "${TMPDIR:-/tmp}/guard-plan-home.XXXXXX")
+mkdir -p "$ROOT/.git" "$ROOT/.temp/plan-mode/active/test-plan" "$ROOT/.temp/plan-mode/completed"
+
+cat > "$ROOT/.temp/plan-mode/active/test-plan/plan.json" << 'JSON'
+{
+  "name": "test-plan",
+  "title": "Test",
+  "status": "active",
+  "_receiptMode": "strict",
+  "steps": [
+    {
+      "id": 1,
+      "title": "t",
+      "status": "done",
+      "owner": "claude",
+      "mode": "claude-impl",
+      "result": "Done.",
+      "progress": [{"task": "t", "status": "done", "files": []}]
+    }
+  ],
+  "blocked": [],
+  "completedSummary": [],
+  "deviations": []
+}
+JSON
+echo "$$" > "$ROOT/.temp/plan-mode/active/test-plan/.session-lock"
+
+CMD="mv $ROOT/.temp/plan-mode/active/test-plan $ROOT/.temp/plan-mode/completed/test-plan"
+HOME="$HOME_DIR" echo "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"$CMD\"}, \"cwd\": \"$ROOT\"}" | bash "$GUARD_HOOK" > "$HOOK_OUT_FILE" 2>/dev/null || true
+assert_denied "strict plan without receipts denied"
+
+rm -rf "$ROOT" "$HOME_DIR"
+
+# ============================================================
+echo ""
 echo "=== Results ==="
 echo "PASS: $PASS"
 echo "FAIL: $FAIL"

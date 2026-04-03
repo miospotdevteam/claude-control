@@ -47,7 +47,7 @@ The plugin doesn't just give instructions — it enforces them:
 | **PreToolUse** (Codex MCP) | `block-codex-mcp.sh` | Blocks Codex MCP tool usage — enforces `codex exec` via Bash for all Codex interactions |
 | **PreToolUse** (Edit\|Write) | `enforce-plan.sh` | Blocks code edits if no active plan exists |
 | **PreToolUse** (Edit\|Write) | `check-api-contracts.sh` | Warns when editing API boundary files |
-| **PreToolUse** (Bash) | `enforce-plan-bash.sh` | Blocks Bash file-write bypasses (redirects, sed -i, tee) without an active plan |
+| **PreToolUse** (Bash) | `guard-filesystem-mutation.sh` | Blocks Bash file writes and destructive commands without an active plan or approval |
 | **PreToolUse** (Bash) | `guard-plan-completion.sh` | Blocks moving a plan to completed/ if it has unchecked steps |
 | **PreToolUse** (Grep) | `remind-deps-query.sh` | Blocks import/consumer greps when dependency maps are configured and redirects Claude to `deps-query.py` |
 | **PreToolUse** (Task) | `inject-subagent-context.sh` | Injects discipline rules into every sub-agent, creates shared discovery file for cross-agent findings |
@@ -55,7 +55,7 @@ The plugin doesn't just give instructions — it enforces them:
 | **PostToolUse** (Edit\|Write) | `auto-complete-plan.sh` | Detects when all plan steps are complete and prompts finalization |
 | **PostToolUse** (Edit\|Write) | `mark-deps-stale.sh` | Marks configured TypeScript dependency maps stale after source edits so they can be regenerated lazily |
 | **PostToolUse** (Edit\|Write) | `enforce-plan-handoff.sh` | Marks fresh plans for Orbit review handoff and injects the review workflow before execution begins |
-| **PostToolUse** (`orbit_await_review`\|`EnterPlanMode`) | `clear-handoff-on-approval.sh` | Clears the pending handoff marker after Orbit approval or when plan mode is entered |
+| **PostToolUse** (`orbit_await_review`) | `clear-handoff-on-approval.sh` | Clears the pending handoff marker after Orbit approval |
 | **PostToolUse** (Edit\|Write\|Bash) | `verify-step-completion.sh` | Blocks step-done transitions until the required Codex or Claude verification verdict is recorded |
 | **PostToolUse** (Bash) | `log-script-errors.sh` | Logs plugin-script crashes and warnings to `usage-errors/script-errors/` for later debugging |
 | **PostCompact** | `post-compact.sh` | Rehydrates the active plan and resumption context after Claude compacts |
@@ -99,10 +99,12 @@ blast radius and consumers without grepping the codebase every time.
 
 ### Commands
 
-The repo also ships three slash commands: `/commit-msg` generates a 1-line
-commit message from the current diff, `/generate-deps` sets up or refreshes
-dependency maps, and `/tangent` loads discovery context from another active
-plan so a new session can explore a related thread without starting from zero.
+The repo also ships four slash commands: `/bypass` writes a signed override
+receipt when the user explicitly wants to skip the plan, `/commit-msg`
+generates a 1-line commit message from the current diff, `/generate-deps`
+sets up or refreshes dependency maps, and `/tangent` loads discovery context
+from another active plan so a new session can explore a related thread
+without starting from zero.
 
 ## Prerequisites
 
@@ -147,7 +149,7 @@ claude plugin install look-before-you-leap@claude-code-setup
 ### From source
 
 ```bash
-git clone https://github.com/anthropics/claude-code-setup.git ~/claude-code-setup
+git clone https://github.com/miospotdevteam/claude-control.git ~/claude-code-setup
 claude plugin install --source ~/claude-code-setup/look-before-you-leap
 ```
 
@@ -165,14 +167,15 @@ look-before-you-leap/
 │   └── lbyl-verify/
 │       └── SKILL.md                       # Codex protocol for verifying Claude's work
 ├── commands/
+│   ├── bypass.md                           # Slash command: write a signed override receipt
 │   ├── commit-msg.md                      # Slash command: generate a 1-line commit message
 │   ├── generate-deps.md                   # Slash command: configure and build dep maps
 │   └── tangent.md                         # Slash command: load discovery from another session
 ├── hooks/
 │   ├── auto-complete-plan.sh              # PostToolUse: migrates discovery + detects plan completion
 │   ├── check-api-contracts.sh             # PreToolUse: API boundary warnings
-│   ├── clear-handoff-on-approval.sh       # PostToolUse: clears pending handoff on approval
-│   ├── enforce-plan-bash.sh               # PreToolUse: blocks Bash file-write bypasses
+│   ├── clear-handoff-on-approval.sh       # PostToolUse: clears pending handoff after approval
+│   ├── guard-filesystem-mutation.sh       # PreToolUse: blocks unsafe Bash file writes
 │   ├── enforce-plan-handoff.sh            # PostToolUse: requires Orbit review for fresh plans
 │   ├── enforce-plan.sh                    # PreToolUse: blocks edits without an active plan
 │   ├── guard-plan-completion.sh           # PreToolUse: blocks moving incomplete plans

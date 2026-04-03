@@ -266,12 +266,13 @@ if os.path.isfile(plan_json_path):
 
 if receipt_mode == "strict" and project_root:
     # Check receipts for each completed step
-    plugin_root = os.path.dirname(os.path.dirname(plan_utils_path))
     receipt_utils_path = os.path.join(
-        os.path.dirname(plugin_root), "scripts", "receipt_utils.py"
+        os.path.dirname(plan_utils_path), "receipt_utils.py"
     )
     try:
         import importlib.util
+        sys.path.insert(0, os.path.dirname(plan_utils_path))
+        import plan_utils
         spec = importlib.util.spec_from_file_location("receipt_utils", receipt_utils_path)
         receipt_utils = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(receipt_utils)
@@ -289,19 +290,12 @@ if receipt_mode == "strict" and project_root:
             if not step_data:
                 continue
 
-            owner = step_data.get("owner", "claude")
-            mode = step_data.get("mode", "claude-impl")
             extra = {"step": step_id}
-
-            if mode in ("claude-impl", "dual-pass") or owner == "claude":
-                exists, _ = receipt_utils.check("codex_verify", proj_id, plan_name_val, extra)
+            for receipt_type in plan_utils.required_receipt_types(step_data):
+                exists, _ = receipt_utils.check(receipt_type, proj_id, plan_name_val, extra)
                 if not exists:
                     receipt_blocked_steps.append(sid)
-            elif mode == "codex-impl" or owner == "codex":
-                impl_exists, _ = receipt_utils.check("codex_impl", proj_id, plan_name_val, extra)
-                verify_exists, _ = receipt_utils.check("claude_verify", proj_id, plan_name_val, extra)
-                if not impl_exists or not verify_exists:
-                    receipt_blocked_steps.append(sid)
+                    break
     except Exception:
         pass
 

@@ -16,7 +16,7 @@ that engineering-discipline provides.
 
 ---
 
-## Dual-File Architecture
+## Three-File Architecture
 
 Every plan consists of three files:
 
@@ -25,12 +25,16 @@ Every plan consists of three files:
   during execution.** Hooks read this for step structure.
 - **`progress.json`** — Mutable execution state. Step statuses, results,
   progress item statuses, completedSummary, deviations, codexSessions.
-  Updated constantly via `plan_utils.py` commands. This is what changes
-  during execution.
+  Auto-created on first mutation and updated via `plan_utils.py` commands.
+  This is what changes during execution.
 - **`masterPlan.md`** — Proposal document for user review via Orbit.
-  Summarizes what, why, critical decisions, warnings, risk areas.
+  Summarizes what, why, critical decisions, warnings, and risk areas.
   Human-facing. **Write-once**: frozen after Orbit approval, never updated
   during execution.
+
+Orbit reviews `masterPlan.md`. Once approved, `plan.json` and
+`masterPlan.md` are treated as frozen records of the agreed work; all
+runtime state moves to `progress.json`.
 
 Hooks read both files. You update progress via `plan_utils.py` commands
 (which write to `progress.json`). **Never Edit plan.json directly after
@@ -127,7 +131,8 @@ plans go in `active/`; completed plans are automatically moved to
 ```
 
 Before creating your first plan, run the initialization script to set up
-this directory and ensure `.temp/` is gitignored:
+this directory, install the helper wrappers under `.temp/plan-mode/scripts/`,
+and ensure `.temp/` is gitignored:
 
 ```bash
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/init-plan-dir.sh
@@ -137,8 +142,10 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/init-plan-dir.sh
 
 ## Updating Progress
 
-Use `plan_utils.py` via the Bash tool. All commands write to progress.json
-automatically — pass the plan.json path and mutations go to the right file:
+Use `plan_utils.py` via the Bash tool. All commands write to
+`progress.json` automatically — pass the `plan.json` path and mutations go
+to the right file. For strict plans, use `complete-step` so receipt checks
+run before a step is marked done:
 
 <!-- plan-utils-cmd-start -->
 ```bash

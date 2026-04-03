@@ -34,18 +34,24 @@ fi
 # Determine the plugin root to find script templates
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
-# Copy plan-status.sh if missing or outdated
+# Install plan-status.sh wrapper if missing or outdated
 STATUS_SCRIPT="$SCRIPTS_DIR/plan-status.sh"
 if [ ! -f "$STATUS_SCRIPT" ] || [ "$SCRIPT_DIR/plan-status.sh" -nt "$STATUS_SCRIPT" ]; then
-  cp "$SCRIPT_DIR/plan-status.sh" "$STATUS_SCRIPT"
+  cat > "$STATUS_SCRIPT" << EOF
+#!/usr/bin/env bash
+exec "${SCRIPT_DIR}/plan-status.sh" "\$@"
+EOF
   chmod +x "$STATUS_SCRIPT"
   echo "Installed $STATUS_SCRIPT"
 fi
 
-# Copy resume.sh if missing or outdated
+# Install resume.sh wrapper if missing or outdated
 RESUME_SCRIPT="$SCRIPTS_DIR/resume.sh"
 if [ ! -f "$RESUME_SCRIPT" ] || [ "$SCRIPT_DIR/resume.sh" -nt "$RESUME_SCRIPT" ]; then
-  cp "$SCRIPT_DIR/resume.sh" "$RESUME_SCRIPT"
+  cat > "$RESUME_SCRIPT" << EOF
+#!/usr/bin/env bash
+exec "${SCRIPT_DIR}/resume.sh" "\$@"
+EOF
   chmod +x "$RESUME_SCRIPT"
   echo "Installed $RESUME_SCRIPT"
 fi

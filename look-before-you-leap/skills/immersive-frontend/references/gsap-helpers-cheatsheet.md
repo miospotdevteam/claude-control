@@ -506,8 +506,8 @@ ScrollTrigger.killAll();
 // Save/restore scroll position
 ScrollTrigger.saveStyles('.el');
 
-// Match media via ScrollTrigger
-ScrollTrigger.matchMedia({
+// Match media via gsap
+gsap.matchMedia().add({
   '(min-width: 768px)': () => { /* desktop animations */ },
   '(max-width: 767px)': () => { /* mobile animations */ },
   'all': () => { /* all sizes */ },

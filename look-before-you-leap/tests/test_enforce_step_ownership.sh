@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Tests for enforce-step-ownership.sh PreToolUse hook
+# Tests for enforce-plan.sh step ownership enforcement
 #
-# Tests that Claude cannot edit files owned by codex-impl steps,
-# while allowing edits to Claude-owned files and plan files.
+# Tests that Claude cannot edit files owned by codex-impl steps under the
+# current enforce-plan.sh topology, while allowing edits to Claude-owned
+# files and unrelated files once a session plan is active.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-HOOK="${PLUGIN_ROOT}/hooks/enforce-step-ownership.sh"
+HOOK="${PLUGIN_ROOT}/hooks/enforce-plan.sh"
 
 # Use a temp dir as fake project root
 FAKE_PROJECT=$(mktemp -d "${TMPDIR:-/tmp}/ownership-test.XXXXXX")
@@ -60,15 +61,15 @@ run_hook() {
 }
 
 # ============================================================
-echo "=== No plan: all edits allowed ==="
+echo "=== No plan: edits denied ==="
 # ============================================================
 
 run_hook '{"tool_name": "Edit", "tool_input": {"file_path": "'"$FAKE_PROJECT"'/src/app.ts"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_allowed "Edit without plan allowed"
+assert_denied "Edit without plan denied"
 
 # ============================================================
 echo ""
-echo "=== Legacy plan: all edits allowed ==="
+echo "=== Legacy plan: codex-owned file denied ==="
 # ============================================================
 
 # Create a legacy plan (no _receiptMode)
@@ -91,7 +92,7 @@ EOF
 echo "$$" > "$FAKE_PROJECT/.temp/plan-mode/active/test-plan/.session-lock"
 
 run_hook '{"tool_name": "Edit", "tool_input": {"file_path": "'"$FAKE_PROJECT"'/src/codex-file.ts"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_allowed "Edit codex file in legacy plan allowed"
+assert_denied "Edit codex file in legacy plan denied"
 
 # ============================================================
 echo ""
@@ -133,6 +134,14 @@ assert_denied "Write codex-owned file denied"
 
 # ============================================================
 echo ""
+echo "=== Strict plan: plan.json is immutable ==="
+# ============================================================
+
+run_hook '{"tool_name": "Edit", "tool_input": {"file_path": "'"$FAKE_PROJECT"'/.temp/plan-mode/active/test-plan/plan.json"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "Edit plan.json denied"
+
+# ============================================================
+echo ""
 echo "=== Strict plan: Claude-owned file allowed ==="
 # ============================================================
 
@@ -149,11 +158,11 @@ assert_allowed "Edit file not in any step allowed"
 
 # ============================================================
 echo ""
-echo "=== .temp/ edits always allowed ==="
+echo "=== Strict plan: unrelated .temp scratch file allowed ==="
 # ============================================================
 
-run_hook '{"tool_name": "Edit", "tool_input": {"file_path": "'"$FAKE_PROJECT"'/.temp/plan-mode/active/test-plan/plan.json"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_allowed "Edit plan.json allowed"
+run_hook '{"tool_name": "Edit", "tool_input": {"file_path": "'"$FAKE_PROJECT"'/.temp/plan-mode/active/test-plan/scratch.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "Edit scratch file under .temp allowed"
 
 # ============================================================
 echo ""
@@ -257,22 +266,6 @@ assert_denied "Edit via ../ path denied"
 
 run_hook '{"tool_name": "Edit", "tool_input": {"file_path": "'"$FAKE_PROJECT"'/./src/codex-file.ts"}, "cwd": "'"$FAKE_PROJECT"'"}'
 assert_denied "Edit via ./ path denied"
-
-# ============================================================
-echo ""
-echo "=== Bash commands pass through ==="
-# ============================================================
-
-run_hook '{"tool_name": "Bash", "tool_input": {"command": "cat '"$FAKE_PROJECT"'/src/codex-part.ts"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_allowed "Bash commands not checked by this hook"
-
-# ============================================================
-echo ""
-echo "=== Read tool passes through ==="
-# ============================================================
-
-run_hook '{"tool_name": "Read", "tool_input": {"file_path": "'"$FAKE_PROJECT"'/src/codex-part.ts"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_allowed "Read codex file allowed (read-only)"
 
 # ============================================================
 echo ""

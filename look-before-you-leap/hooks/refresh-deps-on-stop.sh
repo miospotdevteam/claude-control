@@ -18,7 +18,7 @@ CWD=$(hook_get_cwd)
 PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/lib" && pwd)"
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
-SCRIPTS_DIR="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts"
+SCRIPTS_DIR="${PLUGIN_ROOT}/scripts"
 
 # Check if dep maps are configured and have stale modules
 export HOOK_PROJECT_ROOT="$PROJECT_ROOT"

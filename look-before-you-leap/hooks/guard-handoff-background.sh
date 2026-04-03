@@ -5,13 +5,11 @@
 # 1. PID markers — .codex-inflight-step-N.pid with a live process
 # 2. Incomplete streams — .codex-stream-step-N.jsonl without a matching
 #    .codex-result-step-N.txt (Codex started but hasn't finished)
-# 3. pgrep scan — catches direct codex exec calls (co-exploration,
-#    consensus, design review) that have no PID markers
-# 4. Background agent receipt gate — requires Claude to confirm via
+# 3. Background agent receipt gate — requires Claude to confirm via
 #    TaskList that no background agents are running before handoff
 #
-# Layers 1-2 are session-scoped (plan directory). Layer 3 is project-scoped.
-# Layer 4 uses a receipt file that Claude creates after clearing agents.
+# Layers 1-2 are session-scoped (plan directory). Layer 3 uses a receipt file
+# that Claude creates after clearing agents.
 #
 # Input: JSON on stdin with tool_name (EnterPlanMode)
 
@@ -71,25 +69,7 @@ for stream_file in "$SESSION_PLAN_DIR"/.codex-stream-*.jsonl; do
   fi
 done
 
-# --- Layer 3: pgrep scan for direct codex exec calls (co-exploration, consensus, etc.) ---
-# Scope to this project's root so we don't kill codex in other sessions
-CODEX_PATTERN="codex exec -C ${PROJECT_ROOT}"
-if pgrep -f "$CODEX_PATTERN" >/dev/null 2>&1; then
-  pkill -f "$CODEX_PATTERN" 2>/dev/null || true
-  cleaned="${cleaned}  - [killed] orphaned codex exec process(es) for ${PROJECT_ROOT} (via pgrep)\n"
-  echo "guard-handoff: killed orphaned codex exec process(es) for ${PROJECT_ROOT}" >&2
-fi
-
-# --- P2: Block if processes survive kill — wait and re-check ---
 if [ -n "$cleaned" ]; then
-  sleep 1
-  if pgrep -f "$CODEX_PATTERN" >/dev/null 2>&1; then
-    # Processes still alive — block the handoff
-    echo "BLOCKED: codex process still running after kill. Wait a few seconds and retry EnterPlanMode."
-    exit 0
-  fi
-
-  # All dead — report cleanup and allow handoff
   export HOOK_CLEANED="$cleaned"
   python3 << 'PYEOF'
 import json, os, sys
@@ -112,7 +92,7 @@ PYEOF
   exit 0
 fi
 
-# --- Layer 4: Background agent receipt gate ---
+# --- Layer 3: Background agent receipt gate ---
 # Claude Code's background agents aren't OS processes — we can't detect them
 # from a shell hook. Instead, require Claude to confirm they're stopped by
 # writing a receipt file. Block until the receipt exists.

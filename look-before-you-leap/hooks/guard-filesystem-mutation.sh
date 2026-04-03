@@ -516,22 +516,7 @@ if [ "$CLASS" = "destructive" ] && [ "$INSIDE_ROOT" != "[]" ]; then
       done
     fi
   fi
-  # Warn but allow — destructive ops are sometimes necessary
-  python3 -c "
-import json, sys
-output = {
-    'hookSpecificOutput': {
-        'hookEventName': 'PreToolUse',
-        'permissionDecision': 'allow',
-        'permissionDecisionReason': (
-            'WARNING: Destructive filesystem operation (rm -rf, rm -r, find -delete, git clean -f) '
-            'inside project. Double-check you are targeting the right paths before proceeding.'
-        )
-    }
-}
-json.dump(output, sys.stdout)
-"
-  exit 0
+  deny "BLOCKED: Destructive filesystem operation inside the project requires explicit approval. Mint a destructive_confirm receipt or ask the user to run /bypass before proceeding."
 fi
 
 # --- Archive commands (tar/unzip/zip) inside project: require plan ---

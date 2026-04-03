@@ -247,7 +247,7 @@ input, and error scenarios. MCP Inspector shows clean results.
 Use the MCP Inspector to verify every tool:
 
 ```bash
-npx @anthropic-ai/mcp-inspector
+npx @modelcontextprotocol/inspector
 ```
 
 For each tool:

@@ -371,7 +371,7 @@ rhythm, directs attention, and makes content breathe.
 ### React
 
 - CSS modules or styled-components (match project convention)
-- Motion library (framer-motion / motion) for orchestrated animations
+- Motion library (`motion/react`) for orchestrated animations
 - Component composition — small, focused components over monoliths
 - Font loading with `next/font` (Next.js) or `@fontsource` (other React)
 - `prefers-reduced-motion` media query respected in all animations

@@ -306,7 +306,7 @@ Different loading treatments based on expected wait time.
 
 ```tsx
 import { useState, useEffect, useRef } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { MotiView } from 'moti';
 import { useTheme } from '@/lib/theme';

@@ -569,61 +569,47 @@ def complete_step(plan_path, step_id, result_text, project_root=None):
     if receipt_mode == "strict" and project_root:
         # Import receipt utils
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        receipt_utils_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(script_dir))),
-            "scripts",
-        )
+        receipt_utils_dir = script_dir
         sys.path.insert(0, receipt_utils_dir)
         try:
             import receipt_utils
         except ImportError:
             print(
-                "Warning: receipt_utils.py not found, skipping receipt check",
+                "Error: receipt_utils.py not found for strict receipt verification",
                 file=sys.stderr,
             )
-            receipt_mode = "legacy"
+            return False
 
         if receipt_mode == "strict":
             proj_id = receipt_utils.project_id(project_root)
             plan_name = plan_def.get("name", "unknown")
-            owner = step.get("owner", "claude")
-            mode = step.get("mode", "claude-impl")
             extra = {"step": step_id}
-
-            if mode in ("claude-impl", "dual-pass") or owner == "claude":
+            for receipt_type in required_receipt_types(step):
                 exists, path = receipt_utils.check(
-                    "codex_verify", proj_id, plan_name, extra
+                    receipt_type, proj_id, plan_name, extra
                 )
-                if not exists:
+                if exists:
+                    continue
+                if receipt_type == "codex_verify":
                     print(
                         f"Error: step {step_id} requires codex_verify receipt "
                         f"but none found at {path}. Run run-codex-verify.sh "
                         f"and get PASS before completing.",
                         file=sys.stderr,
                     )
-                    return False
-
-            elif mode == "codex-impl" or owner == "codex":
-                impl_exists, impl_path = receipt_utils.check(
-                    "codex_impl", proj_id, plan_name, extra
-                )
-                verify_exists, verify_path = receipt_utils.check(
-                    "claude_verify", proj_id, plan_name, extra
-                )
-                if not impl_exists:
+                elif receipt_type == "codex_impl":
                     print(
                         f"Error: step {step_id} requires codex_impl receipt "
                         f"but none found. Run run-codex-implement.sh first.",
                         file=sys.stderr,
                     )
-                    return False
-                if not verify_exists:
+                else:
                     print(
                         f"Error: step {step_id} requires claude_verify receipt "
                         f"but none found. Verify the step independently first.",
                         file=sys.stderr,
                     )
-                    return False
+                return False
 
     # All checks passed — mark done in progress.json
     _update_step_in_progress(
@@ -957,6 +943,38 @@ def effective_owner(step, group_index=None):
                 return groups[group_index].get("owner", step_owner)
 
     return step_owner
+
+
+def required_receipt_types(step):
+    """Return the verification receipt types required to complete a step.
+
+    For collab-split steps, requirements depend on the owner types present in
+    sub-plan groups, not just the top-level step owner.
+    """
+    owner = step.get("owner", "claude")
+    mode = step.get("mode", "claude-impl")
+
+    if mode == "collab-split":
+        sub_plan = step.get("subPlan") or {}
+        groups = sub_plan.get("groups") or []
+        if groups:
+            required = []
+            has_claude_groups = any(
+                group.get("owner", owner) == "claude" for group in groups
+            )
+            has_codex_groups = any(
+                group.get("owner", owner) == "codex" for group in groups
+            )
+            if has_claude_groups:
+                required.append("codex_verify")
+            if has_codex_groups:
+                required.extend(["codex_impl", "claude_verify"])
+            return required
+
+    if mode == "codex-impl" or owner == "codex":
+        return ["codex_impl", "claude_verify"]
+
+    return ["codex_verify"]
 
 
 def step_files(step, group_index=None):

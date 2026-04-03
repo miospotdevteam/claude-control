@@ -4,12 +4,13 @@ Single Claude Code plugin: `look-before-you-leap`. Enforces structured explorati
 
 # CRITICAL
 
-If while working on this plugin you encounter errors during excecution, fix those errors whithin this plugin.
+If while working on this plugin you encounter errors during execution, fix those errors within this plugin.
 
 ## Repo Layout
 
-- `look-before-you-leap/` — The plugin (three-layer architecture: conductor, checklists, deep guides)
-- Everything else is in `look-before-you-leap/` — hooks, skills, references, scripts
+- `look-before-you-leap/` — The plugin bundle (hooks, commands, skills, scripts, codex-skills)
+- `look-before-you-leap/hooks/` — Hook lifecycle scripts and shared hook libraries
+- `look-before-you-leap/scripts/` — Plan helpers, dep-map tools, and Codex entrypoints
 
 ## Editing Rules
 

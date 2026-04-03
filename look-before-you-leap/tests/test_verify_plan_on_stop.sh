@@ -261,6 +261,38 @@ bash -n "$HOOK" 2>/dev/null && pass && echo "  PASS: syntax OK" || fail "syntax 
 
 # ============================================================
 echo ""
+echo "=== Test: Strict done step without receipt blocks stop ==="
+# ============================================================
+
+ROOT=$(mktemp -d "${TMPDIR:-/tmp}/stop-test.XXXXXX")
+HOME_DIR=$(mktemp -d "${TMPDIR:-/tmp}/stop-home.XXXXXX")
+mkdir -p "$ROOT/.git" "$ROOT/.temp/plan-mode/active/test-plan"
+cat > "$ROOT/.temp/plan-mode/active/test-plan/plan.json" << 'JSON'
+{
+  "name": "test-plan", "title": "Test", "status": "active", "_receiptMode": "strict",
+  "steps": [
+    {
+      "id": 1,
+      "title": "t",
+      "status": "done",
+      "owner": "claude",
+      "mode": "claude-impl",
+      "result": "Completed.",
+      "progress": []
+    }
+  ],
+  "blocked": [], "completedSummary": [], "deviations": []
+}
+JSON
+echo "$$" > "$ROOT/.temp/plan-mode/active/test-plan/.session-lock"
+cd "$ROOT"
+HOME="$HOME_DIR" run_hook '{"stop_hook_active": false, "cwd": "'"$ROOT"'"}'
+assert_blocked "strict done step without receipt blocks stop"
+cd "$SCRIPT_DIR"
+rm -rf "$ROOT" "$HOME_DIR"
+
+# ============================================================
+echo ""
 echo "=== Results ==="
 echo "PASS: $PASS"
 echo "FAIL: $FAIL"

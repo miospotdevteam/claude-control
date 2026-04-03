@@ -36,8 +36,8 @@ def read_config(project_root: str) -> dict[str, Any]:
 
 
 def module_slug(module_path: str) -> str:
-    """Convert module path to filename slug: apps/api -> apps-api"""
-    return module_path.replace("/", "-")
+    """Convert module path to a reversible filename slug."""
+    return module_path.replace("-", "--").replace("/", "-")
 
 
 def get_deps_dir(project_root: str, config: dict[str, Any]) -> str:

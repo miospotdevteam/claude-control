@@ -155,12 +155,11 @@ if active == 0:
                 break
             p = p.parent
 
-        receipt_utils_dir = os.path.join(
-            os.path.dirname(os.path.dirname(plan_utils_path)),
-            "..", "scripts"
-        )
+        receipt_utils_dir = os.path.dirname(plan_utils_path)
         try:
             sys.path.insert(0, os.path.realpath(receipt_utils_dir))
+            sys.path.insert(0, os.path.realpath(os.path.dirname(plan_utils_path)))
+            import plan_utils
             import receipt_utils as ru
             proj_id = ru.project_id(project_root)
             plan_name_val = plan.get("name", "unknown")
@@ -169,20 +168,11 @@ if active == 0:
                 if step.get("status") != "done":
                     continue
                 sid = step["id"]
-                owner = step.get("owner", "claude")
-                mode = step.get("mode", "claude-impl")
                 extra = {"step": sid}
-                if mode in ("claude-impl", "dual-pass") or owner == "claude":
-                    exists, _ = ru.check("codex_verify", proj_id, plan_name_val, extra)
+                for receipt_type in plan_utils.required_receipt_types(step):
+                    exists, _ = ru.check(receipt_type, proj_id, plan_name_val, extra)
                     if not exists:
-                        missing.append(f"Step {sid}: missing codex_verify")
-                elif mode == "codex-impl" or owner == "codex":
-                    impl_exists, _ = ru.check("codex_impl", proj_id, plan_name_val, extra)
-                    verify_exists, _ = ru.check("claude_verify", proj_id, plan_name_val, extra)
-                    if not impl_exists:
-                        missing.append(f"Step {sid}: missing codex_impl")
-                    if not verify_exists:
-                        missing.append(f"Step {sid}: missing claude_verify")
+                        missing.append(f"Step {sid}: missing {receipt_type}")
             if missing:
                 detail = "\n  - ".join(missing)
                 reason_parts = [
@@ -197,7 +187,15 @@ if active == 0:
                 json.dump(output, sys.stdout)
                 sys.exit(0)
         except ImportError:
-            pass
+            output = {
+                "decision": "block",
+                "reason": (
+                    "Active strict plan cannot verify receipts because "
+                    "receipt_utils.py could not be loaded."
+                ),
+            }
+            json.dump(output, sys.stdout)
+            sys.exit(0)
 
     sys.exit(0)
 

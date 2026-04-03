@@ -119,7 +119,7 @@ fi
 # Dep maps ARE configured and the pattern looks like an import/consumer search.
 # DENY the grep — Claude must use deps-query.py instead.
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-SCRIPTS_DIR="${PLUGIN_ROOT}/skills/look-before-you-leap/scripts"
+SCRIPTS_DIR="${PLUGIN_ROOT}/scripts"
 
 python3 << PYEOF
 import json, sys

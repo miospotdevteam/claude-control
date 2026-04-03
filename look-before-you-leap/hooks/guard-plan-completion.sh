@@ -165,32 +165,24 @@ if os.path.isfile(plan_json):
                     break
                 p = p.parent
 
-            receipt_utils_dir = os.path.join(
-                os.path.dirname(os.path.dirname(plan_utils_path)),
-                "..", "scripts"
-            )
+            receipt_utils_dir = os.path.dirname(plan_utils_path)
             try:
                 sys.path.insert(0, os.path.realpath(receipt_utils_dir))
+                sys.path.insert(0, os.path.realpath(os.path.dirname(plan_utils_path)))
+                import plan_utils
                 import receipt_utils as ru
                 proj_id = ru.project_id(project_root)
                 plan_name_val = plan.get("name", "unknown")
                 missing_receipts = []
                 for step in plan.get("steps", []):
                     sid = step["id"]
-                    owner = step.get("owner", "claude")
-                    mode = step.get("mode", "claude-impl")
                     extra = {"step": sid}
-                    if mode in ("claude-impl", "dual-pass") or owner == "claude":
-                        exists, _ = ru.check("codex_verify", proj_id, plan_name_val, extra)
+                    for receipt_type in plan_utils.required_receipt_types(step):
+                        exists, _ = ru.check(receipt_type, proj_id, plan_name_val, extra)
                         if not exists:
-                            missing_receipts.append(f"Step {sid}: missing codex_verify receipt")
-                    elif mode == "codex-impl" or owner == "codex":
-                        impl_exists, _ = ru.check("codex_impl", proj_id, plan_name_val, extra)
-                        verify_exists, _ = ru.check("claude_verify", proj_id, plan_name_val, extra)
-                        if not impl_exists:
-                            missing_receipts.append(f"Step {sid}: missing codex_impl receipt")
-                        if not verify_exists:
-                            missing_receipts.append(f"Step {sid}: missing claude_verify receipt")
+                            missing_receipts.append(
+                                f"Step {sid}: missing {receipt_type} receipt"
+                            )
                 if missing_receipts:
                     detail = "\n".join(missing_receipts)
                     output = {
@@ -208,7 +200,19 @@ if os.path.isfile(plan_json):
                     json.dump(output, sys.stdout)
                     sys.exit(0)
             except ImportError:
-                pass  # receipt_utils not available — allow
+                output = {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": (
+                            "Cannot verify strict-plan receipts because receipt_utils.py "
+                            "could not be loaded. Fix the plugin script path before moving "
+                            "the plan to completed/."
+                        )
+                    }
+                }
+                json.dump(output, sys.stdout)
+                sys.exit(0)
 
         # All checks pass — allow
         sys.exit(0)

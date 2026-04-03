@@ -89,12 +89,38 @@ PYEOF
 # Sets: PLAN_DONE, PLAN_ACTIVE, PLAN_PENDING, PLAN_BLOCKED, PLAN_NEXT_STEP, PLAN_HAS_WORK
 plan_parse_status() {
   local status_json="$1"
-  PLAN_DONE=$(python3 -c "import json; print(json.loads('$status_json').get('done', 0))" 2>/dev/null) || true
-  PLAN_ACTIVE=$(python3 -c "import json; print(json.loads('$status_json').get('active', 0))" 2>/dev/null) || true
-  PLAN_PENDING=$(python3 -c "import json; print(json.loads('$status_json').get('pending', 0))" 2>/dev/null) || true
-  PLAN_BLOCKED=$(python3 -c "import json; print(json.loads('$status_json').get('blocked', 0))" 2>/dev/null) || true
-  PLAN_NEXT_STEP=$(python3 -c "import json; print(json.loads('$status_json').get('next_step', ''))" 2>/dev/null) || true
-  PLAN_HAS_WORK=$(python3 -c "import json; print(json.loads('$status_json').get('has_work', False))" 2>/dev/null) || true
+  local parsed=""
+  parsed=$(python3 - "$status_json" << 'PYEOF' 2>/dev/null
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+print(
+    "\t".join(
+        [
+            str(data.get("done", 0)),
+            str(data.get("active", 0)),
+            str(data.get("pending", 0)),
+            str(data.get("blocked", 0)),
+            str(data.get("next_step", "")),
+            str(data.get("has_work", False)),
+        ]
+    )
+)
+PYEOF
+  ) || true
+
+  if [ -z "$parsed" ]; then
+    PLAN_DONE=0
+    PLAN_ACTIVE=0
+    PLAN_PENDING=0
+    PLAN_BLOCKED=0
+    PLAN_NEXT_STEP=""
+    PLAN_HAS_WORK=false
+    return 0
+  fi
+
+  IFS=$'\t' read -r PLAN_DONE PLAN_ACTIVE PLAN_PENDING PLAN_BLOCKED PLAN_NEXT_STEP PLAN_HAS_WORK <<< "$parsed"
 }
 
 # Check if a plan is fresh (no completed steps).

@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
 Reveals action buttons behind a list item on horizontal swipe.
 
 ```tsx
-import { Dimensions, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,

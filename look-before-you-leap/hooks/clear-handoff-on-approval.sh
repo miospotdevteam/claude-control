@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# PostToolUse hook: Auto-clear .handoff-pending after Orbit approval or plan mode entry.
+# PostToolUse hook: Auto-clear .handoff-pending after Orbit approval.
 #
 # Fires on:
 #   - orbit_await_review (MCP tool) — clears marker only when status is "approved"
-#   - EnterPlanMode (built-in tool) — always clears marker (fallback)
 #
-# This auto-clears the handoff marker so Claude does not need to bypass it.
-# The marker's purpose (force Orbit review) is fulfilled once approval comes back.
+# This auto-clears the handoff marker only when approval is real. EnterPlanMode
+# must not erase the pending-review marker by itself.
 #
 # Input: JSON on stdin with tool_name, tool_input, tool_result, cwd
 
@@ -51,13 +50,6 @@ mint_handoff_receipt() {
     receipt_sign "handoff_approved" "$proj_id" "$plan_name" >/dev/null 2>&1 || true
   fi
 }
-
-# EnterPlanMode — clear marker only (handoff is happening), but do NOT mint
-# a handoff_approved receipt. Only Orbit approval can mint that receipt.
-if [[ "$TOOL_NAME" == "EnterPlanMode" ]]; then
-  rm -f "$MARKER"
-  exit 0
-fi
 
 # orbit_await_review — clear only on approval
 if [[ "$TOOL_NAME" == *"orbit_await_review"* ]]; then

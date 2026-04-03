@@ -5,11 +5,15 @@ It communicates intent, critical decisions, warnings, and risk — NOT
 execution state. Execution state lives in `progress.json` (see
 `references/plan-schema.md`).
 
-**Write-once**: masterPlan.md is frozen after Orbit approval. It is never
+**Write-once**: `masterPlan.md` is frozen after Orbit approval. It is never
 updated during execution. `plan.json` is also immutable after approval.
-All runtime state (progress, results, deviations) lives in `progress.json`,
-updated via `plan_utils.py`. This keeps both proposal and plan definition
-as stable records of what was agreed upon.
+All runtime state (progress, results, deviations, codex sessions) lives in
+`progress.json`, updated via `plan_utils.py`. This keeps both the proposal
+and the plan definition as stable records of what was agreed upon.
+
+If a plan is intended to run in strict receipt mode, say so in the context or
+risk notes so the reviewer knows that completed steps will be gated on the
+required verification receipts.
 
 No `[x]`/`[ ]` checkboxes. No progress tracking. No result fields.
 Just what, why, and what could go wrong.

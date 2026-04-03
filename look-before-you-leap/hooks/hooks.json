@@ -126,7 +126,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|Bash",
         "hooks": [
           {
             "type": "command",
@@ -166,7 +166,7 @@
         ]
       },
       {
-        "matcher": "orbit_await_review|EnterPlanMode",
+        "matcher": "orbit_await_review",
         "hooks": [
           {
             "type": "command",

@@ -66,8 +66,8 @@ PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
 # NOTE: cross-project edits to OTHER project roots are no longer blanket-allowed.
 # The filesystem mutation guard handles Bash; this narrowing handles Edit/Write.
 if [[ -n "$FILE_PATH" ]] && [[ "$FILE_PATH" != "$PROJECT_ROOT"* ]]; then
-  # Allow ~/.claude/ paths (plan scratch pad, settings)
-  if [[ "$FILE_PATH" == "$HOME/.claude/"* ]]; then
+  # Allow only the plan-mode scratch pad under ~/.claude/plans/
+  if [[ "$FILE_PATH" == "$HOME/.claude/plans/"* ]]; then
     exit 0
   fi
   # Allow /tmp and temp dirs (test fixtures, scratch files)

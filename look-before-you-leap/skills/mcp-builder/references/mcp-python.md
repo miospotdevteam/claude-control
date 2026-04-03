@@ -541,7 +541,7 @@ class ListItemsResponse(BaseModel):
 The MCP Inspector provides a web UI for interactive testing:
 
 ```bash
-npx @anthropic-ai/mcp-inspector
+npx @modelcontextprotocol/inspector
 ```
 
 Configure the Inspector to run your Python server:
@@ -695,7 +695,7 @@ python server.py
 
 Test it:
 ```bash
-npx @anthropic-ai/mcp-inspector
+npx @modelcontextprotocol/inspector
 # Connect with command: python, args: server.py
 ```
 

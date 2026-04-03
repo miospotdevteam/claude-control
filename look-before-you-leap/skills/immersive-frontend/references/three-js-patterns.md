@@ -348,6 +348,7 @@ composer.addPass(new OutputPass());
 
 // Use composer.render() instead of renderer.render()
 // Handle resize: composer.setSize(w, h) alongside renderer.setSize()
+// On teardown: dispose custom passes, call composer.dispose(), then renderer.dispose()
 ```
 
 **Post-processing rules:**
@@ -355,6 +356,7 @@ composer.addPass(new OutputPass());
 - `tDiffuse` is the convention — EffectComposer auto-fills it
 - Keep to 3-5 passes max for 60fps on mobile
 - Combine small effects into one shader pass to reduce render target switches
+- In vanilla Three.js, dispose passes/composer explicitly during teardown
 
 ---
 

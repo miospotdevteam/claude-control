@@ -172,26 +172,26 @@ assert_allowed "rm ../file from subdir is inside project (allowed)"
 
 # ============================================================
 echo ""
-echo "=== Destructive inside project warned (no receipt) ==="
+echo "=== Destructive inside project denied (no receipt) ==="
 # ============================================================
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "rm -rf '"$FAKE_PROJECT"'/src"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_warned "rm -rf inside project warned"
+assert_denied "rm -rf inside project denied"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "rm -r '"$FAKE_PROJECT"'/src"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_warned "rm -r inside project warned"
+assert_denied "rm -r inside project denied"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "find '"$FAKE_PROJECT"' -name \"*.tmp\" -delete"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_warned "find -delete inside project warned (absolute path)"
+assert_denied "find -delete inside project denied (absolute path)"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "find . -name \"*.tmp\" -delete"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_warned "find . -delete inside project warned (relative path)"
+assert_denied "find . -delete inside project denied (relative path)"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "find . -type f -delete"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_warned "find . -type f -delete warned"
+assert_denied "find . -type f -delete denied"
 
 run_hook '{"tool_name": "Bash", "tool_input": {"command": "git clean -fd"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_warned "git clean -fd inside project warned"
+assert_denied "git clean -fd inside project denied"
 
 # ============================================================
 echo ""

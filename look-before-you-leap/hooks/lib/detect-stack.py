@@ -251,6 +251,7 @@ def detect_structure(root, is_monorepo):
                     # Heuristic: if the package looks like a shared API package
                     if "api" in entry.lower():
                         structure["shared_api_package"] = name
+                        structure["shared_dir"] = entry_path
                     # Collect all shared packages
                     if name:
                         shared_packages.append(entry_path)

@@ -8,13 +8,14 @@ Mutable execution state (step statuses, results, progress items,
 completedSummary, deviations, codexSessions) lives in **progress.json**,
 which is auto-created by `plan_utils.py` on first mutation.
 
-masterPlan.md is the human-facing presentation document.
+masterPlan.md is the human-facing proposal document reviewed via Orbit.
 
 ## Location
 
 ```
 .temp/plan-mode/active/<plan-name>/plan.json      # immutable definition
 .temp/plan-mode/active/<plan-name>/progress.json   # mutable execution state
+.temp/plan-mode/active/<plan-name>/masterPlan.md   # Orbit-reviewed proposal
 ```
 
 ## Full Schema (plan.json at creation time)
@@ -276,6 +277,14 @@ Steps, progress items, and groups all use the same status values:
 | `done` | Complete and verified |
 | `blocked` | Cannot proceed (steps only) |
 
+## Strict Receipt Mode
+
+Some plans set `_receiptMode` to `"strict"`. In strict mode, completed
+steps must have the required verification receipts before the plan can move
+to `completed/`. If a plan is intended to use strict mode, call that out in
+the proposal so the reviewer knows the completion gate is stricter than the
+default legacy flow.
+
 ## Updating Progress
 
 Claude updates progress via the Bash tool with `python3` one-liners that
@@ -318,9 +327,9 @@ with the other agent. `codex-dispatch` skill reads both fields.
 
 ## masterPlan.md (companion file)
 
-masterPlan.md is the human-facing proposal document. It lives alongside
-plan.json in the same directory. **It is write-once** — frozen after Orbit
-approval and never updated during execution.
+masterPlan.md is the human-facing proposal document reviewed via Orbit. It
+lives alongside plan.json in the same directory. **It is write-once** —
+frozen after Orbit approval and never updated during execution.
 
 Its purpose:
 
