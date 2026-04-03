@@ -29,6 +29,14 @@ fi
 
 # Mint a handoff_approved receipt alongside marker removal
 source "${BASH_SOURCE[0]%/*}/lib/receipt-state.sh"
+log_handoff_event() {
+  local message="$1"
+  local state_root
+  state_root="$(receipt_state_root)"
+  mkdir -p "$state_root" >/dev/null 2>&1 || true
+  printf '%s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$message" >> "$state_root/handoff-approval.log" 2>/dev/null || true
+}
+
 mint_handoff_receipt() {
   local target_plan="$1"
   receipt_bootstrap 2>/dev/null || true
@@ -37,7 +45,7 @@ mint_handoff_receipt() {
   local plan_name
   plan_name=$(receipt_plan_id "$target_plan" 2>/dev/null) || true
   if [ -n "$proj_id" ] && [ -n "$plan_name" ]; then
-    receipt_sign "handoff_approved" "$proj_id" "$plan_name" >/dev/null 2>&1 || true
+    receipt_sign "handoff_approved" "$proj_id" "$plan_name" 2>/dev/null || true
   fi
 }
 
@@ -124,9 +132,21 @@ if [ -z "$TARGET_PLAN" ] || [ ! -f "$TARGET_PLAN" ]; then
 fi
 
 if [ -z "$TARGET_PLAN" ] || [ ! -f "$TARGET_PLAN" ]; then
+  log_handoff_event "orbit-approval target-plan-missing tool=${TOOL_NAME:-unknown} cwd=${CWD:-unknown} source_plan=${SOURCE_PLAN:-none} session_plan=${SESSION_PLAN:-none}"
+  hook_allow_with_context "WARNING: Orbit approval succeeded, but the plugin could not resolve the approved plan path. Handoff persistence may fail in the next session. Re-run the approval or inspect ~/.claude/look-before-you-leap/state/handoff-approval.log." "PostToolUse"
   exit 0
 fi
 
 MARKER="$(dirname "$TARGET_PLAN")/.handoff-pending"
-mint_handoff_receipt "$TARGET_PLAN"
+RECEIPT_PATH="$(mint_handoff_receipt "$TARGET_PLAN")"
 [ -f "$MARKER" ] && rm -f "$MARKER"
+RECEIPT_OK="no"
+if [ -n "$RECEIPT_PATH" ] && [ -f "$RECEIPT_PATH" ]; then
+  RECEIPT_OK="yes"
+fi
+
+log_handoff_event "orbit-approval handled tool=${TOOL_NAME:-unknown} target_plan=${TARGET_PLAN} marker_removed=$([ -f "$MARKER" ] && echo no || echo yes) receipt_ok=${RECEIPT_OK} receipt_path=${RECEIPT_PATH:-none}"
+
+if [ "$RECEIPT_OK" != "yes" ]; then
+  hook_allow_with_context "WARNING: Orbit approval cleared the pending handoff marker, but the persistence receipt was not written. The current session can continue, but a fresh session may ask for review again. Inspect ~/.claude/look-before-you-leap/state/handoff-approval.log." "PostToolUse"
+fi

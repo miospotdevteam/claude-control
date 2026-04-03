@@ -216,7 +216,7 @@ fi
 
 # ============================================================
 echo ""
-echo "=== Test: clear-handoff-on-approval is NOT wired to EnterPlanMode ==="
+echo "=== Test: clear-handoff-on-approval runs as catch-all PostToolUse hook ==="
 # ============================================================
 
 if python3 -c "
@@ -226,20 +226,14 @@ with open('${PLUGIN_ROOT}/hooks/hooks.json') as f:
 for entry in hooks:
     if 'clear-handoff-on-approval.sh' not in str(entry):
         continue
-    matcher = entry.get('matcher', '')
-    required = [
-        'mcp__orbit__orbit_await_review',
-        'mcp__plugin_look-before-you-leap_orbit__orbit_await_review',
-        'orbit_await_review',
-    ]
-    if all(item in matcher for item in required):
+    if 'matcher' not in entry:
         raise SystemExit(1)
 raise SystemExit(0)
 " 2>/dev/null; then
-  fail "clear-handoff-on-approval matcher is missing real Orbit MCP tool names"
+  fail "clear-handoff-on-approval is still matcher-gated"
 else
   pass
-  echo "  PASS: clear-handoff-on-approval matcher covers real Orbit MCP tool names"
+  echo "  PASS: clear-handoff-on-approval runs for all PostToolUse events and filters in-script"
 fi
 
 # Check post-compact.sh
