@@ -154,7 +154,11 @@ if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
       SESSION_PLAN_NAME=$(receipt_plan_id "$SESSION_PLAN" 2>/dev/null) || true
       if [ -n "$SESSION_PLAN_NAME" ] && receipt_check "handoff_approved" "$PROJ_ID" "$SESSION_PLAN_NAME" 2>/dev/null; then
         rm -f "$HANDOFF_MARKER"
+      else
+        plan_sync_review_approval "$SESSION_PLAN" "$PPID" >/dev/null 2>&1 || true
       fi
+    else
+      plan_sync_review_approval "$SESSION_PLAN" "$PPID" >/dev/null 2>&1 || true
     fi
   fi
 

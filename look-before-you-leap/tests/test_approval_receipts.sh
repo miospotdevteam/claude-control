@@ -648,6 +648,99 @@ rm -rf "$TEST_ROOT"
 
 # ============================================================
 echo ""
+echo "=== Test: session-start.sh recovers Orbit-approved handoff from review metadata ==="
+# ============================================================
+
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/approval-test.XXXXXX")
+APPROVED_DIR="$TEST_ROOT/.temp/plan-mode/active/approved-plan"
+OTHER_DIR="$TEST_ROOT/.temp/plan-mode/active/other-plan"
+OUTPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/approval-session-start-review.XXXXXX")
+mkdir -p "$TEST_ROOT/.git" "$APPROVED_DIR" "$OTHER_DIR"
+
+cat > "$APPROVED_DIR/plan.json" <<'EOF'
+{
+  "name": "approved-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Approved step", "status": "pending"}
+  ]
+}
+EOF
+
+cat > "$APPROVED_DIR/masterPlan.md" <<'EOF'
+# Approved plan
+- [ ] Approved step
+EOF
+
+SOURCE_HASH=$(python3 -c "
+import hashlib
+with open('$APPROVED_DIR/masterPlan.md', 'rb') as f:
+    print(hashlib.sha256(f.read()).hexdigest())
+")
+
+cat > "$APPROVED_DIR/masterPlan.md.review.json" <<EOF
+{
+  "version": 1,
+  "sourcePath": "$APPROVED_DIR/masterPlan.md",
+  "artifactPath": "$APPROVED_DIR/masterPlan.md.resolved",
+  "sourceHash": "$SOURCE_HASH",
+  "artifactHash": "fixture-artifact-hash",
+  "artifactVersion": 1,
+  "reviewState": "approved",
+  "generatorVersion": "orbit-plan-resolver@0.1.0",
+  "generatedAt": "2026-04-03T00:00:00Z",
+  "approvedAt": "2026-04-03T00:01:00Z"
+}
+EOF
+
+cat > "$OTHER_DIR/plan.json" <<'EOF'
+{
+  "name": "other-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Other step", "status": "pending"}
+  ]
+}
+EOF
+
+echo "$PPID" > "$APPROVED_DIR/.session-lock"
+echo "$PPID" > "$OTHER_DIR/.session-lock"
+echo "$APPROVED_DIR/masterPlan.md" > "$APPROVED_DIR/.handoff-pending"
+
+pushd "$TEST_ROOT" >/dev/null
+bash "${PLUGIN_ROOT}/hooks/session-start.sh" > "$OUTPUT_FILE" 2>/dev/null || true
+popd >/dev/null
+
+if python3 -c "
+import json
+with open('$OUTPUT_FILE') as f:
+    data = json.load(f)
+ctx = data.get('hookSpecificOutput', {}).get('additionalContext', '')
+assert 'ACTIVE PLAN DETECTED' in ctx
+assert 'approved-plan' in ctx
+print('OK')
+" 2>/dev/null | grep -q "OK"; then
+  pass
+  echo "  PASS: session-start.sh recovered handoff from Orbit review metadata"
+else
+  fail "session-start.sh did not recover Orbit-approved handoff. Tail: $(tail -5 "$OUTPUT_FILE")"
+fi
+
+PROJ_ID=$(python3 "$RECEIPT_UTILS" project-id "$TEST_ROOT" 2>/dev/null) || true
+HANDOFF_RECEIPT="$STATE_ROOT/$PROJ_ID/approved-plan/handoff_approved-default.json"
+lock_content=$(cat "$APPROVED_DIR/.session-lock" 2>/dev/null || true)
+if [ "$lock_content" = "$$" ] && [ ! -f "$APPROVED_DIR/.handoff-pending" ] && [ -f "$HANDOFF_RECEIPT" ]; then
+  pass
+  echo "  PASS: session-start.sh minted receipt from review metadata and claimed the plan"
+else
+  fail "session-start.sh did not persist Orbit approval correctly (lock='$lock_content', receipt='$HANDOFF_RECEIPT')"
+fi
+
+rm -f "$OUTPUT_FILE"
+rm -rf "$TEST_ROOT"
+
+# ============================================================
+echo ""
 echo "=== Test: post-compact.sh recovers approved handoff across live foreign lock ==="
 # ============================================================
 
@@ -712,6 +805,85 @@ else
 fi
 
 rm -f "$OUTPUT_FILE"
+rm -rf "$TEST_ROOT"
+
+# ============================================================
+echo ""
+echo "=== Test: enforce-plan.sh recovers from approved review metadata without receipt ==="
+# ============================================================
+
+TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/approval-test.XXXXXX")
+PLAN_DIR="$TEST_ROOT/.temp/plan-mode/active/review-plan"
+mkdir -p "$TEST_ROOT/.git" "$TEST_ROOT/src" "$PLAN_DIR"
+
+cat > "$PLAN_DIR/plan.json" <<'EOF'
+{
+  "name": "review-plan",
+  "_receiptMode": "strict",
+  "steps": [
+    {"id": 1, "title": "Step 1", "status": "pending"}
+  ]
+}
+EOF
+
+cat > "$PLAN_DIR/masterPlan.md" <<'EOF'
+# Review plan
+- [ ] Step 1
+EOF
+
+SOURCE_HASH=$(python3 -c "
+import hashlib
+with open('$PLAN_DIR/masterPlan.md', 'rb') as f:
+    print(hashlib.sha256(f.read()).hexdigest())
+")
+
+cat > "$PLAN_DIR/masterPlan.md.review.json" <<EOF
+{
+  "version": 1,
+  "sourcePath": "$PLAN_DIR/masterPlan.md",
+  "artifactPath": "$PLAN_DIR/masterPlan.md.resolved",
+  "sourceHash": "$SOURCE_HASH",
+  "artifactHash": "fixture-artifact-hash",
+  "artifactVersion": 1,
+  "reviewState": "approved",
+  "generatorVersion": "orbit-plan-resolver@0.1.0",
+  "generatedAt": "2026-04-03T00:00:00Z",
+  "approvedAt": "2026-04-03T00:01:00Z"
+}
+EOF
+
+echo "$PPID" > "$PLAN_DIR/.session-lock"
+echo "$PLAN_DIR/masterPlan.md" > "$PLAN_DIR/.handoff-pending"
+
+HOOK_INPUT=$(python3 -c "
+import json
+print(json.dumps({
+    'tool_name': 'Edit',
+    'tool_input': {'file_path': '$TEST_ROOT/src/foo.ts'},
+    'cwd': '$TEST_ROOT'
+}))
+")
+
+HOOK_EXIT=0
+echo "$HOOK_INPUT" | bash "${PLUGIN_ROOT}/hooks/enforce-plan.sh" >/dev/null 2>&1 || HOOK_EXIT=$?
+
+if [ "$HOOK_EXIT" -eq 0 ]; then
+  pass
+  echo "  PASS: enforce-plan.sh trusted Orbit review metadata"
+else
+  fail "enforce-plan.sh still denied after Orbit review approval (exit=$HOOK_EXIT)"
+fi
+
+PROJ_ID=$(python3 "$RECEIPT_UTILS" project-id "$TEST_ROOT" 2>/dev/null) || true
+HANDOFF_RECEIPT="$STATE_ROOT/$PROJ_ID/review-plan/handoff_approved-default.json"
+lock_content=$(cat "$PLAN_DIR/.session-lock" 2>/dev/null || true)
+if [ "$lock_content" = "$$" ] && [ ! -f "$PLAN_DIR/.handoff-pending" ] && [ -f "$HANDOFF_RECEIPT" ]; then
+  pass
+  echo "  PASS: enforce-plan.sh persisted approval from review metadata"
+else
+  fail "enforce-plan.sh did not persist Orbit review approval correctly (lock='$lock_content', receipt='$HANDOFF_RECEIPT')"
+fi
+
 rm -rf "$TEST_ROOT"
 
 # ============================================================

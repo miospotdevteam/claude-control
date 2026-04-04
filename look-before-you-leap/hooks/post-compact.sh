@@ -34,6 +34,7 @@ if [ -d "$ACTIVE_DIR" ]; then
   fi
 
   if [ -n "$latest_json" ] && [ -f "$latest_json" ]; then
+    plan_sync_review_approval "$latest_json" "$PPID" >/dev/null 2>&1 || true
     plan_dir="$(dirname "$latest_json")"
     plan_name="$(basename "$plan_dir")"
 

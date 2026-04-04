@@ -41,6 +41,104 @@ plan_resolve_session() {
   fi
 }
 
+# Check whether Orbit's durable review metadata records an approved plan.
+# This is the fallback authority when the transient PostToolUse approval hook
+# does not run for an MCP tool invocation.
+#
+# Args: $1 = plan.json path
+# Returns: "true" or "false" on stdout
+plan_review_is_approved() {
+  local plan_json="$1"
+  python3 - "$plan_json" <<'PYEOF' 2>/dev/null || true
+import hashlib
+import json
+import os
+import sys
+
+plan_json = os.path.abspath(sys.argv[1])
+plan_dir = os.path.dirname(plan_json)
+source_path = os.path.join(plan_dir, "masterPlan.md")
+review_path = source_path + ".review.json"
+
+if not os.path.isfile(source_path) or not os.path.isfile(review_path):
+    print("false")
+    raise SystemExit(0)
+
+try:
+    with open(review_path, "r", encoding="utf-8") as fh:
+        review = json.load(fh)
+    with open(source_path, "rb") as fh:
+        source_hash = hashlib.sha256(fh.read()).hexdigest()
+except Exception:
+    print("false")
+    raise SystemExit(0)
+
+recorded_source = review.get("sourcePath", "")
+recorded_hash = review.get("sourceHash", "")
+review_state = review.get("reviewState", "")
+
+if review_state != "approved":
+    print("false")
+    raise SystemExit(0)
+
+if recorded_source and os.path.abspath(recorded_source) != source_path:
+    print("false")
+    raise SystemExit(0)
+
+if recorded_hash and recorded_hash != source_hash:
+    print("false")
+    raise SystemExit(0)
+
+print("true")
+PYEOF
+}
+
+# Recover approval from Orbit's durable review metadata by minting the
+# handoff receipt ourselves, clearing any stale handoff marker, and optionally
+# claiming the plan for the current session.
+#
+# Args:
+#   $1 = plan.json path
+#   $2 = optional claim PID (writes .session-lock)
+# Returns:
+#   receipt path on stdout when recovered, empty if not approved
+plan_sync_review_approval() {
+  local plan_json="$1"
+  local claim_pid="${2:-}"
+  local approved=""
+  local plan_dir=""
+  local project_root=""
+  local proj_id=""
+  local plan_name=""
+  local receipt_path=""
+
+  [ -f "$plan_json" ] || return 1
+
+  approved=$(plan_review_is_approved "$plan_json" 2>/dev/null) || true
+  if [ "$approved" != "true" ]; then
+    return 1
+  fi
+
+  # shellcheck source=/dev/null
+  source "${BASH_SOURCE[0]%/*}/receipt-state.sh"
+  receipt_bootstrap >/dev/null 2>&1 || true
+
+  project_root="$(find_project_root "$(dirname "$plan_json")")"
+  proj_id=$(receipt_project_id "$project_root" 2>/dev/null) || true
+  plan_name=$(receipt_plan_id "$plan_json" 2>/dev/null) || true
+  if [ -n "$proj_id" ] && [ -n "$plan_name" ]; then
+    receipt_path=$(receipt_sign "handoff_approved" "$proj_id" "$plan_name" 2>/dev/null) || true
+  fi
+
+  plan_dir="$(dirname "$plan_json")"
+  rm -f "$plan_dir/.handoff-pending"
+  if [ -n "$claim_pid" ]; then
+    echo "$claim_pid" > "$plan_dir/.session-lock"
+  fi
+
+  [ -n "$receipt_path" ] && echo "$receipt_path"
+}
+
 # Recover a fresh, Orbit-approved plan across session handoff.
 # This is used when normal PPID routing cannot find a plan, typically because
 # a prior session still owns the .session-lock during handoff. Approval receipts
@@ -102,7 +200,9 @@ PYEOF
     [ -n "$plan_name" ] || continue
 
     if ! receipt_check "handoff_approved" "$proj_id" "$plan_name" 2>/dev/null; then
-      continue
+      if ! plan_sync_review_approval "$plan_path" >/dev/null 2>&1; then
+        continue
+      fi
     fi
 
     is_fresh=$(plan_is_fresh "$plan_path" 2>/dev/null) || true
