@@ -418,14 +418,18 @@ This is a loop. Follow it mechanically.
 │     h. Mark step done, TaskUpdate(completed),           │
 │        add to completedSummary                          │
 │                                                         │
-│  5. IF multiple runnable steps → dispatch in parallel:  │
+│  5. IF multiple runnable steps → MUST dispatch parallel: │
+│     (NEVER execute them one-by-one — that wastes the    │
+│      DAG. Use a SINGLE message with multiple Agent calls│
+│      so they run concurrently.)                         │
 │     a. Mark ALL runnable steps as in_progress           │
 │        → TaskUpdate(in_progress) for each               │
-│     b. FOR each step:                                   │
-│        - claude-impl: dispatch as foreground sub-agent  │
-│          via Agent tool (implements + own verification)  │
-│        - codex-impl: dispatch via run-codex-implement.sh│
-│          (background — continue with other work)         │
+│     b. In ONE message, dispatch ALL runnable steps:     │
+│        - claude-impl: Agent tool (foreground sub-agent) │
+│          One Agent call per step, all in the same       │
+│          message → Claude Code runs them in parallel    │
+│        - codex-impl: Bash run-codex-implement.sh        │
+│          (run_in_background: true)                      │
 │     c. Wait for all to complete                         │
 │     d. Verify all (Codex verify for claude-impl,        │
 │        Claude verify for codex-impl)                    │
@@ -443,6 +447,17 @@ This is a loop. Follow it mechanically.
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
+
+### Anti-pattern: sequential dispatch of independent steps
+
+**NEVER execute runnable steps one-at-a-time when multiple are
+available.** If `runnable_steps()` returns steps [1, 2, 3], dispatching
+step 1, waiting for it to finish, then dispatching step 2, etc. is
+wrong — it ignores the DAG and makes execution 3x slower than necessary.
+
+The correct behavior: emit all three Agent/Bash tool calls in a single
+message so Claude Code runs them concurrently. See the conductor skill's
+"DAG-driven parallel dispatch" section for a concrete example.
 
 ### Never mark done without verified work
 

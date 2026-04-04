@@ -406,10 +406,35 @@ the `codex-dispatch` skill for the full flow.
 files and omits required tests, locale files, migrations, or consumer
 updates. Treat the step as incomplete and expand the `files` array first.
 
-### 5. Compute step dependency DAG
+### 5. Design for maximum parallelism, then compute the DAG
 
-Before saving the plan, compute `dependsOn` edges so the executor can
-dispatch independent steps in parallel.
+Parallelism is the #1 speed lever in plan execution. The executor
+dispatches all runnable steps simultaneously — every unnecessary
+`dependsOn` edge serializes work and wastes time. **Design steps to
+minimize dependencies first, then compute edges on the result.**
+
+#### Design principles (apply BEFORE computing edges)
+
+1. **Isolate file sets.** If two steps both need `shared.ts`, consider
+   whether one step can own the shared file and the other can consume
+   it read-only (no edit). Only steps that *write* to the same file
+   need a `dependsOn` edge.
+2. **Split shared-file steps.** If step A creates a utility and step B
+   uses it, put the utility file in step A's `files` only. Step B
+   lists only its own files and gets an explicit `dependsOn: [A]`.
+   Don't dump the utility file into both steps — that forces serial
+   execution even when step B only reads it.
+3. **Front-load foundations.** Definitions (types, schemas, interfaces)
+   go in early low-ID steps. Consumer steps depend on them. All
+   consumer steps that don't share files with each other can then run
+   in parallel once the foundation step finishes.
+4. **Avoid monolith steps.** A single step touching 10+ files often
+   blocks everything behind it. Split it into smaller, file-disjoint
+   steps that can run in parallel.
+5. **Audit the result.** After computing edges, count steps with empty
+   `dependsOn`. If fewer than half the steps are parallelizable in a
+   plan with 4+ steps, revisit the step design — you may be able to
+   split or restructure to unlock more parallelism.
 
 #### Algorithm
 

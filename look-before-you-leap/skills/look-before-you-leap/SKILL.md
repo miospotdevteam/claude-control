@@ -714,24 +714,57 @@ Steps declare dependencies via `dependsOn`. The executor uses
 pending steps whose predecessors are done. Independent steps run in
 parallel; dependent steps wait.
 
+**MUST parallelize.** When `runnable_steps()` returns more than one step,
+you MUST dispatch them all in a single message — one Agent tool call per
+claude-impl step, one Bash tool call per codex-impl step. Executing them
+one-by-one defeats the DAG and wastes time. The only exception is when
+you have a single runnable step.
+
 ```
 LOOP:
   1. runnable = runnable_steps(plan)    # pending steps with all dependsOn done
   2. IF runnable is empty AND no in_progress steps → plan complete
   3. IF len(runnable) == 1 → execute sequentially (current single-step flow)
-  4. IF len(runnable) > 1 → dispatch all in parallel:
-     FOR each step in runnable:
-       Mark step in_progress
-       IF step.owner == "claude":
-         Dispatch as foreground sub-agent via Agent tool
-       ELSE IF step.owner == "codex":
-         Dispatch via run-codex-implement.sh (background)
-     Wait for all to complete
+  4. IF len(runnable) > 1 → dispatch ALL in ONE message:
+     Mark all runnable steps in_progress on disk
+     In a SINGLE response, emit:
+       - One Agent(subagent_type="general-purpose") per claude-impl step
+       - One Bash(run_in_background=true) per codex-impl step
+     This makes them run concurrently.
+     Wait for all to complete.
   5. Verify all completed steps (Codex verify for claude-impl, Claude verify for codex-impl)
   6. Fix findings sequentially, re-verify as needed
   7. Mark verified steps done → new steps may now be runnable
   8. GOTO LOOP
 ```
+
+#### Concrete example: dispatching 3 parallel claude-impl steps
+
+When the DAG frontier contains steps 1, 2, and 3 (all `dependsOn: []`),
+your response MUST contain all three Agent calls in a single message:
+
+```
+Agent(description="Step 1: add email validator",
+      prompt="You are implementing Step 1 of plan <path>/plan.json. ...
+              Only edit files: [src/lib/validate-email.ts, tests/...].
+              Acceptance criteria: ...",
+      subagent_type="general-purpose")
+
+Agent(description="Step 2: add user API",
+      prompt="You are implementing Step 2 of plan <path>/plan.json. ...
+              Only edit files: [src/api/users.ts, tests/...].
+              Acceptance criteria: ...",
+      subagent_type="general-purpose")
+
+Agent(description="Step 3: add config schema",
+      prompt="You are implementing Step 3 of plan <path>/plan.json. ...
+              Only edit files: [src/config/schema.ts, tests/...].
+              Acceptance criteria: ...",
+      subagent_type="general-purpose")
+```
+
+All three appear in the SAME message → Claude Code dispatches them
+concurrently. Do NOT send one, wait for it, then send the next.
 
 ### Owner-based dispatch (per-step)
 
@@ -893,15 +926,17 @@ covered in the companion skills.
 
 ### Dispatching sub-agents
 
-When a step benefits from parallel work (audits, multi-area exploration,
-independent file groups), choose the right dispatch mode:
+**The key mechanic**: to run N agents in parallel, emit all N Agent tool
+calls in a SINGLE message. Claude Code dispatches them concurrently.
+If you send them one at a time across separate messages, they run
+sequentially — defeating the purpose.
 
 **Foreground parallel** (default):
 Use when results inform your next steps or have cross-cutting concerns.
 All agents run in parallel, you see all results before proceeding. Use
 for: audits, exploration, reviews, any task where one finding might
 affect another agent's scope. **Also use for parallel claude-impl steps**
-— each sub-agent implements one step.
+— each sub-agent implements one step, all dispatched in one message.
 
 **Background** (fire-and-forget only):
 Use only when you have genuinely independent work to continue in the
