@@ -80,6 +80,26 @@ else
   fail "plan.json detection failed. Tail: $(tail -5 "$OUTPUT_FILE")"
 fi
 
+# Verify the injected persistent-plans snippet prefers the project-local helper.
+if python3 - "$OUTPUT_FILE" "$TEST_ROOT" <<'PY' 2>/dev/null | grep -q "OK"
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+ctx = data.get("hookSpecificOutput", {}).get("additionalContext", "")
+assert '.temp/plan-mode/scripts/plan_utils.py"' in ctx, "Missing local plan_utils helper path"
+assert 'PLAN_UTILS="${CLAUDE_PLUGIN_ROOT}/scripts/plan_utils.py"' not in ctx, "Stale plugin-root plan_utils path still injected"
+print("OK")
+PY
+then
+  pass
+  echo "  PASS: session-start injects project-local plan_utils helper path"
+else
+  fail "session-start injected stale plan_utils guidance. Tail: $(tail -5 "$OUTPUT_FILE")"
+fi
+
 # Verify session lock was written
 if [ -f "$PLAN_DIR/.session-lock" ]; then
   pass

@@ -536,10 +536,10 @@ try:
         )
 
     # --- Resolve plan_utils.py path in persistent-plans skill ---
-    # Replace the marker block with a resolved absolute path so Claude never
-    # depends on CLAUDE_PLUGIN_ROOT (which can become stale after cache
-    # invalidation or compaction).
-    plan_utils_path = os.path.join(scripts_dir, "plan_utils.py")
+    # Prefer the project-local helper copy under .temp/plan-mode/scripts/.
+    # init-plan-dir.sh installs this wrapper, so the command stays stable even
+    # if plugin cache or install paths drift across sessions.
+    plan_utils_path = os.path.join(project_root, ".temp", "plan-mode", "scripts", "plan_utils.py")
     plans_content = replace_between_markers(
         plans_content,
         "<!-- plan-utils-cmd-start -->",
@@ -548,6 +548,8 @@ try:
             "```bash\n"
             f"PLAN_UTILS=\"{plan_utils_path}\"\n"
             "PLAN_JSON=\".temp/plan-mode/active/<plan-name>/plan.json\"\n"
+            "\n"
+            "# Use the project-local helper copy installed by init-plan-dir.sh\n"
             "\n"
             "# Mark step 3 as in_progress\n"
             "python3 \"$PLAN_UTILS\" update-step \"$PLAN_JSON\" 3 in_progress\n"

@@ -142,14 +142,16 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/init-plan-dir.sh
 
 ## Updating Progress
 
-Use `plan_utils.py` via the Bash tool. All commands write to
-`progress.json` automatically — pass the `plan.json` path and mutations go
-to the right file. For strict plans, use `complete-step` so receipt checks
-run before a step is marked done:
+Use `plan_utils.py` via the Bash tool. Prefer the project-local helper copy
+under `.temp/plan-mode/scripts/` because `init-plan-dir.sh` installs it in
+every repo and it stays stable even if plugin cache or install paths change.
+All commands write to `progress.json` automatically — pass the `plan.json`
+path and mutations go to the right file. For strict plans, use
+`complete-step` so receipt checks run before a step is marked done:
 
 <!-- plan-utils-cmd-start -->
 ```bash
-PLAN_UTILS="${CLAUDE_PLUGIN_ROOT}/scripts/plan_utils.py"
+PLAN_UTILS=".temp/plan-mode/scripts/plan_utils.py"
 PLAN_JSON=".temp/plan-mode/active/<plan-name>/plan.json"
 
 # Mark step 3 as in_progress
