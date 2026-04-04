@@ -62,6 +62,8 @@ if [ -d "$ACTIVE_DIR" ]; then
       active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
       [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
       active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read plan.json (definition) and progress.json (mutable state) IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
+      active_plan_summary+=$'\n'"Respect step ownership exactly. Do NOT implement Codex-owned steps yourself."
+      active_plan_summary+=$'\n'"Independent verification is a gate. Do NOT mark any step done before the required verifier PASS/verified verdict."
     fi
   else
     # Legacy fallback: find masterPlan.md
@@ -108,6 +110,8 @@ if [ -d "$ACTIVE_DIR" ]; then
           active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
           [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
           active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file IMMEDIATELY. Do NOT re-plan or re-explore. The plan already exists and was approved. Resume execution from the next pending or in-progress step. Follow the resumption protocol from the persistent-plans skill."
+          active_plan_summary+=$'\n'"Respect step ownership exactly. Do NOT implement Codex-owned steps yourself."
+          active_plan_summary+=$'\n'"Independent verification is a gate. Do NOT mark any step done before the required verifier PASS/verified verdict."
         fi
       fi
     fi

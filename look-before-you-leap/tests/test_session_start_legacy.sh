@@ -70,6 +70,8 @@ ctx = data.get('hookSpecificOutput', {}).get('additionalContext', '')
 assert 'ACTIVE PLAN DETECTED' in ctx, 'Missing plan header'
 assert 'ss-test' in ctx, 'Missing plan name'
 assert 'Pending step' in ctx, 'Missing next step'
+assert 'Respect step ownership exactly.' in ctx, 'Missing ownership reminder'
+assert 'Independent verification is a gate.' in ctx, 'Missing verification reminder'
 print('OK')
 " 2>/dev/null | grep -q "OK"; then
   pass

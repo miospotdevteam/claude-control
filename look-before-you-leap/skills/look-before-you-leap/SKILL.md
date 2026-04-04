@@ -574,8 +574,11 @@ Orbit MCP. The `writing-plans` skill handles the details, but the flow is:
       file path (under `~/.claude/plans/`). Write to THAT file — NOT to
       masterPlan.md or plan.json. Content must be minimal: plan title,
       path, step count, one-liner context, and "Read plan.json to begin
-      execution." Nothing else — no step descriptions, no Codex consensus,
-      no file lists.
+      execution." The only additional lines allowed are the hard reminders:
+      respect step ownership exactly, do NOT implement Codex-owned steps
+      yourself, and do NOT mark any step done before independent
+      verification passes. Nothing else — no step descriptions, no Codex
+      consensus, no file lists.
    c. Call `ExitPlanMode` — do NOT output any text in the same response.
    The pending-review marker is cleared only when
    `orbit_await_review` returns approved. `EnterPlanMode` happens after

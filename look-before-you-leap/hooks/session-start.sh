@@ -239,6 +239,8 @@ if [ -d "$ACTIVE_DIR" ]; then
       active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
       [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
       active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read plan.json (definition) and progress.json (mutable state) at the plan directory BEFORE doing any work. The plan + progress files are your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
+      active_plan_summary+=$'\n'"Respect step ownership exactly. Do NOT implement Codex-owned steps yourself."
+      active_plan_summary+=$'\n'"Independent verification is a gate. Do NOT mark any step done before the required verifier PASS/verified verdict."
     fi
 
   # No plan found for this session — check if OTHER sessions own plans (informational)
@@ -321,6 +323,8 @@ if [ -d "$ACTIVE_DIR" ]; then
           active_plan_summary+=$'\n'"Status: $done_count done | $active_count active | $pending_count pending | $blocked_count blocked"
           [ -n "$next_step" ] && active_plan_summary+=$'\n'"$next_step"
           active_plan_summary+=$'\n'$'\n'"IMPORTANT: Read the masterPlan.md file at the path above BEFORE doing any work. The plan is your source of truth. Follow the resumption protocol from the look-before-you-leap skill."
+          active_plan_summary+=$'\n'"Respect step ownership exactly. Do NOT implement Codex-owned steps yourself."
+          active_plan_summary+=$'\n'"Independent verification is a gate. Do NOT mark any step done before the required verifier PASS/verified verdict."
         else
           active_plan_summary="NOTE: Active plan exists but is owned by another Claude session"
           active_plan_summary+=$'\n'"Plan: $plan_name"

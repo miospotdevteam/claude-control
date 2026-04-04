@@ -80,6 +80,8 @@ ctx = data.get('hookSpecificOutput', {}).get('additionalContext', '')
 assert 'CONTEXT WAS COMPACTED' in ctx, 'Missing compaction header'
 assert 'e2e-plan' in ctx, 'Missing plan name'
 assert 'Step two' in ctx, 'Missing next step'
+assert 'Respect step ownership exactly.' in ctx, 'Missing ownership reminder'
+assert 'Independent verification is a gate.' in ctx, 'Missing verification reminder'
 print('OK')
 " 2>/dev/null | grep -q "OK"; then
   pass

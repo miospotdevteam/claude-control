@@ -684,6 +684,9 @@ non-codex background work exists, kill it before handoff.
    Context: <plan.json.context — one or two sentences>
 
    Read plan.json at the path above to begin execution.
+   Respect step ownership exactly.
+   Do NOT implement Codex-owned steps yourself.
+   Do NOT mark any step done before independent verification passes.
    ```
 
    **Do NOT include**: step descriptions, acceptance criteria, file lists,

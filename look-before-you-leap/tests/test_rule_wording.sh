@@ -61,6 +61,14 @@ assert_contains \
   "${PLUGIN_ROOT}/skills/writing-plans/SKILL.md" \
   "Treat an all-claude-impl first draft as a planning failure" \
   "writing plans treats all-claude plan as failure"
+assert_contains \
+  "${PLUGIN_ROOT}/skills/writing-plans/SKILL.md" \
+  "Respect step ownership exactly." \
+  "writing plans handoff reinforces exact ownership"
+assert_contains \
+  "${PLUGIN_ROOT}/skills/writing-plans/SKILL.md" \
+  "Do NOT mark any step done before independent verification passes." \
+  "writing plans handoff reinforces verification gate"
 
 echo ""
 echo "=== Test: codex dispatch forbids silent substitution ==="
