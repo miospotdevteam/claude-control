@@ -91,6 +91,7 @@ export HOOK_PLAN_NAME="$plan_name"
 export HOOK_PLAN_PATH="$FILE_PATH"
 export HOOK_PENDING_COUNT="$pending_count"
 export HOOK_MARKER_FILE="$MARKER_FILE"
+export HOOK_PLUGIN_ROOT="$PLUGIN_ROOT"
 
 python3 << 'PYEOF'
 import json, os, sys
@@ -99,6 +100,7 @@ plan_name = os.environ["HOOK_PLAN_NAME"]
 plan_path = os.environ["HOOK_PLAN_PATH"]
 pending = os.environ["HOOK_PENDING_COUNT"]
 marker = os.environ["HOOK_MARKER_FILE"]
+plugin_root = os.environ["HOOK_PLUGIN_ROOT"]
 
 output = {
     "hookSpecificOutput": {
@@ -150,6 +152,18 @@ output = {
             "   Path: <absolute path to plan.json>\n"
             "   Steps: <N> total\n"
             "   Context: <one-liner from plan.json.context>\n\n"
+            "   ## FIRST ACTION — Reload behavioral rules\n\n"
+            "   Context was cleared by plan mode handoff. Skill rules are\n"
+            "   NOT in context. Read these 3 files IMMEDIATELY before any\n"
+            "   other work:\n"
+            f"   1. {plugin_root}/skills/look-before-you-leap/SKILL.md\n"
+            f"   2. {plugin_root}/skills/engineering-discipline/SKILL.md\n"
+            f"   3. {plugin_root}/skills/persistent-plans/SKILL.md\n\n"
+            "   ## Critical rules (apply before skills are loaded)\n\n"
+            "   - NEVER use mcp__codex__codex or mcp__codex__codex-reply.\n"
+            "     All Codex interactions go through codex exec via Bash.\n"
+            "   - For Codex-owned steps, invoke:\n"
+            "     Skill(skill: \"look-before-you-leap:codex-dispatch\")\n\n"
             "   Read plan.json at the path above to begin execution.\n"
             "   Respect step ownership exactly.\n"
             "   Do NOT implement Codex-owned steps yourself.\n"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # PostCompact hook for look-before-you-leap plugin.
 #
-# Fires after context compaction completes. Lightweight: only detects the
-# active plan and injects resumption context. Skills and config are already
-# in context from SessionStart — no need to re-inject them.
+# Fires after context compaction completes. Detects the active plan and
+# injects resumption context. Skills and config are re-injected by
+# SessionStart (which fires with source "compact" after PostCompact).
 
 set -euo pipefail
 
