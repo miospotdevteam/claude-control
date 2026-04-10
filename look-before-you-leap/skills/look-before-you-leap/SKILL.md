@@ -565,10 +565,6 @@ Orbit MCP. The `writing-plans` skill handles the details, but the flow is:
    blocks until the user approves or requests changes
 3. Handle the response (approved → proceed, changes_requested → iterate)
 4. Once approved — proceed with plan mode handoff:
-   **Pre-flight**: The `guard-handoff-background.sh` hook auto-kills
-   any running codex processes and cleans markers on `EnterPlanMode`.
-   If non-codex background work exists, kill it before handoff —
-   stale results leak into the new session after context clears.
    a. Call `EnterPlanMode` — do NOT output any text in the same response.
    b. After entering plan mode, a system message tells you the scratch pad
       file path (under `~/.claude/plans/`). Write to THAT file — NOT to
@@ -1086,8 +1082,7 @@ in the result field.
    bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step-number>
    ```
    Run this in the background (`run_in_background: true`). Continue
-   with other work while Codex verifies. The `guard-handoff-background.sh`
-   hook auto-kills any stale codex processes during plan mode handoff.
+   with other work while Codex verifies.
 3. **Read the result** from `.codex-result-step-N.txt`. If findings:
    - Codex auto-logs findings to `usage-errors/codex-findings/`
    - Do NOT dismiss a Codex finding as "pre-existing," "out of scope,"

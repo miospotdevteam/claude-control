@@ -52,7 +52,7 @@ else
   SUFFIX="step-${STEP_NUM}"
 fi
 
-# Write in-flight PID marker so guard-handoff-background.sh can detect running Codex tasks
+# Write in-flight PID marker so stale codex cleanup can detect running Codex tasks
 # Uses SUFFIX to avoid collisions between concurrent group runs on the same step
 INFLIGHT_MARKER="$PLAN_DIR/.codex-inflight-${SUFFIX}.pid"
 echo $$ > "$INFLIGHT_MARKER"

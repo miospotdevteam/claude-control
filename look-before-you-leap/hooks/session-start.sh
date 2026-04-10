@@ -126,7 +126,7 @@ fi
 # --- Section 1.8b: Clean up stale codex markers from previous sessions ---
 # Kill any still-running codex processes and remove stale markers.
 # This catches leftovers from sessions that didn't clean up properly
-# (e.g., handoff without guard-handoff-background.sh firing).
+# (e.g., handoff without proper cleanup).
 if [ -d "$PROJECT_ROOT/.temp/plan-mode/active" ]; then
   for plan_d in "$PROJECT_ROOT/.temp/plan-mode/active"/*/; do
     [ -d "$plan_d" ] || continue

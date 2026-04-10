@@ -1041,36 +1041,6 @@ rm -rf "$TEST_ROOT"
 
 # ============================================================
 echo ""
-echo "=== Test: guard-handoff-background.sh registered in hooks.json ==="
-# ============================================================
-
-if grep -q "guard-handoff-background.sh" "${PLUGIN_ROOT}/hooks/hooks.json"; then
-  pass
-  echo "  PASS: guard-handoff-background.sh in hooks.json"
-else
-  fail "guard-handoff-background.sh not in hooks.json"
-fi
-
-# Verify it's a PreToolUse hook on EnterPlanMode
-if python3 -c "
-import json
-with open('${PLUGIN_ROOT}/hooks/hooks.json') as f:
-    h = json.load(f)
-for entry in h['hooks'].get('PreToolUse', []):
-    if entry.get('matcher') == 'EnterPlanMode':
-        for hook in entry.get('hooks', []):
-            if 'guard-handoff-background' in hook.get('command', ''):
-                exit(0)
-exit(1)
-" 2>/dev/null; then
-  pass
-  echo "  PASS: guard-handoff-background.sh registered as PreToolUse on EnterPlanMode"
-else
-  fail "guard-handoff-background.sh not correctly registered"
-fi
-
-# ============================================================
-echo ""
 echo "=== Results ==="
 echo "PASS: $PASS"
 echo "FAIL: $FAIL"
