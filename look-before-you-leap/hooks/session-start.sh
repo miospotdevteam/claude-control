@@ -124,12 +124,22 @@ if [ -d "$PROJECT_ROOT/.temp/plan-mode" ]; then
 fi
 
 # --- Section 1.8b: Clean up stale codex markers from previous sessions ---
-# Kill any still-running codex processes and remove stale markers.
-# This catches leftovers from sessions that didn't clean up properly
-# (e.g., handoff without proper cleanup).
+# Kill any still-running codex processes and remove stale markers,
+# but ONLY in plan directories owned by this session or orphaned.
+# Never touch plans owned by other live sessions — their codex processes
+# are still in use.
 if [ -d "$PROJECT_ROOT/.temp/plan-mode/active" ]; then
   for plan_d in "$PROJECT_ROOT/.temp/plan-mode/active"/*/; do
     [ -d "$plan_d" ] || continue
+    # Check plan ownership via .session-lock
+    _lock_file="$plan_d/.session-lock"
+    if [ -f "$_lock_file" ]; then
+      _owner_pid=$(cat "$_lock_file" 2>/dev/null) || true
+      if [ -n "$_owner_pid" ] && [ "$_owner_pid" != "$PPID" ] && kill -0 "$_owner_pid" 2>/dev/null; then
+        # Owned by another live session — do NOT touch its codex processes
+        continue
+      fi
+    fi
     # Clean PID markers: kill live processes, remove markers
     for pid_file in "$plan_d".codex-inflight-*.pid; do
       [ -f "$pid_file" ] || continue
