@@ -170,9 +170,6 @@ assert_denied_file "run-codex-implement.sh outside plugin root denied"
 run_hook "bash /plugin/scripts/write-discovery-receipt.sh arg" "$ROOT"
 assert_denied_file "write-discovery-receipt.sh outside plugin root denied"
 
-run_hook "bash /plugin/scripts/write-claude-verify-receipt.sh arg" "$ROOT"
-assert_denied_file "write-claude-verify-receipt.sh outside plugin root denied"
-
 cleanup "$ROOT"
 
 # ============================================================

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Install look-before-you-leap Codex skills to ~/.codex/skills/.
 #
-# Copies lbyl-verify and lbyl-implement skills so Codex knows the
-# verification and implementation protocols. Called from session-start.sh
-# to keep skills up to date automatically.
+# Copies lbyl-verify, lbyl-implement, and react-native-mobile skills so
+# Codex knows the verification, implementation, and mobile UI/code routing
+# protocols. Called from session-start.sh to keep skills up to date
+# automatically.
 #
 # Usage: install-codex-skills.sh [plugin-root]
 #   plugin-root: path to the look-before-you-leap plugin root

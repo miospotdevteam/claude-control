@@ -193,51 +193,6 @@ assert_allowed "Edit codex file when step is done allowed"
 
 # ============================================================
 echo ""
-echo "=== Collab-split: codex-owned group denied ==="
-# ============================================================
-
-cat > "$FAKE_PROJECT/.temp/plan-mode/active/test-plan/plan.json" << 'EOF'
-{
-  "name": "test-plan",
-  "status": "active",
-  "_receiptMode": "strict",
-  "steps": [
-    {
-      "id": 1,
-      "title": "Split step",
-      "status": "in_progress",
-      "owner": "claude",
-      "mode": "collab-split",
-      "files": ["src/claude-part.ts", "src/codex-part.ts"],
-      "subPlan": {
-        "groups": [
-          {
-            "title": "Claude group",
-            "owner": "claude",
-            "files": ["src/claude-part.ts"],
-            "status": "in_progress"
-          },
-          {
-            "title": "Codex group",
-            "owner": "codex",
-            "files": ["src/codex-part.ts"],
-            "status": "in_progress"
-          }
-        ]
-      }
-    }
-  ]
-}
-EOF
-
-run_hook '{"tool_name": "Edit", "tool_input": {"file_path": "'"$FAKE_PROJECT"'/src/codex-part.ts"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_denied "Edit codex-owned group file denied"
-
-run_hook '{"tool_name": "Edit", "tool_input": {"file_path": "'"$FAKE_PROJECT"'/src/claude-part.ts"}, "cwd": "'"$FAKE_PROJECT"'"}'
-assert_allowed "Edit claude-owned group file allowed"
-
-# ============================================================
-echo ""
 echo "=== Path normalization: ../ bypass denied ==="
 # ============================================================
 

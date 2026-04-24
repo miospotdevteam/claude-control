@@ -97,9 +97,8 @@ if active > 0:
     all_delegated = True
     for step in in_progress_steps:
         sid = step["id"]
-        # Match exact step ID: step-N.pid and step-N-group-*.pid (not step-N0, step-N1, etc.)
+        # Match exact step ID: step-N.pid (not step-N0, step-N1, etc.)
         markers = list(plan_dir.glob(f".codex-inflight-step-{sid}.pid"))
-        markers += list(plan_dir.glob(f".codex-inflight-step-{sid}-group-*.pid"))
         has_live = False
         for marker in markers:
             try:

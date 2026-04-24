@@ -154,7 +154,9 @@ if os.path.isfile(plan_json):
         receipt_mode = plan.get("_receiptMode", "legacy")
         if receipt_mode == "strict":
             # Find project root from plan path
+            import hashlib
             import pathlib
+            import re
             plan_dir_path = pathlib.Path(plan_json).parent
             # Walk up to find .git
             project_root = str(plan_dir_path)
@@ -171,17 +173,228 @@ if os.path.isfile(plan_json):
                 sys.path.insert(0, os.path.realpath(os.path.dirname(plan_utils_path)))
                 import plan_utils
                 import receipt_utils as ru
+
+                def sha256_file(path):
+                    digest = hashlib.sha256()
+                    with open(path, "rb") as f:
+                        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                    return digest.hexdigest()
+
+                def realpath(path):
+                    return os.path.realpath(os.path.abspath(path))
+
+                def is_within(child, parent):
+                    try:
+                        return os.path.commonpath([realpath(child), realpath(parent)]) == realpath(parent)
+                    except ValueError:
+                        return False
+
+                def criteria_items(value):
+                    if isinstance(value, list):
+                        return [str(item).strip() for item in value if str(item).strip()]
+                    if not isinstance(value, str):
+                        return []
+                    text = value.strip()
+                    if not text:
+                        return []
+                    if re.search(r"(?:^|\s)\d+\.\s+", text):
+                        return [
+                            item.strip()
+                            for item in re.split(r"(?:^|\s)(?=\d+\.\s+)", text)
+                            if item.strip()
+                        ]
+                    return [
+                        item.strip()
+                        for item in re.split(r"[.;](?:\s+|$)", text)
+                        if item.strip()
+                    ]
+
+                def criterion_sha256(text):
+                    normalized = re.sub(r"\s+", " ", str(text).strip())
+                    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+                def required_data_fields():
+                    return [
+                        "receiptFormatVersion",
+                        "step",
+                        "stepId",
+                        "kind",
+                        "artifactPath",
+                        "artifactSha256",
+                        "artifactSchemaVersion",
+                        "finalVerdict",
+                        "planJsonSha256",
+                        "planPath",
+                    ]
+
+                def verify_json_receipt(receipt_type, expected_kind, step):
+                    sid = int(step["id"])
+                    artifact_default = os.path.join(
+                        str(plan_dir_path), f"codex-receipt-step-{sid}.json"
+                    )
+                    sidecar_path = os.path.join(
+                        ru.STATE_ROOT,
+                        proj_id,
+                        plan_name_val,
+                        f"{receipt_type}-step-{sid}.json",
+                    )
+                    if not os.path.exists(artifact_default):
+                        return False, f"missing JSON receipt artifact at {artifact_default}", None
+                    if not os.path.exists(sidecar_path):
+                        return False, f"missing {receipt_type} HMAC sidecar at {sidecar_path}", None
+
+                    try:
+                        valid, sidecar = ru.verify(sidecar_path)
+                    except Exception as exc:
+                        return False, f"cannot verify {receipt_type} sidecar: {exc}", None
+                    if not valid:
+                        return False, f"invalid HMAC for {receipt_type} sidecar at {sidecar_path}", None
+                    if sidecar.get("type") != receipt_type:
+                        return False, f"{receipt_type} sidecar has wrong type {sidecar.get('type')!r}", None
+                    if sidecar.get("projectId") != proj_id:
+                        return False, f"{receipt_type} sidecar projectId mismatch", None
+                    if sidecar.get("planId") != plan_name_val:
+                        return False, f"{receipt_type} sidecar planId mismatch", None
+
+                    data = sidecar.get("data")
+                    if not isinstance(data, dict):
+                        return False, f"{receipt_type} sidecar missing data block", None
+                    for field in required_data_fields():
+                        if field not in data:
+                            return False, f"{receipt_type} sidecar missing data.{field}", None
+
+                    if data["receiptFormatVersion"] != "1.0.0":
+                        return False, f"{receipt_type} sidecar has unsupported receiptFormatVersion", None
+                    if int(data["step"]) != sid or int(data["stepId"]) != sid:
+                        return False, f"{receipt_type} sidecar step id mismatch", None
+                    if data["kind"] != expected_kind:
+                        return False, f"{receipt_type} sidecar kind mismatch", None
+                    if data["artifactSchemaVersion"] != "1.0.0":
+                        return False, f"{receipt_type} sidecar has unsupported artifact schema", None
+                    if data["finalVerdict"] != "PASS":
+                        return False, f"{receipt_type} sidecar finalVerdict is {data['finalVerdict']}", None
+                    if not is_within(data["artifactPath"], str(plan_dir_path)):
+                        return False, f"{receipt_type} artifactPath is outside the plan directory", None
+                    if realpath(data["artifactPath"]) != realpath(artifact_default):
+                        return False, f"{receipt_type} artifactPath does not match codex-receipt-step-{sid}.json", None
+                    if sha256_file(artifact_default) != data["artifactSha256"]:
+                        return False, f"{receipt_type} artifact sha256 mismatch", None
+                    if realpath(data["planPath"]) != realpath(plan_json):
+                        return False, f"{receipt_type} sidecar planPath mismatch", None
+                    if sha256_file(plan_json) != data["planJsonSha256"]:
+                        return False, f"{receipt_type} sidecar planJsonSha256 mismatch", None
+
+                    try:
+                        with open(artifact_default, encoding="utf-8") as f:
+                            artifact = json.load(f)
+                    except Exception as exc:
+                        return False, f"cannot parse JSON receipt artifact: {exc}", None
+
+                    if artifact.get("schemaVersion") != "1.0.0":
+                        return False, "JSON receipt schemaVersion mismatch", None
+                    if artifact.get("kind") != expected_kind:
+                        return False, f"JSON receipt kind mismatch: expected {expected_kind}", None
+                    if int(artifact.get("stepId", -1)) != sid:
+                        return False, "JSON receipt step-id mismatch", None
+                    if artifact.get("planName") != plan_name_val:
+                        return False, "JSON receipt planName mismatch", None
+                    if artifact.get("owner") != step.get("owner", "codex"):
+                        return False, "JSON receipt owner mismatch", None
+                    if artifact.get("mode") != step.get("mode", "codex-impl"):
+                        return False, "JSON receipt mode mismatch", None
+                    if artifact.get("finalVerdict") != "PASS":
+                        return False, f"JSON receipt finalVerdict is {artifact.get('finalVerdict')}", None
+                    if artifact.get("codexExitCode") != 0:
+                        return False, f"JSON receipt codexExitCode is {artifact.get('codexExitCode')}", None
+                    if artifact.get("findings") != []:
+                        return False, "JSON receipt findings must be empty for PASS", None
+
+                    expected_criteria = criteria_items(step.get("acceptanceCriteria") or "")
+                    actual_criteria = artifact.get("criteria")
+                    if len(actual_criteria or []) != len(expected_criteria):
+                        return False, "JSON receipt criterion count mismatch", None
+                    for index, expected_text in enumerate(expected_criteria, start=1):
+                        criterion = actual_criteria[index - 1]
+                        if criterion.get("id") != index:
+                            return False, f"JSON receipt criterion {index} id mismatch", None
+                        if criterion.get("acceptanceCriterionSha256") != criterion_sha256(expected_text):
+                            return False, f"JSON receipt criterion {index} sha256 mismatch", None
+                        if criterion.get("verdict") != "PASS":
+                            return False, f"JSON receipt criterion {index} verdict is {criterion.get('verdict')}", None
+
+                    return True, "", artifact
+
+                def verify_claude_review(step, artifact):
+                    sid = int(step["id"])
+                    artifact_path = os.path.join(
+                        str(plan_dir_path), f"codex-receipt-step-{sid}.json"
+                    )
+                    review_path = os.path.join(
+                        str(plan_dir_path), f"codex-receipt-step-{sid}.claude-review.json"
+                    )
+                    if not os.path.exists(review_path):
+                        return False, f"missing Claude verification digest at {review_path}"
+                    try:
+                        with open(review_path, encoding="utf-8") as f:
+                            review = json.load(f)
+                    except Exception as exc:
+                        return False, f"cannot parse Claude verification digest: {exc}"
+
+                    if review.get("schemaVersion") != "1.0.0":
+                        return False, "Claude verification digest schemaVersion mismatch"
+                    if review.get("kind") != "claude-verification-digest":
+                        return False, "Claude verification digest kind mismatch"
+                    if int(review.get("stepId", -1)) != sid:
+                        return False, "Claude verification digest step-id mismatch"
+                    if realpath(review.get("receiptPath", "")) != realpath(artifact_path):
+                        return False, "Claude verification digest receiptPath mismatch"
+                    if review.get("receiptSha256") != sha256_file(artifact_path):
+                        return False, "Claude verification digest receiptSha256 mismatch"
+                    if review.get("claudeVerified") != "PASS":
+                        return False, f"Claude verification digest verdict is {review.get('claudeVerified')}"
+                    if review.get("findings") not in ([], None):
+                        return False, "Claude verification digest findings must be empty for PASS"
+
+                    cross_checks = review.get("crossChecks") or {}
+                    for key in ("diffMatchesReceipt", "sha256AllMatch", "findingsReceiptConsistent"):
+                        if cross_checks.get(key) is not True:
+                            return False, f"Claude verification digest crossChecks.{key} is not true"
+                    if artifact.get("finalVerdict") != "PASS":
+                        return False, "Codex artifact was not PASS when Claude reviewed it"
+                    return True, ""
+
                 proj_id = ru.project_id(project_root)
                 plan_name_val = plan.get("name", "unknown")
                 missing_receipts = []
                 for step in plan.get("steps", []):
                     sid = step["id"]
-                    extra = {"step": sid}
-                    for receipt_type in plan_utils.required_receipt_types(step):
-                        exists, _ = ru.check(receipt_type, proj_id, plan_name_val, extra)
-                        if not exists:
+                    owner = step.get("owner", "codex")
+                    mode = step.get("mode", "codex-impl")
+                    if owner == "codex" or mode == "codex-impl":
+                        ok, reason, artifact = verify_json_receipt(
+                            "codex_impl", "implement", step
+                        )
+                        if not ok:
+                            missing_receipts.append(f"Step {sid}: {reason}")
+                            continue
+                        ok, reason = verify_claude_review(step, artifact)
+                        if not ok:
+                            missing_receipts.append(f"Step {sid}: {reason}")
+                    else:
+                        ok, reason, _ = verify_json_receipt(
+                            "codex_verify", "verify", step
+                        )
+                        if ok:
+                            continue
+                        first_reason = reason
+                        ok, reason, _ = verify_json_receipt(
+                            "claude_impl_digest", "verify", step
+                        )
+                        if not ok:
                             missing_receipts.append(
-                                f"Step {sid}: missing {receipt_type} receipt"
+                                f"Step {sid}: {first_reason}; no valid "
+                                f"claude_impl_digest alternative: {reason}"
                             )
                 if missing_receipts:
                     detail = "\n".join(missing_receipts)
@@ -208,6 +421,19 @@ if os.path.isfile(plan_json):
                             "Cannot verify strict-plan receipts because receipt_utils.py "
                             "could not be loaded. Fix the plugin script path before moving "
                             "the plan to completed/."
+                        )
+                    }
+                }
+                json.dump(output, sys.stdout)
+                sys.exit(0)
+            except Exception as exc:
+                output = {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": (
+                            "Cannot verify strict-plan JSON receipts because receipt "
+                            f"verification failed: {exc}"
                         )
                     }
                 }

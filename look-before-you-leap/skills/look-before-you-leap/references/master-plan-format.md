@@ -83,14 +83,14 @@ disciplines.">
 ## Steps
 
 ### Step 1: <Title>
-- **Owner**: claude | codex
-- **Mode**: claude-impl | codex-impl | collab-split | dual-pass
-- **Routing**: <category from routing matrix> → <justification>
+- **Owner**: codex | claude  (codex is the conductor-mode default; claude requires Claude-only skill OR RN Routing Directive OR documented routing-matrix override)
+- **Mode**: codex-impl | claude-impl | dual-pass  (exactly three valid values; mixed-ownership work is split into sequential single-owner steps with `dependsOn`)
+- **Routing**: <category from routing matrix> → <owner>-<mode> [reason if override]
 - **Skill**: `look-before-you-leap:refactoring` | none
 - **Simplify**: true/false
 - **QA**: true/false
-- **Codex verify**: true/false
-- **Sub-plan**: none
+- **Codex verify**: true (always — no exceptions)
+- **DependsOn**: `[]` or list of step IDs that must complete first
 - **Files involved**: `src/foo.ts`, `src/bar.ts`
 - **Description**: What needs to happen in this step.
 - **Acceptance criteria**: How to know this step is done.
@@ -169,12 +169,12 @@ High — issue is clear, fix is straightforward.
 ### Step 1: Fix button alignment
 - **Owner**: claude
 - **Mode**: claude-impl
-- **Routing**: Frontend UI / visual design → claude-impl
-- **Skill**: none
+- **Routing**: Frontend UI / visual design → claude-impl (skill in Claude-only list: frontend-design)
+- **Skill**: `look-before-you-leap:frontend-design`
 - **Simplify**: false
 - **QA**: false
 - **Codex verify**: true
-- **Sub-plan**: none
+- **DependsOn**: `[]`
 - **Files involved**: `src/app/(auth)/login/page.tsx`
 - **Description**: Add `w-full` to the button wrapper div for mobile viewports
 - **Acceptance criteria**: Button is full-width on mobile, unchanged on desktop

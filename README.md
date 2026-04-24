@@ -19,6 +19,25 @@ Claude is fast and pleasant to work with. It's also unreliable for serious engin
 
 ## How It Works
 
+### Conductor mode
+
+The main Claude thread is a **pure conductor**. It does not edit files, does
+not run verification, does not read raw artifacts (no `.codex-result-*.txt`,
+no `.codex-stream-*.jsonl`, no raw exploration / consensus markdown, no
+`git diff`). It reads only:
+
+- `plan.json` (immutable plan definition) and `progress.json` (mutable execution state)
+- Signed HMAC sidecar receipts under `~/.claude/look-before-you-leap/state/<projectId>/<planId>/`
+- Per-step evidence artifacts (`codex-receipt-step-N.json`)
+- Bounded digests written by the `lbyl-digest` sub-agent
+
+Implementation, verification, and large-artifact reading all happen in
+sub-agents (Codex via `codex exec`, or Claude via the Agent/Skill tool).
+The previous `collab-split` mode has been removed — every step has a single
+owner and mixed-discipline work is expressed as multiple steps with
+`dependsOn`. The remaining modes are `claude-impl`, `codex-impl`, and
+`dual-pass`.
+
 ### Three-layer architecture
 
 Context is expensive. Not every task needs every rule. The plugin loads knowledge progressively:
@@ -84,11 +103,68 @@ To customize, edit the file directly. Add it to `.gitignore` if you don't want i
 
 ### Codex integration
 
-When a step needs independent verification, Claude dispatches Codex via
-`codex exec` through direction-locked scripts. Claude-owned work gets a
-read-only Codex review; Codex-owned work is implemented by Codex and then
-verified independently by Claude. This keeps the verification gate symmetric
-and prevents either agent from rubber-stamping its own work.
+Codex is the **default implementer**. Most steps are `codex-impl` (Codex
+writes the code, Claude verifies via a sub-agent). Steps that require visual
+taste, brand voice, or hands-on UI judgment are `claude-impl` (Claude
+implements via the Agent tool, Codex verifies through a read-only review).
+A small set of high-stakes steps run `dual-pass` — both agents work the same
+step independently and the conductor compares verdicts.
+
+The conductor dispatches Codex via `codex exec` through direction-locked
+wrapper scripts (`run-codex-implement.sh`, `run-codex-verify.sh`). The
+wrappers — not the conductor and not Codex — mint the trusted artifacts.
+
+### Receipt protocol
+
+Every Codex run produces two coupled artifacts:
+
+- **Evidence artifact**: `<plan-dir>/codex-receipt-step-N.json` — rich
+  per-criterion verdicts, file:line evidence, command exit codes, output
+  hashes, and findings. Read by hooks and digest sub-agents.
+- **HMAC sidecar**: `~/.claude/look-before-you-leap/state/<projectId>/<planId>/<type>-step-N.json`
+  — short, signed payload (`receipt_utils.sign()`) that binds the
+  evidence artifact's sha256. Hooks (`verify-step-completion.sh`,
+  `guard-plan-completion.sh`, `verify-plan-on-stop.sh`) trust this sidecar
+  as the authority. The legacy `.codex-result-step-N.txt` survives only as
+  a human trace and is never read by the main thread.
+
+Schema and authority rules live in
+[`look-before-you-leap/references/codex-receipt-schema.md`](look-before-you-leap/references/codex-receipt-schema.md).
+
+### Digest flow
+
+Whenever an artifact is too large or too unstructured for the conductor to
+read directly — co-exploration markdown, multi-batch consensus outputs,
+verification cross-checks of `codex-receipt-step-N.json` plus modified
+files — the conductor dispatches the **`lbyl-digest`** sub-agent. The
+digester reads raw bytes from disk and writes a bounded digest file
+(`discovery-digest.md`, `consensus-round-N-digest.md`, or a
+`claude-review-step-N.md`) that the conductor reads instead. `lbyl-digest`
+is internal: it is dispatched only by the conductor skills and is never
+assignable as a `step.skill` value in `plan.json`.
+
+### Parallel DAG dispatch
+
+Step dispatch is parallel by default. After each completion the conductor
+calls `plan_utils.py runnable-steps` to compute the DAG frontier — every
+pending step whose `blockedBy` is satisfied — and dispatches all of them in
+the same message via multiple Skill / Agent tool calls. Serial dispatch of
+independent steps is an anti-pattern. This means `blockedBy` must be
+specified correctly in `plan.json` — under-specified deps race under
+parallel execution.
+
+### Machine defaults
+
+The plugin runs on machine-level model defaults; dispatch scripts and
+sub-agent prompts deliberately pass **no** `--model` / `--effort` flags so
+every dispatch inherits the same configuration:
+
+- Claude: `claude-opus-4-7` at `effortLevel: "high"` from `~/.claude/settings.json`
+- Codex: `model = "gpt-5.5"`, `model_reasoning_effort = "high"`,
+  `service_tier = "fast"` from `~/.codex/config.toml`
+
+Verification commands and the rationale for the no-flag rule live in
+[`look-before-you-leap/references/machine-defaults.md`](look-before-you-leap/references/machine-defaults.md).
 
 ### Dependency maps
 
@@ -163,9 +239,11 @@ look-before-you-leap/
 │   └── settings.json                      # Plugin-local UI/settings toggles
 ├── codex-skills/
 │   ├── lbyl-implement/
-│   │   └── SKILL.md                       # Codex protocol for codex-owned plan steps
-│   └── lbyl-verify/
-│       └── SKILL.md                       # Codex protocol for verifying Claude's work
+│   │   └── SKILL.md                       # Codex protocol for codex-owned plan steps (emits codex-receipt-step-N.json)
+│   ├── lbyl-verify/
+│   │   └── SKILL.md                       # Codex protocol for verifying Claude's work (emits codex-receipt-step-N.json)
+│   └── react-native-mobile/
+│       └── SKILL.md                       # Codex-installable React Native skill for code-heavy RN/Expo steps (UI/UX stays Claude-owned)
 ├── commands/
 │   ├── bypass.md                           # Slash command: write a signed override receipt
 │   ├── commit-msg.md                      # Slash command: generate a 1-line commit message
@@ -196,13 +274,30 @@ look-before-you-leap/
 │       ├── detect-stack.py                # Auto-detects project stack
 │       ├── find-root.sh                   # Finds project root directory
 │       └── read-config.py                 # YAML frontmatter -> JSON config reader
+├── references/
+│   ├── codex-receipt-schema.md            # Schema + dual-authority model for codex-receipt-step-N.json + HMAC sidecars
+│   └── machine-defaults.md                # Required Claude/Codex machine-level model + effort defaults (no flags)
 ├── scripts/
-│   └── install-codex-skills.sh            # Keeps ~/.codex/skills/ synced on session start
+│   ├── dep_partition.py                   # Partitions target files into planning groups using dep maps
+│   ├── deps-generate.py                   # Builds normalized dep maps with madge
+│   ├── deps-query.py                      # Queries dep maps for dependencies and dependents
+│   ├── deps_utils.py                      # Shared dep-map helpers
+│   ├── grant-bypass.sh                    # Mints a signed plan-bypass receipt (used by /bypass)
+│   ├── init-plan-dir.sh                   # Sets up .temp/plan-mode/
+│   ├── install-codex-skills.sh            # Keeps ~/.codex/skills/ synced on session start
+│   ├── plan-status.sh                     # Shows all plan statuses
+│   ├── plan_utils.py                      # Plan state management (incl. runnable-steps DAG frontier + receipt commands)
+│   ├── receipt_utils.py                   # HMAC sidecar mint/verify (binds codex-receipt-step-N.json sha256)
+│   ├── resume.sh                          # Finds what to resume
+│   ├── run-codex-implement.sh             # Direction-locked Codex implementation entrypoint (mints codex-receipt-step-N.json + sidecar)
+│   ├── run-codex-verify.sh                # Direction-locked Codex verification entrypoint (mints codex-receipt-step-N.json + sidecar)
+│   ├── validate_step_ownership.py         # Step-level ownership enforcement (no group dispatch)
+│   └── write-discovery-receipt.sh         # Mints signed discovery receipt before planning
 ├── skills/
 │   ├── brainstorming/
 │   │   └── SKILL.md                       # Collaborative design exploration
 │   ├── codex-dispatch/
-│   │   └── SKILL.md                       # Codex CLI orchestration via codex exec: direction-locked scripts, 4 collaboration modes
+│   │   └── SKILL.md                       # Codex CLI orchestration via codex exec: receipt-first, parallel DAG dispatch, no collab-split
 │   ├── doc-coauthoring/
 │   │   └── SKILL.md                       # 3-stage document co-authoring
 │   ├── engineering-discipline/
@@ -228,6 +323,8 @@ look-before-you-leap/
 │   │       ├── gsap-value-plugins.md      # InertiaPlugin, Modifiers, Snap, roundProps
 │   │       ├── shader-recipes.md          # GLSL: noise, chromatic aberration, distortion
 │   │       └── three-js-patterns.md       # Scene setup, cameras, materials, R3F, disposal
+│   ├── lbyl-digest/
+│   │   └── SKILL.md                       # INTERNAL conductor-dispatched digester: collapses raw artifacts into bounded digests (co-exploration, consensus, verification)
 │   ├── look-before-you-leap/
 │   │   ├── SKILL.md                       # Layer 1: The conductor
 │   │   ├── references/
@@ -260,16 +357,7 @@ look-before-you-leap/
 │   │   │   ├── ui-consistency-checklist.md # Layer 2: Design tokens, components
 │   │   │   ├── ui-consistency-guide.md    # Layer 3: Drift detection
 │   │   │   └── verification-commands.md   # tsc/lint/test commands by ecosystem
-│   │   └── scripts/
-│   │       ├── deps-generate.py           # Builds normalized dep maps with madge
-│   │       ├── deps-query.py              # Queries dep maps for dependencies and dependents
-│   │       ├── dep_partition.py           # Partitions target files into planning groups using dep maps
-│   │       ├── init-plan-dir.sh           # Sets up .temp/plan-mode/
-│   │       ├── plan-status.sh             # Shows all plan statuses
-│   │       ├── plan_utils.py              # Plan state management (incl. codex session commands)
-│   │       ├── resume.sh                  # Finds what to resume
-│   │       ├── run-codex-implement.sh     # Direction-locked Codex implementation entrypoint
-│   │       └── run-codex-verify.sh        # Direction-locked Codex verification entrypoint
+│   │   └── (scripts live at look-before-you-leap/scripts/ — see top-level scripts/ tree above)
 │   ├── mcp-builder/
 │   │   ├── SKILL.md                       # 4-phase MCP server development
 │   │   └── references/

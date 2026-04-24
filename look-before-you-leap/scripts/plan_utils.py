@@ -15,6 +15,7 @@ CLI usage:
     python3 plan-utils.py next-step <plan.json>
     python3 plan-utils.py active-steps <plan.json>
     python3 plan-utils.py runnable-steps <plan.json>
+    python3 plan-utils.py validate-dag <plan.json>
     python3 plan-utils.py update-step <plan.json> <step_id> <new_status>
     python3 plan-utils.py update-progress <plan.json> <step_id> <progress_index> <new_status>
     python3 plan-utils.py set-result <plan.json> <step_id> <result_text>
@@ -80,6 +81,7 @@ def transactional_update(progress_path, mutator_fn):
     with open(progress_path, "r+", encoding="utf-8") as f:
         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         try:
+            f.seek(0)
             raw = f.read()
             data = json.loads(raw) if raw.strip() else {}
             mutator_fn(data)
@@ -141,20 +143,6 @@ def extract_progress(plan):
             step_prog["progress"] = [
                 {"status": p.get("status", "pending")} for p in step["progress"]
             ]
-        # Migrate subPlan group mutable fields
-        sub_plan = step.get("subPlan")
-        if sub_plan and sub_plan.get("groups"):
-            groups = {}
-            for i, g in enumerate(sub_plan["groups"]):
-                g_prog = {}
-                if "status" in g:
-                    g_prog["status"] = g["status"]
-                if "notes" in g:
-                    g_prog["notes"] = g["notes"]
-                if g_prog:
-                    groups[str(i)] = g_prog
-            if groups:
-                step_prog["groups"] = groups
         progress["steps"][step_id] = step_prog
 
     if plan.get("completedSummary"):
@@ -186,12 +174,6 @@ def init_progress(plan):
             step_prog["progress"] = [
                 {"status": "pending"} for _ in step["progress"]
             ]
-        sub_plan = step.get("subPlan")
-        if sub_plan and sub_plan.get("groups"):
-            groups = {}
-            for i, g in enumerate(sub_plan["groups"]):
-                groups[str(i)] = {"status": "pending"}
-            step_prog["groups"] = groups
         progress["steps"][step_id] = step_prog
     return progress
 
@@ -220,18 +202,6 @@ def merge_plan_progress(plan, progress):
                     step["progress"][i]["status"] = p_status.get(
                         "status", step["progress"][i].get("status", "pending")
                     )
-        # Merge subPlan group mutable fields
-        if "groups" in sp:
-            sub_plan = step.get("subPlan")
-            if sub_plan and sub_plan.get("groups"):
-                for idx_str, g_prog in sp["groups"].items():
-                    idx = int(idx_str)
-                    if 0 <= idx < len(sub_plan["groups"]):
-                        if "status" in g_prog:
-                            sub_plan["groups"][idx]["status"] = g_prog["status"]
-                        if "notes" in g_prog:
-                            sub_plan["groups"][idx]["notes"] = g_prog["notes"]
-
     if "completedSummary" in progress:
         merged["completedSummary"] = list(progress["completedSummary"])
     if "deviations" in progress:
@@ -344,6 +314,93 @@ def runnable_steps(plan):
     return runnable
 
 
+def validate_dag(plan):
+    """Validate dependsOn DAG safety for parallel dispatch.
+
+    Returns (is_valid, errors). A plan is valid when all dependsOn targets
+    exist, dependencies are acyclic, and steps with overlapping files are
+    connected by a direct or transitive dependsOn relationship.
+    """
+    steps = plan.get("steps", [])
+    step_by_id = {step["id"]: step for step in steps}
+    graph = {
+        step["id"]: list(step.get("dependsOn") or [])
+        for step in steps
+    }
+    errors = []
+
+    for step_id, depends_on in graph.items():
+        for dep_id in depends_on:
+            if dep_id not in step_by_id:
+                errors.append(f"step {step_id} dependsOn missing step {dep_id}")
+
+    if errors:
+        return False, errors
+
+    visited = set()
+    visiting = set()
+    path = []
+
+    def visit(step_id):
+        if step_id in visiting:
+            cycle_start = path.index(step_id)
+            cycle = path[cycle_start:] + [step_id]
+            errors.append(
+                "cycle detected: " + " -> ".join(str(item) for item in cycle)
+            )
+            return
+        if step_id in visited:
+            return
+
+        visiting.add(step_id)
+        path.append(step_id)
+        for dep_id in graph[step_id]:
+            visit(dep_id)
+        path.pop()
+        visiting.remove(step_id)
+        visited.add(step_id)
+
+    for step_id in graph:
+        visit(step_id)
+
+    if errors:
+        return False, errors
+
+    closure = {}
+
+    def transitive_dependencies(step_id):
+        if step_id in closure:
+            return closure[step_id]
+        deps = set()
+        for dep_id in graph[step_id]:
+            deps.add(dep_id)
+            deps.update(transitive_dependencies(dep_id))
+        closure[step_id] = deps
+        return deps
+
+    for step_id in graph:
+        transitive_dependencies(step_id)
+
+    for left_index, left in enumerate(steps):
+        left_id = left["id"]
+        left_files = set(left.get("files") or [])
+        if not left_files:
+            continue
+        for right in steps[left_index + 1:]:
+            right_id = right["id"]
+            overlap = sorted(left_files.intersection(right.get("files") or []))
+            if not overlap:
+                continue
+            if right_id in closure[left_id] or left_id in closure[right_id]:
+                continue
+            errors.append(
+                f"steps {left_id} and {right_id} overlap on files without "
+                f"dependsOn connection: {', '.join(overlap)}"
+            )
+
+    return len(errors) == 0, errors
+
+
 def get_next_step(plan):
     """Find the next step to work on.
 
@@ -378,7 +435,7 @@ def is_complete(plan):
     return all(s["status"] == "done" for s in steps)
 
 
-VALID_MODES = {"claude-impl", "codex-impl", "collab-split", "dual-pass"}
+VALID_MODES = {"claude-impl", "codex-impl", "dual-pass"}
 VALID_SKILLS = {
     "none",
     "look-before-you-leap:test-driven-development",
@@ -920,56 +977,25 @@ def active_step(plan):
     return active[0] if active else None
 
 
-def effective_owner(step, group_index=None):
-    """Get the effective owner of a step or group within a step.
+def effective_owner(step):
+    """Get the effective owner of a step.
 
-    For collab-split steps with sub-plan groups, the effective owner
-    is group.owner if set, falling back to step.owner.
+    Dual-pass keeps the same step-level owner semantics as other modes.
 
     Args:
         step: Step dict from plan.json
-        group_index: Optional 0-based group index for collab-split steps
 
     Returns:
         Owner string ("claude" or "codex")
     """
-    step_owner = step.get("owner", "claude")
-
-    if group_index is not None:
-        sub_plan = step.get("subPlan")
-        if sub_plan and "groups" in sub_plan:
-            groups = sub_plan["groups"]
-            if 0 <= group_index < len(groups):
-                return groups[group_index].get("owner", step_owner)
-
-    return step_owner
+    return step.get("owner", "codex")
 
 
 def required_receipt_types(step):
     """Return the verification receipt types required to complete a step.
-
-    For collab-split steps, requirements depend on the owner types present in
-    sub-plan groups, not just the top-level step owner.
     """
-    owner = step.get("owner", "claude")
+    owner = step.get("owner", "codex")
     mode = step.get("mode", "claude-impl")
-
-    if mode == "collab-split":
-        sub_plan = step.get("subPlan") or {}
-        groups = sub_plan.get("groups") or []
-        if groups:
-            required = []
-            has_claude_groups = any(
-                group.get("owner", owner) == "claude" for group in groups
-            )
-            has_codex_groups = any(
-                group.get("owner", owner) == "codex" for group in groups
-            )
-            if has_claude_groups:
-                required.append("codex_verify")
-            if has_codex_groups:
-                required.extend(["codex_impl", "claude_verify"])
-            return required
 
     if mode == "codex-impl" or owner == "codex":
         return ["codex_impl", "claude_verify"]
@@ -977,26 +1003,15 @@ def required_receipt_types(step):
     return ["codex_verify"]
 
 
-def step_files(step, group_index=None):
-    """Get the list of files for a step or group.
-
-    For collab-split steps with groups, returns the group's files
-    if group_index is specified.
+def step_files(step):
+    """Get the list of files for a step.
 
     Args:
         step: Step dict from plan.json
-        group_index: Optional 0-based group index
 
     Returns:
         List of file paths (relative to project root)
     """
-    if group_index is not None:
-        sub_plan = step.get("subPlan")
-        if sub_plan and "groups" in sub_plan:
-            groups = sub_plan["groups"]
-            if 0 <= group_index < len(groups):
-                return groups[group_index].get("files", [])
-
     return step.get("files", [])
 
 
@@ -1052,7 +1067,7 @@ def cli_active_steps(plan_path):
             "id": step["id"],
             "title": step["title"],
             "status": step["status"],
-            "owner": step.get("owner", "claude"),
+            "owner": step.get("owner", "codex"),
             "mode": step.get("mode", "claude-impl"),
             "files": step.get("files", []),
         }
@@ -1072,6 +1087,22 @@ def cli_runnable_steps(plan_path):
         }
         for step in runnable_steps(plan)
     ]))
+
+
+def cli_validate_dag(plan_path):
+    """Validate plan dependsOn graph for safe parallel dispatch."""
+    plan = read_plan_definition(plan_path)
+    is_valid, errors = validate_dag(plan)
+    if not is_valid:
+        for error in errors:
+            print(f"Error: {error}", file=sys.stderr)
+        return False
+
+    print(json.dumps({
+        "valid": True,
+        "steps": len(plan.get("steps", [])),
+    }))
+    return True
 
 
 def print_help():
@@ -1101,9 +1132,10 @@ Codex session commands (writes to progress.json):
 
 Step introspection commands:
   active-step <plan.json>                         Show the in-progress step
-  effective-owner <plan.json> <step_id> [group]   Get effective owner of step/group
-  step-files <plan.json> <step_id> [group]        List files for step/group
-  validate-step-target <plan.json> <step_id> [group]  JSON: owner, mode, files for step/group
+  effective-owner <plan.json> <step_id>           Get effective owner of step
+  step-files <plan.json> <step_id>                List files for step
+  validate-step-target <plan.json> <step_id>      JSON: owner, mode, files for step
+  validate-dag <plan.json>                        Validate dependsOn graph and file overlap safety
   plan-summary <plan.json>                        JSON: counts, next step, plan title
 
 Progress commands:
@@ -1182,6 +1214,10 @@ def main():
 
     elif command == "runnable-steps":
         cli_runnable_steps(plan_path)
+
+    elif command == "validate-dag":
+        if not cli_validate_dag(plan_path):
+            sys.exit(1)
 
     elif command == "update-step":
         if len(sys.argv) < 5:
@@ -1280,7 +1316,7 @@ def main():
             print(json.dumps({
                 "id": step["id"],
                 "title": step["title"],
-                "owner": step.get("owner", "claude"),
+                "owner": step.get("owner", "codex"),
                 "mode": step.get("mode", "claude-impl"),
                 "files": step.get("files", []),
             }))
@@ -1288,32 +1324,30 @@ def main():
             print(json.dumps(None))
 
     elif command == "effective-owner":
-        if len(sys.argv) < 4:
-            print("Usage: plan-utils.py effective-owner <plan.json> <step_id> [group_index]",
+        if len(sys.argv) != 4:
+            print("Usage: plan-utils.py effective-owner <plan.json> <step_id>",
                   file=sys.stderr)
             sys.exit(1)
         step_id = int(sys.argv[3])
-        group_idx = int(sys.argv[4]) if len(sys.argv) > 4 else None
         plan = read_plan(plan_path)
         step = get_step(plan, step_id)
         if step is None:
             print(f"Error: step {step_id} not found", file=sys.stderr)
             sys.exit(1)
-        print(effective_owner(step, group_idx))
+        print(effective_owner(step))
 
     elif command == "step-files":
-        if len(sys.argv) < 4:
-            print("Usage: plan-utils.py step-files <plan.json> <step_id> [group_index]",
+        if len(sys.argv) != 4:
+            print("Usage: plan-utils.py step-files <plan.json> <step_id>",
                   file=sys.stderr)
             sys.exit(1)
         step_id = int(sys.argv[3])
-        group_idx = int(sys.argv[4]) if len(sys.argv) > 4 else None
         plan = read_plan(plan_path)
         step = get_step(plan, step_id)
         if step is None:
             print(f"Error: step {step_id} not found", file=sys.stderr)
             sys.exit(1)
-        files = step_files(step, group_idx)
+        files = step_files(step)
         for f in files:
             print(f)
 
@@ -1333,29 +1367,26 @@ def main():
         print(json.dumps({"migrated": progress_path_for(plan_path)}))
 
     elif command == "validate-step-target":
-        if len(sys.argv) < 4:
+        if len(sys.argv) != 4:
             print(
-                "Usage: plan-utils.py validate-step-target <plan.json> "
-                "<step_id> [group_index]",
+                "Usage: plan-utils.py validate-step-target <plan.json> <step_id>",
                 file=sys.stderr,
             )
             sys.exit(1)
         step_id = int(sys.argv[3])
-        group_idx = int(sys.argv[4]) if len(sys.argv) > 4 else None
         plan = read_plan(plan_path)
         step = get_step(plan, step_id)
         if step is None:
             print(json.dumps({"error": f"step {step_id} not found"}))
             sys.exit(1)
-        owner = effective_owner(step, group_idx)
+        owner = effective_owner(step)
         mode = step.get("mode", "claude-impl")
-        files = step_files(step, group_idx)
+        files = step_files(step)
         print(json.dumps({
             "owner": owner,
             "mode": mode,
             "files": files,
             "step_id": step_id,
-            "group_index": group_idx,
         }))
 
     elif command == "plan-summary":

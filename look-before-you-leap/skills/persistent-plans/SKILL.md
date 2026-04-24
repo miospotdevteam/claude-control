@@ -175,7 +175,10 @@ python3 "$PLAN_UTILS" add-summary "$PLAN_JSON" "Step 3: Migrated all hooks"
 # Get status overview
 python3 "$PLAN_UTILS" status "$PLAN_JSON"
 
-# Get next step
+# Get the runnable frontier (parallel-by-default execution loop uses this)
+python3 "$PLAN_UTILS" runnable-steps "$PLAN_JSON"
+
+# Get next single step (legacy — only useful when frontier is size 1)
 python3 "$PLAN_UTILS" next-step "$PLAN_JSON"
 ```
 <!-- plan-utils-cmd-end -->
@@ -206,7 +209,8 @@ modify BEFORE writing the plan. This tells you:
 
 - How many consumers each file has (blast radius)
 - Which modules will be affected
-- Whether a step needs a sub-plan
+- Whether a single proposed step should be decomposed into multiple
+  steps wired with `dependsOn`
 
 ```bash
 # Query blast radius for a file
@@ -218,9 +222,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/deps-query.py . "<file_path>" --json
 
 Feed the dep-map output directly into your plan: use the DEPENDENTS list
 to populate each step's `files` array, and use the BLAST RADIUS count
-to decide whether a step needs a sub-plan. This replaces manual grep
-for consumer discovery during planning and catches cross-module consumers
-that grep would miss.
+to decide whether a proposed step should be decomposed into multiple
+steps wired with `dependsOn`. This replaces manual grep for consumer
+discovery during planning and catches cross-module consumers that grep
+would miss.
 
 ### plan.json — the exact schema you MUST use
 
@@ -306,62 +311,52 @@ For full field reference, see
 Each step should be completable within a single context window. Use these
 heuristics:
 
-| Complexity | Characteristics | Sub-plan? |
+| Complexity | Characteristics | How to plan |
 |---|---|---|
-| Small | 1-3 files, straightforward change | No |
-| Medium | 4-5 files, some complexity | No, but use progress items |
-| Large | Triggers any sub-plan criteria below | Yes (inline in plan.json) |
+| Small | 1-3 files, straightforward change | One step with progress items |
+| Medium | 4-5 files, some complexity | One step with detailed progress items |
+| Large | Triggers any decomposition criterion below | Multiple steps wired with `dependsOn` |
 
-### When to create sub-plans
+### When to decompose into multiple steps
 
-A step MUST get an inline sub-plan (in the step's `subPlan` field) when
-ANY of these are true:
+Decompose a single proposed step into multiple plan.json steps (each
+with its own `dependsOn` edges) when ANY of these are true:
 
-- Dep maps show the step touches **more than 5 files** (direct +
+- Dep maps show the work touches **more than 5 files** (direct +
   consumers). This is the primary trigger — dep maps give you exact file
   counts, so use them.
 - It touches **more than 10 files** (when dep maps aren't available)
 - It involves a **repetitive sweep** across many files
 - It has **more than 5 internal sub-tasks** that are independently
   completable
-- The step description contains words like **"all", "every", "sweep",
+- The description contains words like **"all", "every", "sweep",
   "migrate all", "across the codebase"**
 
-Sub-plans live **inside a step's `subPlan` field** — not at the top level,
-not as separate files. Each group clusters related files:
+There is no `subPlan.groups` mechanism — group-based sub-plan execution
+has been removed. Decomposition happens at the step level via the DAG:
+write multiple steps, give each one a clear ownership / scope, and use
+`dependsOn` to express ordering constraints. Steps without ordering
+constraints become parallel frontier candidates automatically.
+
+Example decomposition (sweep across four file clusters):
 
 ```json
-{
-  "id": 2,
-  "title": "Add archivedAt to all entity types and schemas",
-  "status": "pending",
-  "skill": "none",
-  "simplify": false,
-  "files": ["types.ts", "schemas.ts", "filtering.ts", "client.ts", "seed.ts"],
-  "description": "Sweep archivedAt across shared, business-logic, api-client, api.",
-  "acceptanceCriteria": "All types have archivedAt, schemas validate it, tests pass.",
-  "progress": [
-    {"task": "Group 1: Core types and schemas", "status": "pending", "files": ["types.ts", "schemas.ts"]},
-    {"task": "Group 2: Business logic filtering", "status": "pending", "files": ["filtering.ts"]},
-    {"task": "Group 3: API client methods", "status": "pending", "files": ["client.ts"]},
-    {"task": "Group 4: API seed data and routes", "status": "pending", "files": ["seed.ts"]}
-  ],
-  "subPlan": {
-    "groups": [
-      {"name": "Core types and schemas", "files": ["types.ts", "schemas.ts"]},
-      {"name": "Business logic filtering", "files": ["filtering.ts"]},
-      {"name": "API client methods", "files": ["client.ts"]},
-      {"name": "API seed data and routes", "files": ["seed.ts"]}
-    ]
-  },
-  "result": null
-}
+{ "id": 2, "title": "Add archivedAt to core types and schemas",
+  "files": ["types.ts", "schemas.ts"], "dependsOn": [],
+  "owner": "codex", "mode": "codex-impl", ... },
+{ "id": 3, "title": "Update business-logic filtering for archivedAt",
+  "files": ["filtering.ts"], "dependsOn": [2],
+  "owner": "codex", "mode": "codex-impl", ... },
+{ "id": 4, "title": "Add archivedAt to API client methods",
+  "files": ["client.ts"], "dependsOn": [2],
+  "owner": "codex", "mode": "codex-impl", ... },
+{ "id": 5, "title": "Update API seed data and routes",
+  "files": ["seed.ts"], "dependsOn": [2],
+  "owner": "codex", "mode": "codex-impl", ... }
 ```
 
-Note how `progress` items mirror the `subPlan.groups` — both exist because
-they serve different purposes. Progress items are the checkpoint mechanism
-(updated via `plan_utils.py`). Groups are the organizational structure
-(what files belong together and why).
+Steps 3, 4, and 5 all depend only on step 2 — so once step 2 is done,
+they form a parallel frontier of size 3 and dispatch in a single message.
 
 ---
 
@@ -387,10 +382,12 @@ progress update is insurance against lost work.
 resume from the plan files alone?"* Ask this after every code edit. If the
 answer is no, update progress BEFORE your next edit.
 
-This is a loop. Follow it mechanically.
+This is a loop. Follow it mechanically. **Parallel frontier dispatch is the
+default.** Serial execution is the exception, used only when the DAG genuinely
+yields a frontier of size 1 (or when a stated reason — see below — forces it).
 
 ```
-┌─ EXECUTION LOOP (DAG-DRIVEN) ───────────────────────────┐
+┌─ EXECUTION LOOP (DAG-DRIVEN, PARALLEL BY DEFAULT) ──────┐
 │                                                         │
 │  0. IF first loop entry (or after compaction):          │
 │     Create/recreate tasks from plan.json steps:         │
@@ -400,64 +397,96 @@ This is a loop. Follow it mechanically.
 │       Set in_progress steps to status: "in_progress"    │
 │                                                         │
 │  1. Read plan.json + progress.json from disk            │
-│  2. Compute runnable steps:                             │
-│     runnable = runnable_steps(plan)                     │
-│     (pending steps whose dependsOn predecessors are done)│
+│  2. Compute the runnable frontier via the CLI:          │
+│     python3 .temp/plan-mode/scripts/plan_utils.py \\     │
+│         runnable-steps <plan.json>                      │
+│     (returns ALL pending steps whose dependsOn          │
+│      predecessors are done — this is the frontier)      │
 │                                                         │
-│  3. IF no runnable AND no in_progress → plan complete   │
+│  3. IF frontier is empty AND no in_progress → done      │
 │                                                         │
-│  4. IF 1 runnable step → execute sequentially:          │
-│     a. Mark it in_progress — write to disk NOW          │
-│        → TaskUpdate(status: "in_progress")              │
-│     b. EXTRACT DELIVERABLES CHECKLIST                   │
-│     c. Execute per owner-based dispatch (see conductor) │
-│     d. CHECKPOINT after every 2-3 file edits            │
-│     e. Verify deliverables checklist (every item)       │
-│     f. Run own verification (tsc, lint, tests)          │
-│     g. CODEX GATE (see below)                           │
-│     h. Mark step done, TaskUpdate(completed),           │
-│        add to completedSummary                          │
-│                                                         │
-│  5. IF multiple runnable steps → MUST dispatch parallel: │
-│     (NEVER execute them one-by-one — that wastes the    │
-│      DAG. Use a SINGLE message with multiple Agent calls│
-│      so they run concurrently.)                         │
-│     a. Mark ALL runnable steps as in_progress           │
+│  4. DISPATCH THE ENTIRE FRONTIER IN A SINGLE MESSAGE.   │
+│     a. Mark every frontier step in_progress — write to  │
+│        progress.json NOW (one update-step per step)     │
 │        → TaskUpdate(in_progress) for each               │
-│     b. In ONE message, dispatch ALL runnable steps:     │
-│        - claude-impl: Agent tool (foreground sub-agent) │
-│          One Agent call per step, all in the same       │
-│          message → Claude Code runs them in parallel    │
+│     b. In ONE assistant message, emit one tool call per │
+│        step so Claude Code runs them concurrently:      │
+│        - claude-impl: Agent (foreground sub-agent),     │
+│          one Agent call per step, all in the same       │
+│          message                                        │
 │        - codex-impl: Bash run-codex-implement.sh        │
-│          (run_in_background: true)                      │
-│     c. Wait for all to complete                         │
-│     d. Verify all (Codex verify for claude-impl,        │
-│        Claude verify for codex-impl)                    │
-│     e. Fix findings sequentially, re-verify as needed   │
-│     f. Mark verified steps done, TaskUpdate(completed), │
-│        add to completedSummary                          │
+│          (run_in_background: true), one per step        │
+│     c. Wait for ANY completion (do not block until      │
+│        all finish — refetch as soon as one PASSes so    │
+│        newly-unblocked steps join the next frontier)    │
+│     d. For each completed step, run the verification    │
+│        gate (Codex verify for claude-impl, Claude       │
+│        verify for codex-impl) and read the SIGNED       │
+│        receipt artifact (codex-receipt-step-N.json or   │
+│        the equivalent claude verify digest). NEVER      │
+│        read raw `.codex-result-step-N.txt` or           │
+│        `.codex-stream-step-N.jsonl` from the main       │
+│        thread — those are inputs to a digest subagent,  │
+│        not to the conductor.                            │
+│     e. Fix any findings (sequentially per step), then   │
+│        re-verify until PASS                             │
+│     f. complete-step for each verified step,            │
+│        TaskUpdate(completed), add-summary               │
+│                                                         │
+│  5. REFETCH THE FRONTIER (GOTO step 1).                 │
+│     Completing steps unblocks new ones — recompute      │
+│     immediately rather than guessing.                   │
 │                                                         │
 │  CODEX GATE (for steps with codexVerify: true):         │
-│     a. Run run-codex-verify.sh (claude-impl steps)      │
-│        or Claude verifies independently (codex-impl)    │
-│     b. If issues found: fix → re-run verify → repeat    │
-│     c. Only proceed to "mark done" after PASS           │
-│                                                         │
-│  6. GOTO step 1 — new steps may now be runnable         │
+│     a. Verifier runs (Codex for claude-impl, Claude     │
+│        for codex-impl) and writes a signed receipt      │
+│     b. Conductor reads the receipt's finalVerdict +     │
+│        per-criterion pass/fail (NOT raw output)         │
+│     c. If FAIL: fix → re-run verify → repeat            │
+│     d. Only proceed to complete-step after PASS         │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
+### The runnable-steps pattern
+
+The pattern is mechanical and identical every iteration:
+
+1. **Fetch the frontier** — `runnable-steps` returns the set of pending
+   steps whose `dependsOn` predecessors are all done.
+2. **Dispatch all in parallel** — one assistant message containing one
+   Agent/Bash tool call per frontier step. The tool calls run concurrently
+   because they share a single message.
+3. **Mark complete** — once a step's verification receipt is PASS, call
+   `complete-step` (which writes to progress.json and updates summaries).
+4. **Refetch** — go back to step 1. Completed steps unblock new ones; the
+   next frontier may be larger, smaller, or differently shaped.
+
+Do not try to plan the schedule ahead. The DAG decides — you just keep
+asking for the frontier and dispatching it.
+
 ### Anti-pattern: sequential dispatch of independent steps
 
-**NEVER execute runnable steps one-at-a-time when multiple are
-available.** If `runnable_steps()` returns steps [1, 2, 3], dispatching
-step 1, waiting for it to finish, then dispatching step 2, etc. is
-wrong — it ignores the DAG and makes execution 3x slower than necessary.
+**NEVER execute frontier steps one-at-a-time.** If `runnable-steps`
+returns steps [1, 2, 3], dispatching step 1, waiting for it to finish,
+then dispatching step 2, etc. is wrong — it ignores the DAG and makes
+execution 3x slower than necessary.
 
 The correct behavior: emit all three Agent/Bash tool calls in a single
 message so Claude Code runs them concurrently. See the conductor skill's
 "DAG-driven parallel dispatch" section for a concrete example.
+
+**Stated-reason exceptions to parallel dispatch.** Serial execution is
+allowed only when one of these is true, AND you record the reason in the
+step's result or via `add-deviation`:
+
+- Frontier size is 1 (only one step is runnable right now)
+- Steps share a write target that cannot be safely interleaved
+- A previous step's failure forced a "fix one, re-verify, then continue"
+  recovery loop
+- The user explicitly requested serial execution
+
+Without one of these, parallel dispatch is the default.
 
 ### Never mark done without verified work
 
@@ -469,20 +498,24 @@ any step `done`:
 3. Every item on the deliverables checklist (extracted in step 3b of the
    loop) has been verified — if any deliverable is missing, implement it
    before marking done
-4. If `codexVerify: true`: Codex has reported PASS via `run-codex-verify.sh`
-   (for claude-impl steps) or Claude has independently verified (for
-   codex-impl steps)
+4. If `codexVerify: true`: a SIGNED verification receipt
+   (`codex-receipt-step-N.json` for claude-impl steps, the equivalent
+   claude-verify digest receipt for codex-impl steps) exists with
+   `finalVerdict: PASS` and per-criterion `verdict: pass`. The receipt
+   is the contract — not freeform text in the result field.
 5. You've written a structured result using the `### Criterion:` template,
-   mapping each acceptance criterion to evidence, with the Codex/Claude
-   verdict in a `### Verdict` section
+   mapping each acceptance criterion to evidence, with the receipt-backed
+   Codex/Claude verdict surfaced in a `### Verdict` section. The
+   structured result is a human-readable rendering of the receipt; the
+   receipt is the machine-readable source of truth that hooks gate on.
 
 **A plan with all steps `done` but unverified work is a lie on disk.** A
 hook guards the `mv` command — you cannot move an incomplete plan to
 `completed/`. The `verify-step-completion` hook also enforces the Codex
-gate: if a codexVerify step is marked done without a Codex verdict in
-the result field, it reverts to `in_progress`. Don't mark steps done
-until they ARE done. If you're unsure, leave it `in_progress` with
-notes about what remains.
+gate: if a codexVerify step is marked done without a corresponding signed
+receipt (and a verdict surfaced in the result field), it reverts to
+`in_progress`. Don't mark steps done until they ARE done. If you're
+unsure, leave it `in_progress` with notes about what remains.
 
 ### Progress updates are NOT optional
 
@@ -550,7 +583,8 @@ plan, read it immediately.
 6. State to the user: *"Resuming plan '<title>'. Steps [done list] are
    complete. Steps [in_progress list] were in flight. Picking up from
    [specific progress points]."*
-7. Continue the execution loop (DAG-driven — see below)
+7. Continue the execution loop above — refetch the runnable frontier and
+   dispatch all of it in a single message (parallel by default).
 
 **You MUST do this before touching any code.** The plan files on disk are
 the source of truth, not your memory of what you were doing.
@@ -558,36 +592,44 @@ the source of truth, not your memory of what you were doing.
 ### If multiple in-progress steps exist
 
 Multiple `in_progress` steps means compaction happened during parallel
-execution. For each in_progress step:
+frontier dispatch. For each in_progress step:
 
 1. Check its `dependsOn` — if ALL predecessors are `done`, the step was
-   legitimately running in parallel and can be re-dispatched
+   legitimately running in parallel and can be re-dispatched as part of
+   the next frontier
 2. If a predecessor is also `in_progress`, the step may be stale from a
    crash — wait for the predecessor to complete first
-3. Determine the step's phase (implementation vs verification):
+3. Determine the step's phase via signed receipts (NOT raw files):
    - Check `codexSessions[step_id].phase` in progress.json — if `"verify"`,
-     the step was mid-verification (Claude had finished implementing,
-     Codex was reviewing). Resume by re-running verification.
+     the step was mid-verification. Look for the verification receipt
+     (`codex-receipt-step-N.json` for claude-impl, the claude-verify
+     digest receipt for codex-impl). If a PASS receipt exists, the step
+     finished verification and can be marked done; otherwise re-run
+     verification.
    - If `codexSessions[step_id].phase` is `"implement"` (codex-impl step),
-     Codex was mid-implementation. Check result/stream files below.
+     Codex was mid-implementation. Check the implement receipt
+     (`codex-receipt-step-N.json` with `kind: implement`). If present
+     and PASS, advance to verification; otherwise re-dispatch implement.
    - If no codexSessions entry exists for this step, it was mid-
      implementation by Claude. Resume from progress items.
-4. Check for existing result/stream files in the plan directory:
-   - `.codex-result-step-N.txt` exists → Codex finished, parse the result
-   - `.codex-stream-step-N.jsonl` exists but no result → Codex may still
-     be running (check process) or may have crashed
-   - Neither exists → step was mid-implementation, resume from
-     progress items
+4. The conductor reads RECEIPTS, not raw artifacts. `.codex-result-*.txt`
+   and `.codex-stream-*.jsonl` are inputs to the digest subagent — if you
+   need their content, dispatch a digest subagent and read its bounded
+   output, never the raw file from the main thread.
 
-Re-dispatch legitimate parallel steps using the DAG-driven execution
-loop below.
+Re-dispatch legitimate parallel steps via the runnable-steps pattern
+above (refetch the frontier, dispatch in one message).
 
 ### If a single in-progress step exists
 
 A step with status `in_progress` means compaction happened mid-step. Read
-the step's progress array. The `done` items tell you what's been done.
-Assess the state (check git status, look at files) and continue from where
-the progress left off.
+the step's progress array — the `done` items tell you what's been done.
+Check `git status` for committed/staged work. If the step had reached
+verification, look for the signed receipt (`codex-receipt-step-N.json`
+or the claude-verify digest). Continue from where the progress left
+off — do NOT re-read raw `.codex-result-*.txt` or `.codex-stream-*.jsonl`
+from the main thread; dispatch a digest subagent if you need their
+content.
 
 ### Plan vs filesystem conflicts
 
@@ -660,8 +702,8 @@ engineering-discipline ensures the work is done correctly.
 | New task from user | Explore -> write plan.json + masterPlan.md + init-progress in active/ -> execute |
 | Every 2-3 file edits | Checkpoint via plan_utils.py |
 | Step completed | complete-step (strict) or update-step done (legacy) + add-summary immediately |
-| Dep maps show >5 files for a step | Use inline subPlan with groups |
-| Step touches >10 files or is a sweep | Use inline subPlan with groups |
+| Dep maps show >5 files for a step | Decompose into multiple steps wired with `dependsOn` |
+| Step touches >10 files or is a sweep | Decompose into multiple steps wired with `dependsOn` |
 | After any compaction | Read plan.json + progress.json IMMEDIATELY -> state where you are -> continue |
 | User says "continue" | Read plan.json + progress.json -> find next step -> execute |
 | Requirements changed | Update progress via plan_utils.py -> continue execution |

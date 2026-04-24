@@ -100,17 +100,6 @@ if pending:
         print(f'  ... and {len(pending) - 1} more pending steps')
     print()
 
-# Check sub-plan groups on in-progress steps
-for s in in_progress if in_progress else []:
-    sp = s.get('subPlan')
-    if sp and sp.get('groups'):
-        active_groups = [g for g in sp['groups'] if g.get('status') in ('pending', 'in_progress')]
-        if active_groups:
-            print(f'--- Active sub-groups for Step {s[\"id\"]} ---')
-            for g in active_groups[:3]:
-                print(f'  {g[\"name\"]} ({g[\"status\"]})')
-            print()
-
 # Blocked
 blocked = [s for s in plan.get('steps', []) if s['status'] == 'blocked']
 if blocked:

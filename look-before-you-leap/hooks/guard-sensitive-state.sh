@@ -9,6 +9,7 @@
 #   - Read of any file under ~/.claude/look-before-you-leap/state/
 #   - Edit/Write to any file under the state root
 #   - Bash commands that read (cat, head, less) or modify files in the state root
+#   - Direct main-thread calls to receipt_utils.py sign that would mint HMAC sidecars
 #
 # Allows:
 #   - Bash commands that invoke plugin-owned scripts (they access state
@@ -44,9 +45,10 @@ normalize_path() {
 }
 
 is_state_path() {
-  local p
+  local p state
   p=$(normalize_path "$1")
-  [[ -n "$p" && "$p" == "$STATE_ROOT"* ]]
+  state="$STATE_ROOT"
+  [[ -n "$p" && ( "$p" == "$state" || "$p" == "$state/"* ) ]]
 }
 
 deny() {
@@ -85,6 +87,10 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   if [[ "$COMMAND" == *"$STATE_ROOT"* ]] || \
      [[ "$COMMAND" == *"look-before-you-leap/state"* ]]; then
     deny "BLOCKED: Bash command references the receipt state root. Direct access to ${STATE_ROOT} is not allowed. Use plugin-provided scripts (receipt_utils.py) to interact with receipts."
+  fi
+
+  if [[ "$COMMAND" == *"receipt_utils.py"* && "$COMMAND" =~ (^|[[:space:]])sign[[:space:]] ]]; then
+    deny "BLOCKED: Direct HMAC sidecar minting is not allowed from the main thread. Use run-codex-verify.sh, run-codex-implement.sh, or another plugin-owned receipt wrapper so the JSON artifact and sidecar linkage are produced together."
   fi
 fi
 

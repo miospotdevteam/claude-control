@@ -1,6 +1,6 @@
 ---
 name: codex-dispatch
-description: "Orchestrates all Codex interactions for the look-before-you-leap plugin via codex exec CLI. Routes to direction-locked scripts (run-codex-verify.sh for claude-impl, run-codex-implement.sh for codex-impl), monitors JSONL streaming output, parses results, and enforces independent verification. Handles all 4 collaboration modes (claude-impl, codex-impl, collab-split, dual-pass), co-exploration dispatch, plan consensus dispatch, and symmetric error logging. Use whenever a plan step requires Codex interaction: verification of Claude's work, Codex-owned implementation, co-exploration during discovery, or plan consensus during planning. Do NOT use for: plans with no Codex involvement."
+description: "Orchestrates all Codex interactions for the look-before-you-leap plugin via codex exec CLI. Routes to direction-locked scripts (run-codex-verify.sh for claude-impl steps, run-codex-implement.sh for codex-impl steps), parallelizes across the runnable DAG frontier, and is strictly receipt-first: the main thread reads ONLY codex-receipt-step-N.json plus its HMAC sidecar — never raw streams, never .codex-result-step-N.txt as authority, never git diff, never raw exploration / consensus markdown. All large artifacts (exploration outputs, consensus batches, verification cross-checks) are routed through the lbyl-digest sub-agent. Conductor mode is the default and only mode — collab-split is gone. Use whenever a plan step requires Codex interaction. Do NOT use for plans with no Codex involvement."
 ---
 
 # Codex Dispatch
@@ -8,24 +8,67 @@ description: "Orchestrates all Codex interactions for the look-before-you-leap p
 This skill orchestrates ALL Codex interactions during plan execution.
 Claude never calls `codex exec` directly for step verification or
 implementation — it invokes this skill, which selects the correct
-direction-locked script, runs it in the background, monitors output,
-and enforces the verification protocol.
+direction-locked script, runs it in the background, and consumes only
+the **signed receipt** the script produces. Large unstructured artifacts
+(stream files, exploration MD, consensus batches, raw `git diff`) are
+NEVER read by the main thread; they are routed through the
+`lbyl-digest` sub-agent.
 
 ## Hard Routing Rules
 
 This skill is not advisory. It is the required path for Codex work.
 
-- If a plan step is Codex-owned, Claude does NOT substitute itself because
-  the work seems small or straightforward.
+- If a plan step is Codex-owned, Claude does NOT substitute itself
+  because the work seems small or straightforward.
 - If a Claude-owned step requires Codex verification, Claude does NOT
   self-certify and move on.
-- If a dispatch hangs or fails, that is NOT permission to skip Codex and
-  declare success anyway.
+- If a dispatch hangs or fails, that is NOT permission to skip Codex
+  and declare success anyway.
 - If Codex is unavailable, you must prove that with `command -v codex`
   in the current environment before recording any skip.
 
 Do not treat "Codex later", "Codex probably unavailable", or "I already
-checked enough myself" as acceptable substitutes for the actual dispatch.
+checked enough myself" as acceptable substitutes for the actual
+dispatch.
+
+---
+
+## Receipt-First Authority Model
+
+The conductor (this skill plus `look-before-you-leap`) operates on
+**signed receipts only**. The authority chain for any Codex step is:
+
+1. `<plan-dir>/codex-receipt-step-<N>.json` — the structured evidence
+   artifact written by the direction-locked wrapper. Schema:
+   `references/codex-receipt-schema.md` §2.
+2. `~/.claude/look-before-you-leap/state/<projectId>/<planId>/codex_<kind>-step-<N>.json`
+   — the HMAC sidecar that binds the receipt's bytes to the trust
+   anchor (`data.artifactSha256` ↔ sha256 of the artifact on disk).
+3. (For codex-impl only) `<plan-dir>/codex-receipt-step-<N>.claude-review.json`
+   — the sibling review file written by the verification digester
+   sub-agent, binding `review.receiptSha256` back to the artifact.
+
+The main thread reads ONLY these three files (and not all three for
+every step — see flow tables below). It does NOT read:
+
+- `.codex-result-step-N.txt` (or `-group-G.txt`) — human trace only,
+  never authoritative. Schema doc §1 / §6.
+- `.codex-stream-step-N.jsonl` — raw streaming events. Treat as
+  opaque. There is no `tail -f`, no event tailing, no JSONL parsing on
+  the main thread.
+- `git diff` of step files — the digester sub-agent may run this
+  internally, but the conductor does not.
+- Raw `codex-exploration.md`, `codex-convergence.md`,
+  `codex-consensus-round*.md`, `codex-consensus-batch-*.md`,
+  `codex-consensus-cross-cutting.md` — these are inputs to the
+  `lbyl-digest` sub-agent. The conductor reads only the digest output
+  (`discovery-digest.md`, `consensus-round-<N>-digest.md`) and the
+  bounded payload returned by the sub-agent.
+
+If you find yourself opening a stream JSONL, a `.txt` result, or a raw
+batch MD on the main thread to "check what really happened", **stop**.
+Either the receipt is sufficient, or you dispatch `lbyl-digest`. There
+is no third path.
 
 ---
 
@@ -38,25 +81,28 @@ npm install -g @openai/codex
 
 Codex skills must be installed to `~/.codex/skills/` (done automatically
 by the SessionStart hook via `install-codex-skills.sh`):
-- `lbyl-verify` — teaches Codex the verification protocol
-- `lbyl-implement` — teaches Codex the implementation protocol
+- `lbyl-verify` — teaches Codex the verification protocol and the
+  receipt schema it must emit.
+- `lbyl-implement` — teaches Codex the implementation protocol and the
+  receipt schema it must emit.
 
 Only if `command -v codex` was just run in the current environment and
-failed may you skip Codex interactions. When that happens, note the skip in
-the step's `### Verdict` section (e.g., `### Verdict\nCodex: skipped — codex CLI not installed`).
+failed may you skip Codex interactions. When that happens, note the
+skip in the step's `### Verdict` section (e.g.,
+`### Verdict\nCodex: skipped — codex CLI not installed`).
 
 ---
 
 ## Script Selection
 
-Two direction-locked scripts enforce the ownership model. Neither script
-can be used for the wrong direction — they validate the effective owner
-(step-level or group-level) and exit with an error if mismatched.
+Two direction-locked scripts enforce the ownership model. Neither
+script can be used for the wrong direction — they validate the
+step's `owner` and exit with an error if mismatched.
 
-| Effective owner | Script | What happens |
+| Step owner | Script | What happens |
 |---|---|---|
-| `claude` | `run-codex-verify.sh` | Codex reviews Claude's work |
-| `codex` | `run-codex-implement.sh` | Codex implements the target, can edit files |
+| `claude` | `run-codex-verify.sh` | Codex reviews Claude's work, emits `codex-receipt-step-<N>.json` (kind=verify). |
+| `codex` | `run-codex-implement.sh` | Codex implements the target, can edit files, emits `codex-receipt-step-<N>.json` (kind=implement). |
 
 Both scripts live at:
 ```
@@ -66,22 +112,17 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh
 
 Usage:
 ```bash
-# Step-scoped (validates step.owner)
 bash <script> <plan.json-path> <step-number>
-
-# Group-scoped (validates group.owner ?? step.owner)
-bash <script> <plan.json-path> <step-number> <group-index>
 ```
 
-The optional third argument (`group-index`, 0-based) scopes the dispatch
-to a single sub-plan group. The script validates the effective owner
-(`group.owner`, falling back to `step.owner`) and builds a prompt scoped
-to that group's files. Use this for `collab-split` steps where groups
-have mixed ownership.
-
-Output files (in the plan directory):
-- Step-scoped: `.codex-stream-step-N.jsonl` / `.codex-result-step-N.txt`
-- Group-scoped: `.codex-stream-step-N-group-G.jsonl` / `.codex-result-step-N-group-G.txt`
+Each invocation produces:
+- `<plan-dir>/codex-receipt-step-<N>.json` — the authoritative
+  receipt the conductor reads.
+- HMAC sidecar in
+  `~/.claude/look-before-you-leap/state/<projectId>/<planId>/`.
+- `<plan-dir>/.codex-result-step-N.txt` and
+  `<plan-dir>/.codex-stream-step-N.jsonl` — human traces only. Do
+  not read these from the main thread.
 
 ---
 
@@ -89,8 +130,8 @@ Output files (in the plan directory):
 
 ### For `claude-impl` steps (Claude implements, Codex verifies)
 
-1. Claude completes the step — all progress items done, own verification
-   passing (tsc, lint, tests)
+1. Claude completes the step — all progress items done, own
+   verification passing (tsc, lint, tests).
 2. **Dispatch Codex verification:**
    ```
    Bash(
@@ -98,145 +139,201 @@ Output files (in the plan directory):
      run_in_background: true
    )
    ```
-3. **Monitor JSONL** — periodically read the stream file
-   (`.codex-stream-step-N.jsonl` or `.codex-stream-step-N-group-G.jsonl`
-   for group-scoped runs; see Monitoring section)
-4. **When Codex finishes** — read the result file
-   (`.codex-result-step-N.txt` or `.codex-result-step-N-group-G.txt`)
-5. **If PASS**: write the step result using the `### Criterion:` template
-   (map each acceptance criterion to evidence), add `### Verdict\nCodex: PASS`,
-   then mark done
-6. **If findings**: fix issues, then re-run verification:
-   ```bash
-   bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step-number> [group-index]
-   ```
-   Repeat until PASS.
+3. **Wait for the wrapper to finish.** Use Monitor on the background
+   shell or block on the next message. Do NOT tail the stream file to
+   "watch progress". The wrapper exits when Codex is done and the
+   receipt + HMAC sidecar are on disk.
+4. **Read the receipt only:** open
+   `<plan-dir>/codex-receipt-step-<N>.json`. The strict
+   `verify-step-completion` hook will independently re-validate the
+   sidecar binding when `complete-step` fires, so the conductor only
+   needs the receipt's `finalVerdict` for routing.
+5. **If `finalVerdict == "PASS"`**: write the step result using the
+   `### Criterion:` template (map each acceptance criterion to the
+   receipt's `criteria[]` entries), add `### Verdict\nCodex: PASS`,
+   then mark done via `complete-step`.
+6. **If `finalVerdict == "FINDINGS"` or `"FAIL"`**: read `findings[]`
+   from the receipt, fix each one, then re-run verification. Repeat
+   until the receipt comes back PASS.
 
 ### For `codex-impl` steps (Codex implements, Claude verifies)
 
 1. **Dispatch Codex implementation:**
    ```
    Bash(
-     command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh <plan.json> <step-number> [group-index]"
+     command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh <plan.json> <step-number>"
      run_in_background: true
    )
    ```
-2. **Monitor JSONL** — watch for file changes, commands, issues
-3. **When Codex finishes** — read the result file
-   (`.codex-result-step-N.txt` or `.codex-result-step-N-group-G.txt`)
-4. **Claude verifies independently** (see Independent Verification below)
-5. Write step result using the `### Criterion:` template, add `### Verdict\nClaude: verified`, mark done
+2. **Wait for the wrapper to finish.** Same as above — no stream
+   tailing.
+3. **Read the receipt only:** open
+   `<plan-dir>/codex-receipt-step-<N>.json` to confirm Codex emitted
+   it. The conductor does NOT inspect `git diff` or modified files
+   directly.
+4. **Dispatch the verification digester sub-agent.** This is
+   mandatory for every codex-impl step:
+   ```
+   Skill(
+     skill: "lbyl-digest",
+     args: "mode=verification plan-dir=<plan-dir> step-N=<N> project-root=<project-root>"
+   )
+   ```
+   The sub-agent reads the receipt + the cited file ranges + runs the
+   independent diff-vs-receipt and sha256 cross-checks, and writes
+   `<plan-dir>/codex-receipt-step-<N>.claude-review.json`. It returns
+   a bounded payload `{ kind, stepId, claudeVerified, findingCount,
+   reviewPath, criteria, summary }`.
+5. **Gate on the digester's payload:**
+   - `claudeVerified == "PASS"` → write the step result using the
+     `### Criterion:` template (driven by the returned `criteria[]`
+     verdicts), add `### Verdict\nClaude: verified`, mark done.
+   - `claudeVerified == "FINDINGS"` → inspect the returned `criteria`
+     to identify failing ids and decide whether to re-dispatch Codex,
+     patch via a Claude implementation sub-agent, or escalate to the
+     user. If the conductor patches, dispatch Codex implement again
+     and re-run the digester on the new receipt.
+
+The `verify-step-completion` hook (per receipt-schema §1.1) enforces
+the trust chain: the HMAC sidecar must verify, the receipt's
+`artifactSha256` must match the on-disk receipt, and for codex-impl
+steps the sibling `claude-review.json` must exist with
+`claudeVerified == "PASS"` and a matching `receiptSha256`. This makes
+"Codex verifies Codex" structurally impossible.
 
 ---
 
-## JSONL Monitoring
+## Conductor Mode (the only mode)
 
-While Codex runs, periodically read the stream file to report progress
-to the user:
+Two collaboration modes exist on plan steps: `claude-impl` and
+`codex-impl`. The conductor handles both via the receipt-first flow
+above. There is no `collab-split` and no in-step group ownership —
+file isolation lives at the step boundary, enforced by the DAG.
+
+A small number of steps may carry the optional `dual-pass` flag (see
+"Dual-Pass" below); these are still receipt-driven, just with two
+sequential dispatches.
+
+---
+
+## Parallel DAG Dispatch
+
+The conductor parallelizes across the runnable frontier of the
+dependency graph. To find what is runnable right now:
 
 ```bash
-# Read latest events (use step-N-group-G suffix for group-scoped runs)
-tail -20 <plan-dir>/.codex-stream-step-N.jsonl
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/plan_utils.py runnable-steps <plan.json>
 ```
 
-Key JSONL event types:
-- `item.completed` + `type: "agent_message"` — Codex's text output
-  (findings, status updates)
-- `item.completed` + `type: "command_execution"` — commands Codex ran
-  and their output (tsc, grep, tests)
-- `item.completed` + `type: "file_change"` — files Codex modified
-  (implement only)
-- `turn.completed` — Codex is done, includes token usage
+This returns every step whose `status == "pending"` and whose
+`dependsOn[]` predecessors are all `done`. The DAG is constructed so
+that overlapping `files[]` create dependency edges — steps in the
+runnable frontier are guaranteed to have disjoint files (modulo the
+wrapper-self-modification exception below).
 
-Report to the user only what's relevant:
-- "Codex is running tsc..." (from command_execution)
-- "Codex found 2 issues in ModalShell.tsx" (from agent_message)
-- "Codex modified 5 files" (from file_change count)
-- "Codex finished — PASS" or "Codex finished — 3 findings"
+For each step in the frontier, dispatch in parallel via
+`run_in_background: true`:
+
+- `claude-impl` steps: Claude implements (potentially via Claude
+  sub-agents for batches), then dispatches `run-codex-verify.sh` in
+  the background.
+- `codex-impl` steps: dispatch `run-codex-implement.sh` in the
+  background.
+
+Each `codex exec` invocation runs independently — no coordination
+between parallel Codex processes is needed because:
+
+- Each step has isolated files (enforced by `dependsOn`).
+- Each step writes to its own receipt + sidecar pair
+  (`codex-receipt-step-<N>.json` + sidecar in
+  `~/.claude/look-before-you-leap/state/<projectId>/<planId>/`).
+- Per-step codexSessions in `progress.json` prevent session collision.
+
+When dispatching Codex for a step that is part of a parallel batch,
+the prompt MUST note which other steps are running concurrently (for
+awareness, not coordination — Codex should not attempt to coordinate
+with parallel steps). This helps Codex avoid touching files outside
+its step's scope. The wrappers already inject this from the runnable
+frontier.
+
+After dispatching the batch, wait for all background shells to
+finish, then for each completed step:
+
+1. Read its `codex-receipt-step-<N>.json`.
+2. For `codex-impl`: dispatch `lbyl-digest` (verification mode).
+3. Apply the receipt-first gate, write the step result, call
+   `complete-step`.
+4. Re-fetch `runnable-steps` and dispatch the new frontier.
+
+### MUST: Serialize steps that modify the dispatch wrappers themselves
+
+**NEVER dispatch a `codex-impl` step that edits `run-codex-implement.sh`,
+`run-codex-verify.sh`, or any other wrapper script you are actively using
+to dispatch Codex — in parallel with other dispatches that use that script.**
+
+Bash reads scripts incrementally. If a wrapper script is rewritten while
+other shells are still executing it, the running shells hit different bytes
+than they originally parsed. This produces silent corruption: `exit 127`
+("command not found") on fragments like `dex-receipt-v1` when a heredoc
+delimiter changes; truncated post-processing; lost HMAC sidecars; or
+unpredictable parse errors at arbitrary line numbers. In the worst cases
+the script appears to "succeed" with a misleading exit code. The Codex
+side typically still completes (the receipt is written), but the wrapper's
+post-codex bookkeeping is destroyed.
+
+**Identifying self-modifying steps:** before dispatching the DAG frontier,
+inspect each step's `files[]`. If ANY step in the candidate parallel batch
+has `look-before-you-leap/scripts/run-codex-implement.sh`,
+`run-codex-verify.sh`, or any other actively-used dispatch script in its
+`files[]`, that step MUST be dispatched ALONE. Hooks the wrappers source
+(e.g., `hooks/lib/find-root.sh`, `hooks/lib/receipt-state.sh`) count too —
+a step editing them has the same race risk.
+
+**Correct sequencing:**
+
+1. Partition the runnable frontier into:
+   - **Wrapper-modifying steps** (any file in the actively-used dispatch
+     toolchain).
+   - **Safe-to-parallelize steps** (everything else).
+2. Dispatch the safe set in parallel as usual.
+3. Wait for the safe set to finish + complete-step + clear markers.
+4. Dispatch each wrapper-modifying step ALONE. Wait for it to finish
+   completely (Codex AND the wrapper's post-codex section AND
+   `complete-step`) before dispatching anything else — including
+   verification subagents that themselves invoke the wrapper.
+5. Re-fetch the runnable frontier; resume parallel dispatch.
+
+**Symptom recognition:** if you see `exit 127` with a "command not found"
+error referencing a fragment of a heredoc delimiter, OR `exit 143`
+(SIGTERM) on parallel codex-impl tasks, suspect a wrapper-modification
+race or a SessionStart kill loop. Check `git diff` on the wrapper script
+for the steps that were running concurrently. The Codex receipt
+(`codex-receipt-step-<N>.json`) often shows `finalVerdict: "PASS"` even
+when the bash exit code is nonzero — read the receipt before deciding
+the work is lost.
 
 ---
 
-## Claude's Independent Verification (codex-impl steps)
+## Dual-Pass
 
-When Codex implements a step, Claude MUST verify independently. Do NOT
-use `run-codex-verify.sh` — that would have Codex verify its own work,
-which is exactly the failure mode this architecture prevents.
+A step flagged `dual-pass` runs both directions sequentially:
 
-### Verification protocol
+1. Claude does its independent pass first (design / UX / architecture
+   judgement that Codex is not well suited to make). This is normal
+   `claude-impl` work — implement, then dispatch `run-codex-verify.sh`,
+   read the receipt, gate on `finalVerdict == "PASS"`.
+2. After the verify-receipt is PASS, dispatch a second
+   `run-codex-verify.sh` pass with a focused prompt asking Codex to
+   re-examine the same files for correctness, security, and edge cases
+   the first pass did not target. This produces a second receipt
+   (`codex-receipt-step-<N>.json` is overwritten — the first pass's
+   PASS verdict is the gate that allowed the second pass).
+3. Synthesize both receipts' `findings[]` into the step result. Both
+   passes must reach `finalVerdict == "PASS"` before the step can be
+   marked done.
 
-1. **Read what changed**: `git diff --name-only` to see Codex's modifications
-2. **Read EVERY modified file** — at least the changed sections, not just
-   the diff summary
-3. **Run verification commands**: tsc/lint/tests — same commands Codex ran
-4. **Check each acceptance criterion** against the actual code — read the
-   step's `acceptanceCriteria` from plan.json and verify each one
-5. **Check consumers**: if Codex modified shared code, run deps-query on
-   modified files (if dep maps configured) or grep for import statements
-6. **Write result** using the `### Criterion:` template — map each acceptance
-   criterion to evidence, then add `### Verdict\nClaude: verified`
-
-### If Claude finds issues
-
-- Fix directly (for minor issues) or note what needs fixing
-- Log findings to `usage-errors/claude-findings/` (see Symmetric Error
-  Logging below)
-- Re-run verification after fixes
-- Update progress items via plan_utils.py (writes to progress.json)
-
-The `verify-step-completion` hook enforces this:
-- For `owner: "codex"` steps: result must contain `Claude: verified`
-  AND must NOT contain `Codex: PASS`
-- This makes "Codex verifies Codex" structurally impossible
-
----
-
-## Collaboration Mode Execution
-
-### `claude-impl` (default)
-
-1. Claude implements the step
-2. After own verification passes: dispatch `run-codex-verify.sh`
-3. Fix findings, re-verify until PASS
-4. Write step result using `### Criterion:` template, add `### Verdict\nCodex: PASS`
-
-### `codex-impl`
-
-1. Dispatch `run-codex-implement.sh`
-2. After Codex reports completion: Claude verifies independently
-3. Fix issues, re-verify
-4. Write step result using `### Criterion:` template, add `### Verdict\nClaude: verified`
-
-### `collab-split`
-
-Collab-split steps use sub-plan groups as the unit of ownership. Each
-group has an `owner` field; the effective owner is `group.owner ?? step.owner`.
-
-1. Read `step.subPlan.groups` — each group has `owner`, `files`, `status`
-2. For each pending group, check effective owner and dispatch with group index:
-   - **Claude-owned group**: Claude implements the group's files, then:
-     ```bash
-     bash run-codex-verify.sh <plan.json> <step> <group-idx>
-     ```
-     Fix findings → re-verify → repeat until PASS.
-     Record `"Group N (Claude): Codex: PASS"` in `group.notes`.
-   - **Codex-owned group**: dispatch implementation:
-     ```bash
-     bash run-codex-implement.sh <plan.json> <step> <group-idx>
-     ```
-     Claude verifies independently after (read group files, run tests).
-     Record `"Group N (Codex): Claude: verified"` in `group.notes`.
-3. After all groups complete, write the step result using the `### Criterion:`
-   template — map each acceptance criterion to evidence from the accumulated
-   group verdicts. Add `### Verdict` with combined per-group verdicts
-   (e.g., `Groups 1-4 (Claude): Codex: PASS. Groups 5,7 (Codex): Claude: verified.`)
-
-### `dual-pass`
-
-1. Claude does its independent pass first (design/UX/architecture)
-2. Dispatch `run-codex-verify.sh` with the step context — Codex
-   focuses on correctness, security, edge cases
-3. Claude synthesizes both sets of findings
-4. Record combined findings in step result
+Dual-pass semantics are unchanged from prior versions — only the
+mechanism (receipt-driven instead of raw-result-driven) is updated.
 
 ---
 
@@ -245,12 +342,13 @@ group has an `owner` field; the effective owner is `group.owner ?? step.owner`.
 Codex skills are globally installed at `~/.codex/skills/`. When Codex
 runs via `codex exec`, it automatically loads its installed skills
 (`lbyl-verify` and `lbyl-implement`) which provide the verification
-and implementation protocols.
+and implementation protocols, including the exact receipt schema
+Codex must emit.
 
 For step-specific skills (TDD, refactoring, etc.), the relevant skill
-guidance is not injected into the prompt — Codex reads plan.json's
+guidance is not injected into the prompt — Codex reads `plan.json`'s
 `skill` field and can find the skill files in the plugin directory if
-needed. The minimal prompt approach means Codex explores and reads
+needed. The minimal-prompt approach means Codex explores and reads
 what it needs.
 
 ### Injectable skills (Codex can use these)
@@ -268,82 +366,38 @@ what it needs.
 - `frontend-design`, `svg-art`, `immersive-frontend`, `react-native-mobile`
 - `brainstorming`, `writing-plans`, `doc-coauthoring`
 
-If a step has `owner: "codex"` AND a Claude-only skill, this is a routing
-error. Log it, fall back to `"none"`, and note the mismatch.
-
----
-
-## Response Parsing
-
-### Verification result (from `run-codex-verify.sh`)
-
-Read `.codex-result-step-N.txt` and look for:
-- **"PASS"** — all acceptance criteria verified. Write result using `### Criterion:` template, add `### Verdict\nCodex: PASS`.
-- **Findings list** — structured issues with severity, file, line.
-  Fix each issue, then re-run `run-codex-verify.sh`.
-
-### Implementation result (from `run-codex-implement.sh`)
-
-Read `.codex-result-step-N.txt` and extract:
-- **FILES CHANGED**: list of files Codex created or modified
-- **WHAT WAS DONE**: summary per progress item
-- **VERIFICATION**: type checker and test results
-- **ISSUES**: anything that went wrong
-
-Update progress items via plan_utils.py based on the report. Then proceed
-to Claude's independent verification.
+If a step has `owner: "codex"` AND a Claude-only skill, this is a
+routing error. Log it, fall back to `"none"`, and note the mismatch.
 
 ---
 
 ## Symmetric Error Logging
 
-Findings flow in both directions, logged to separate directories:
+Findings flow in both directions, logged to separate directories.
+Both flows are receipt-driven — the conductor never hand-extracts
+findings from raw text traces.
 
 ### Codex verifies Claude → `usage-errors/codex-findings/`
 
-Codex auto-logs findings via the `lbyl-verify` skill. You do not
-need to log these manually.
-- Initial: `YYYY-MM-DD-{plan}-step-{N}.json`
-- Re-verify: `YYYY-MM-DD-{plan}-step-{N}-reverify-{M}.json`
+The `lbyl-verify` skill embeds `findings[]` in the receipt and the
+wrapper auto-archives them to `usage-errors/codex-findings/` keyed by
+`{plan, step, retry}`. The conductor reads `findings[]` from the
+receipt for fixing; the on-disk archive is for plugin-level lessons.
 
 ### Claude verifies Codex → `usage-errors/claude-findings/`
 
-When Claude's verification of a Codex-owned step finds issues, write
-findings manually:
-- Review: `YYYY-MM-DD-{plan}-step-{N}-claude-review.json`
-- Re-review: `YYYY-MM-DD-{plan}-step-{N}-claude-review-{M}.json`
-
-### JSON schema (both directions)
-
-```json
-{
-  "plan": "{plan.name}",
-  "project": "{cwd}",
-  "step": 0,
-  "stepTitle": "{step.title}",
-  "acceptanceCriteria": "{step.acceptanceCriteria}",
-  "date": "YYYY-MM-DD",
-  "reviewer": "claude",
-  "findings": [
-    {
-      "severity": "HIGH | MEDIUM | LOW",
-      "category": "INCOMPLETE_WORK | MISSED_CONSUMER | TYPE_SAFETY | SILENT_SCOPE_CUT | WRONG_PATTERN | MISSING_TEST | MISSING_I18N | OTHER",
-      "file": "relative/path",
-      "line": 0,
-      "summary": "One-line description",
-      "detail": "Full explanation",
-      "preventable": "Which instruction could have prevented this"
-    }
-  ]
-}
-```
-
-The `reviewer` field distinguishes direction: `"claude"` for Claude's
-findings on Codex work, absent for Codex's findings on Claude's work.
+When the verification digester sub-agent returns `claudeVerified ==
+"FINDINGS"`, the conductor archives the bounded payload's `findings`
+(via the digester's `reviewPath` sibling file) to
+`usage-errors/claude-findings/` keyed by `{plan, step, retry}`. The
+sub-agent does not write into `usage-errors/` itself; the conductor
+does, after consuming the payload.
 
 ### When to log
 
-Log when verification finds issues. Do NOT log when the step passes.
+Log when verification finds issues. Do NOT log when the receipt's
+`finalVerdict == "PASS"` and (for codex-impl) the digester returns
+`claudeVerified == "PASS"`.
 
 ---
 
@@ -369,16 +423,15 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
 ```
 
 Run in the background (`run_in_background: true`) — Claude explores
-simultaneously while Codex runs. After Codex completes, Claude reads
-`codex-exploration.md` and appends its content to `discovery.md`.
-Always close stdin with `</dev/null>` when invoking `codex exec` from
-the Bash tool; otherwise Codex can hang waiting for additional stdin.
+simultaneously while Codex runs. Always close stdin with `</dev/null`
+when invoking `codex exec` from the Bash tool; otherwise Codex can hang
+waiting for additional stdin.
 
 **Phase 2 — Convergence (background):**
 
-After both agents finish, dispatch Codex for a focused convergence review.
-The prompt must ask for **gaps and disagreements only** — not a rehash of
-all findings. Keep Codex output scoped to structured bullet points.
+After both agents finish, dispatch Codex for a focused convergence
+review. The prompt must ask for **gaps and disagreements only** — not
+a rehash of all findings.
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
@@ -392,14 +445,28 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    Keep output to structured bullets — no prose summaries."
 ```
 
-After Codex completes, Claude reads `codex-convergence.md` and appends
-its content under `## [Codex: Convergence]` in `discovery.md`.
+**Phase 3 — Digest (mandatory).** The conductor does NOT read
+`codex-exploration.md` or `codex-convergence.md` itself. Instead, it
+dispatches `lbyl-digest` in co-exploration mode:
 
-If discovery.md exceeds ~100 lines, tell Codex which sections to read
-(e.g., "Read ## [Codex: Consumers] and ## [Claude: Patterns] only")
-rather than asking it to process the entire file.
+```
+Skill(
+  skill: "lbyl-digest",
+  args: "mode=co-exploration plan-dir=<plan-dir>"
+)
+```
 
-Claude reconciles after this round — merge findings, flag disagreements.
+The sub-agent reads `discovery.md`, `codex-exploration.md`, and
+`codex-convergence.md`, writes `<plan-dir>/discovery-digest.md`, and
+returns `{ kind, digestPath, topicsCount, openQuestionsCount, summary }`.
+The conductor reads only `summary` and `openQuestionsCount` to decide
+whether to surface open questions to the user before proceeding to
+`writing-plans`. The conductor opens `discovery-digest.md` only if the
+summary indicates it must.
+
+If discovery.md exceeds ~100 lines, the prompt to Codex (Phase 2)
+should already specify which sections to focus on; the digester
+absorbs further compression.
 
 ---
 
@@ -409,29 +476,31 @@ Large Codex dispatches stall when the prompt asks Codex to process
 unbounded input (e.g., "For EACH of 15 steps..." or "Read ALL 200 lines
 of findings..."). Apply this rule to every `codex exec` call:
 
-- **Batch into groups of 5.** If the input has more than 5 items (steps,
-  disagreements, findings sections), split into sequential `codex exec`
-  calls of ≤5 items each. Merge results between batches.
-- **Never retry an oversized prompt.** If a `codex exec` call times out
-  or produces truncated output, split it — do not re-run the same prompt.
-- **Cap output scope.** Ask for structured bullet points, not open-ended
-  prose. Specify what to focus on (gaps, disagreements, missing items) —
-  not "review everything."
+- **Batch into groups of 5.** If the input has more than 5 items
+  (steps, disagreements, findings sections), split into sequential
+  `codex exec` calls of ≤5 items each. The downstream digester merges
+  results between batches.
+- **Never retry an oversized prompt.** If a `codex exec` call times
+  out or produces truncated output, split it — do not re-run the same
+  prompt.
+- **Cap output scope.** Ask for structured bullet points, not
+  open-ended prose. Specify what to focus on (gaps, disagreements,
+  missing items) — not "review everything."
 
-This principle applies to consensus, convergence, verification, and any
-other multi-item Codex dispatch.
+This principle applies to consensus, convergence, verification, and
+any other multi-item Codex dispatch.
 
 ---
 
 ## Plan Consensus Dispatch
 
-After writing-plans produces the plan (conductor Step 2), Codex and Claude
-reach consensus through structured debate before Orbit review. Uses
-`codex exec` directly (not direction-locked scripts).
+After `writing-plans` produces the plan (conductor Step 2), Codex and
+Claude reach consensus through structured debate before Orbit review.
+Uses `codex exec` directly (not direction-locked scripts).
 
 **IMPORTANT: Run all consensus `codex exec` calls in foreground (no
-`run_in_background`).** Background notifications arriving during plan mode
-handoff break the context clear.
+`run_in_background`).** Background notifications arriving during plan
+mode handoff break the context clear.
 
 **Round 1 — Codex reviews the plan:**
 
@@ -472,27 +541,42 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    - ACCEPT / REJECT <reason> / MODIFY <changes>"
 
 # Continue batching until all steps are covered.
-# After all batches, Claude merges batch files into consensus-round1.md,
-# then dispatches a cross-cutting check:
+# After all batches, optionally dispatch a cross-cutting check:
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-cross-cutting.md \
   </dev/null \
-  "Read <plan-dir>/consensus-round1.md (merged batch results). \
-   Flag: missing steps, wrong ordering across the full plan, \
-   ownership assignments that contradict the routing matrix."
+  "Read <plan-dir>/codex-consensus-batch-*.md. Flag: missing steps, \
+   wrong ordering across the full plan, ownership assignments that \
+   contradict the routing matrix."
 ```
 
-Claude reads each `-o` output file and merges batch results into
-`consensus-round1.md` before proceeding to Round 2.
+**Digest the round (mandatory).** The conductor does NOT read the
+batch MD files itself. It dispatches `lbyl-digest` in consensus mode:
 
-**Round 2 — Claude responds** to each proposal (ACCEPT / REJECT with
-reasoning / COUNTER-PROPOSE). Update plan files with accepted changes.
+```
+Skill(
+  skill: "lbyl-digest",
+  args: "mode=consensus plan-dir=<plan-dir> round-N=1"
+)
+```
+
+The sub-agent reads every `codex-consensus-round1.md` and/or
+`codex-consensus-batch-*.md` (and the cross-cutting file if present),
+writes `<plan-dir>/consensus-round-1-digest.md`, and returns
+`{ kind, round, digestPath, counts, decisions, openDisagreements,
+summary }`. The conductor reads only the bounded payload —
+`counts` to decide whether the plan can advance, `decisions` to know
+which steps need plan edits, `openDisagreements` to know what to
+respond to in Round 2.
+
+**Round 2 — Claude responds** to each `decision` from the digester
+(ACCEPT / REJECT with reasoning / COUNTER-PROPOSE). Update plan files
+with accepted changes.
 
 **Round 3 (if needed) — Final resolution:**
 
-If disagreements remain after Round 2, dispatch Codex one more time.
-If **≤5 disagreements**, use a single call. If **>5**, batch into groups
-of 5 disagreements per call, merging results between batches.
+If `openDisagreements` remain after Round 2, dispatch Codex one more
+time with the disagreement list (≤5 per call; batch as in Round 1):
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
@@ -504,12 +588,17 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    - ESCALATE with both positions stated (for the user to decide in Orbit)"
 ```
 
-**Max 3 rounds.** Unresolved items go to Orbit with both positions stated.
+Then re-dispatch `lbyl-digest` in consensus mode for round 3 and gate
+on its returned `openDisagreements`.
 
-Co-exploration and plan consensus are **mandatory when Codex is available**.
-If `command -v codex` fails, document the fallback in discovery.md and pass
-`codexStatus=unavailable` to the discovery receipt. Do NOT skip co-exploration
-without running the preflight check first.
+**Max 3 rounds.** Unresolved items go to Orbit with both positions
+stated.
+
+Co-exploration and plan consensus are **mandatory when Codex is
+available**. If `command -v codex` fails, document the fallback in
+`discovery.md` and pass `codexStatus=unavailable` to the discovery
+receipt. Do NOT skip co-exploration without running the preflight
+check first.
 
 ---
 
@@ -518,73 +607,72 @@ without running the preflight check first.
 ### Codex CLI not available
 
 If `command -v codex` fails:
-- Skip all Codex interactions
+- Skip all Codex interactions.
 - Use the `### Criterion:` template for each step's result, with
-  `### Verdict\nCodex: skipped — codex CLI not installed`
-- The plan proceeds as fully Claude-owned
+  `### Verdict\nCodex: skipped — codex CLI not installed`.
+- The plan proceeds as fully Claude-owned.
 
-### Codex hangs (no new JSONL lines)
+### Codex hangs (no receipt produced)
 
-If no new events appear in the stream file for > 3 minutes:
-- Check if the `codex exec` process is still running
-- If hung, kill the process and retry once
-- If it hangs again, skip Codex for this step and note it
+If a backgrounded wrapper has not exited after a reasonable wait
+(default: 5 minutes for verify, 15 minutes for implement):
+- Check whether `codex-receipt-step-<N>.json` was written. If it
+  was, the wrapper crashed in its post-codex section but Codex
+  itself completed — read the receipt and proceed (the strict hook
+  will still validate the sidecar).
+- If no receipt exists, kill the background shell and retry the
+  dispatch once.
+- If the second attempt also fails to produce a receipt, skip
+  Codex for this step and note it in the verdict.
+
+Do NOT tail or open the stream JSONL or the `.txt` trace to
+diagnose the hang from the main thread. If you need to inspect raw
+trace data, dispatch a generic sub-agent ("read this file and
+return a bounded summary") — never read it inline.
 
 ### Codex fails mid-implementation
 
-If Codex reports ISSUES or exits with errors:
-1. Check `git diff` and `git status` to assess what Codex changed
-2. Run tsc/lint/tests
-3. If mostly complete: Claude fixes the remaining issues
-4. If fundamentally broken: ask the user before reverting changes
+If the receipt exists with `finalVerdict == "FAIL"` or a non-zero
+`codexExitCode`:
+1. Dispatch `lbyl-digest` in verification mode anyway — the digester
+   will run the diff-vs-receipt cross-check and return what is
+   recoverable.
+2. Decide based on the digester's payload: patch via a Claude
+   sub-agent, re-dispatch Codex, or escalate to the user before
+   reverting changes.
 
 ### Codex times out
 
-`codex exec` has its own timeout handling. If it exits non-zero:
-- Read whatever is in the result file
-- Treat as a partial result — Claude assesses and decides
-
----
-
-## Parallel Step Execution
-
-When the DAG frontier has multiple runnable steps, Codex may be
-implementing several steps concurrently. Each `codex exec` invocation
-runs independently — no coordination between parallel Codex processes
-is needed because:
-
-- Each step has isolated files (enforced by `dependsOn` — overlapping
-  files create edges, preventing parallel execution)
-- Each step writes to its own result/stream files
-  (`.codex-result-step-N.txt`, `.codex-stream-step-N.jsonl`)
-- Per-step codexSessions in progress.json prevent session collision
-
-When dispatching Codex for a step that's part of a parallel batch, the
-prompt MUST note which other steps are running concurrently (for awareness,
-not coordination — Codex should not attempt to coordinate with parallel
-steps). This helps Codex avoid touching files outside its step's scope.
+`codex exec` has its own timeout handling. If it exits non-zero, the
+wrapper still attempts to write the receipt with whatever Codex
+produced. Treat as above — read the receipt, gate on
+`finalVerdict`.
 
 ---
 
 ## Compaction Recovery
 
-After context compaction, codex-dispatch recovers from plan.json + progress.json:
+After context compaction, codex-dispatch recovers from `plan.json` +
+`progress.json`:
 
-1. Read plan.json (definition) + progress.json (state) — find ALL
-   in_progress steps (there may be multiple during parallel execution)
-2. For each in_progress step:
-   - Check its `dependsOn` — if all predecessors are done, the step was
-     legitimately parallel
-   - Check for result/stream files (use `step-N-group-G` suffix for
-     collab-split steps with group-scoped dispatch)
-   - If result file exists: Codex finished, parse the result
-   - If only stream file: Codex may still be running or may have failed.
-     Check if the process is still running.
-3. Continue the execution loop based on plan state — re-dispatch steps
-   whose Codex processes are no longer running
+1. Read `plan.json` (definition) + `progress.json` (state) — find
+   ALL `in_progress` steps (there may be multiple during parallel
+   execution).
+2. For each in-progress step:
+   - Check its `dependsOn` — if all predecessors are done, the step
+     was legitimately parallel.
+   - Check whether `<plan-dir>/codex-receipt-step-<N>.json` exists.
+     If yes, Codex finished — proceed with the receipt-first gate
+     (and dispatch `lbyl-digest` for codex-impl steps).
+   - If no receipt exists, the wrapper is either still running or
+     was killed. Re-dispatch.
+3. Continue the execution loop based on plan state.
 
 No thread state to recover — each `codex exec` call is standalone.
-All context lives on disk (plan.json + progress.json, discovery.md, source files).
+All authoritative context lives on disk: `plan.json`, `progress.json`,
+the receipt + sidecar pair per step, and the digester output files
+(`discovery-digest.md`, `consensus-round-<N>-digest.md`,
+`codex-receipt-step-<N>.claude-review.json`).
 
 ---
 
@@ -592,16 +680,16 @@ All context lives on disk (plan.json + progress.json, discovery.md, source files
 
 | Situation | Action |
 |---|---|
-| `claude-impl` step done | Run `run-codex-verify.sh` in background |
-| `codex-impl` step starting | Run `run-codex-implement.sh` in background |
-| Codex returns PASS | Write `### Criterion:` result, add `### Verdict\nCodex: PASS`, mark done |
-| Codex returns findings | Fix issues, re-run `run-codex-verify.sh` |
-| Codex implements step | Claude verifies independently (read files, run tests) |
-| Co-exploration (discovery) | Dispatch Phase 1 in background, Phase 2 after |
-| Plan consensus (planning) | Max 3 rounds of structured debate |
-| `collab-split` step | Dispatch per-group with group-idx arg, verify by owner |
-| `dual-pass` step | Claude pass, then Codex pass, synthesize |
-| Codex not installed | Skip, note in result |
-| Codex hangs | Kill after 3 min timeout, retry once |
-| After compaction | Read plan.json + progress.json, check for result files, continue |
-| Claude finds issues in Codex work | Log to `usage-errors/claude-findings/` |
+| `claude-impl` step done | Run `run-codex-verify.sh` in background; on completion, read receipt, gate on `finalVerdict == "PASS"`. |
+| `codex-impl` step starting | Run `run-codex-implement.sh` in background; on completion, dispatch `lbyl-digest` (verification mode). |
+| Receipt `finalVerdict == "PASS"` (claude-impl) | Write `### Criterion:` result, add `### Verdict\nCodex: PASS`, mark done. |
+| Receipt `finalVerdict == "FINDINGS"` | Read `findings[]` from receipt, fix issues, re-run wrapper. |
+| Codex implements step | Receipt + `lbyl-digest` (verification mode) → gate on `claudeVerified == "PASS"`. |
+| Co-exploration (discovery) | Phase 1 + Phase 2 codex exec, then `lbyl-digest` (co-exploration mode). |
+| Plan consensus (planning) | Up to 3 rounds; after each round, `lbyl-digest` (consensus mode). |
+| Dual-pass step | Two sequential `run-codex-verify.sh` dispatches; both receipts must be PASS. |
+| Codex not installed | Skip, note in result. |
+| Codex hangs | Wait reasonable timeout, check for receipt; retry once if missing; skip and note if persistent. |
+| Parallel dispatch | Use `runnable-steps`; serialize wrapper-modifying steps alone. |
+| After compaction | Read `plan.json` + `progress.json`, look for receipts on disk, continue. |
+| Claude finds issues in Codex work | Conductor archives digester payload findings to `usage-errors/claude-findings/`. |

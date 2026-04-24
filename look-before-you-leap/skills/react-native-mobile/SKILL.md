@@ -20,6 +20,24 @@ this mobile experience."
 
 ---
 
+## Routing Directive
+
+```text
+UI/UX (animations, haptics, gestures, visual polish) → claude.
+Code-heavy (data flow, networking, native modules, non-visual logic) → codex.
+```
+
+- If a step is mostly UI/UX (animation personality, haptic feel, gesture
+  taste, visual layout, color, typography, native look-and-feel), implement
+  it here with `owner: "claude"`, `mode: "claude-impl"`.
+- If a step is mostly code-heavy (state wiring, networking, native module
+  glue, storage, performance plumbing, tests), route it to the Codex-side
+  `react-native-mobile` skill with `owner: "codex"`, `mode: "codex-impl"`.
+- If a step mixes UI/UX and code-heavy work, split it into sequential steps
+  with `dependsOn` instead of forcing one owner.
+
+---
+
 ## Prerequisites
 
 This skill operates within the conductor's Step 1-3:

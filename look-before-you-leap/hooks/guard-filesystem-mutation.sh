@@ -29,7 +29,9 @@ COMMAND=$(hook_get_command)
 
 # --- Early allow: known plugin wrapper scripts ---
 # NOTE: grant-bypass.sh is NOT in this list — it's blocked separately below.
-WRAPPER_RE='(run-codex-verify|run-codex-implement|write-discovery-receipt|write-claude-verify-receipt|init-plan-dir|install-codex-skills)\.sh'
+# run-codex-* wrappers are allowed to emit their bound
+# .temp/plan-mode/active/<plan>/codex-receipt-step-N.json artifacts.
+WRAPPER_RE='(run-codex-verify|run-codex-implement|write-discovery-receipt|init-plan-dir|install-codex-skills)\.sh'
 CMD_TRIMMED="${COMMAND#"${COMMAND%%[![:space:]]*}"}"
 if [[ "$CMD_TRIMMED" =~ ^bash[[:space:]] ]] && [[ "$CMD_TRIMMED" =~ $WRAPPER_RE ]]; then
   if [[ "$CMD_TRIMMED" != *'&&'* && "$CMD_TRIMMED" != *'||'* && \

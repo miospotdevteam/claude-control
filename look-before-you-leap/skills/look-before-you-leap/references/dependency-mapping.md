@@ -38,10 +38,12 @@ context:
 - **Shared boundaries** — files that make two groups unsafe to split
 - **Per-group metadata**: `parallelHint` / `safeParallel` / `suggestedOrder`
 
-Use during planning (writing-plans Step 6) to shape `subPlan.groups` from the
-dependency graph instead of from intuition alone. The output is informational
-— it informs group structure but does not replace the existing threshold-based
-sub-plan criteria.
+Use during planning (writing-plans Step 5/6) to shape multiple steps with
+correct `dependsOn` edges from the dependency graph instead of from intuition
+alone. The output is informational — it informs DAG structure (no
+`subPlan.groups` mechanism exists; group-based execution was removed when
+collab-split was deleted) but does not replace the existing threshold-based
+step-decomposition criteria.
 
 ---
 

@@ -124,23 +124,29 @@ if [ -d "$PROJECT_ROOT/.temp/plan-mode" ]; then
 fi
 
 # --- Section 1.8b: Clean up stale codex markers from previous sessions ---
-# Kill any still-running codex processes and remove stale markers,
-# but ONLY in plan directories owned by this session or orphaned.
-# Never touch plans owned by other live sessions — their codex processes
-# are still in use.
+# Only kill PIDs in TRULY ORPHANED plans — those whose .session-lock owner
+# is dead or missing. Plans owned by a live session (this one OR another)
+# may have legitimately in-flight Codex processes that must NOT be killed.
+# SessionStart fires on resume after compaction within the same session, so
+# our own inflight PIDs are NOT stale and must be preserved.
 if [ -d "$PROJECT_ROOT/.temp/plan-mode/active" ]; then
   for plan_d in "$PROJECT_ROOT/.temp/plan-mode/active"/*/; do
     [ -d "$plan_d" ] || continue
     # Check plan ownership via .session-lock
     _lock_file="$plan_d/.session-lock"
+    _owner_alive=0
     if [ -f "$_lock_file" ]; then
       _owner_pid=$(cat "$_lock_file" 2>/dev/null) || true
-      if [ -n "$_owner_pid" ] && [ "$_owner_pid" != "$PPID" ] && kill -0 "$_owner_pid" 2>/dev/null; then
-        # Owned by another live session — do NOT touch its codex processes
-        continue
+      if [ -n "$_owner_pid" ] && kill -0 "$_owner_pid" 2>/dev/null; then
+        _owner_alive=1
       fi
     fi
-    # Clean PID markers: kill live processes, remove markers
+    if [ "$_owner_alive" = "1" ]; then
+      # Owned by a live session (this one or another) — leave inflight
+      # PIDs and streams alone. Their codex processes may still be running.
+      continue
+    fi
+    # Truly orphaned: owner is dead or no lock file. Clean PID markers.
     for pid_file in "$plan_d".codex-inflight-*.pid; do
       [ -f "$pid_file" ] || continue
       stale_pid=$(cat "$pid_file" 2>/dev/null) || true
@@ -148,16 +154,6 @@ if [ -d "$PROJECT_ROOT/.temp/plan-mode/active" ]; then
         kill "$stale_pid" 2>/dev/null || true
       fi
       rm -f "$pid_file"
-    done
-    # Clean incomplete streams (no matching result file)
-    for stream_file in "$plan_d".codex-stream-*.jsonl; do
-      [ -f "$stream_file" ] || continue
-      stream_name="$(basename "$stream_file")"
-      result_name="${stream_name/.codex-stream-/.codex-result-}"
-      result_name="${result_name%.jsonl}.txt"
-      if [ ! -f "$plan_d/$result_name" ]; then
-        rm -f "$stream_file"
-      fi
     done
   done
 fi
@@ -582,8 +578,11 @@ try:
             "# Get status overview\n"
             "python3 \"$PLAN_UTILS\" status \"$PLAN_JSON\"\n"
             "\n"
-            "# Get next step\n"
-            "python3 \"$PLAN_UTILS\" next-step \"$PLAN_JSON\"\n"
+            "# Validate DAG safety before parallel dispatch\n"
+            "python3 \"$PLAN_UTILS\" validate-dag \"$PLAN_JSON\"\n"
+            "\n"
+            "# Get runnable frontier for parallel dispatch\n"
+            "python3 \"$PLAN_UTILS\" runnable-steps \"$PLAN_JSON\"\n"
             "```"
         )
     )

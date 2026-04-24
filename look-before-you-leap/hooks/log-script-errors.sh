@@ -22,7 +22,7 @@ hook_read_input
 # Fast bash-level check: does the command mention any plugin script?
 # This avoids spawning Python for 99% of Bash commands.
 case "$INPUT" in
-  *plan_utils.py*|*deps-query.py*|*deps-generate.py*|*init-plan-dir.sh*|*plan-status.sh*|*resume.sh*|*look-before-you-leap/scripts/*)
+  *plan_utils.py*|*deps-query.py*|*deps-generate.py*|*receipt_utils.py*|*init-plan-dir.sh*|*plan-status.sh*|*resume.sh*|*run-codex-verify.sh*|*run-codex-implement.sh*|*look-before-you-leap/scripts/*)
     ;;
   *)
     exit 0
@@ -82,6 +82,7 @@ PLUGIN_EXEC_PATTERNS = [
     r'\bbash\s+\S*run-codex-implement\.sh\b',
     r'\bbash\s+\S*install-codex-skills\.sh\b',
     r'\bbash\s+\S*write-discovery-receipt\.sh\b',
+    r'\bpython3?\s+\S*receipt_utils\.py\b',
 ]
 if not any(re.search(pat, command) for pat in PLUGIN_EXEC_PATTERNS):
     sys.exit(0)
@@ -89,10 +90,13 @@ if not any(re.search(pat, command) for pat in PLUGIN_EXEC_PATTERNS):
 # Detect error type from response content (case-sensitive markers first,
 # then case-insensitive fallbacks for exit code formats)
 has_crash = any(marker in response for marker in [
-    "Traceback", "Error:", "FileNotFoundError",
+    "Traceback", "Error:", "ERROR:", "FileNotFoundError",
     "KeyError", "TypeError", "ValueError", "ModuleNotFoundError",
     "SyntaxError", "ImportError", "AttributeError", "IndexError",
     "PermissionError", "OSError", "RuntimeError",
+    "Failed to write codex_verify sidecar receipt",
+    "Failed to write codex_impl sidecar receipt",
+    "Receipt artifact written without sidecar",
 ])
 # Also catch exit code in various formats Claude Code may use
 if not has_crash:
@@ -112,7 +116,9 @@ severity = "HIGH" if has_crash else "MEDIUM"
 # Identify which script
 script_name = "unknown"
 for marker in ["plan_utils.py", "deps-query.py", "deps-generate.py",
-               "init-plan-dir.sh", "plan-status.sh", "resume.sh"]:
+               "receipt_utils.py", "init-plan-dir.sh", "plan-status.sh",
+               "resume.sh", "run-codex-verify.sh", "run-codex-implement.sh",
+               "write-discovery-receipt.sh"]:
     if marker in command:
         script_name = marker
         break

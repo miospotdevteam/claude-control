@@ -3,8 +3,9 @@
 #
 # All Codex interactions MUST go through `codex exec` via Bash.
 # The MCP tool bypasses direction-locked scripts (run-codex-verify.sh,
-# run-codex-implement.sh), JSONL monitoring, structured result parsing,
-# sandbox enforcement, and error logging that the plugin provides.
+# run-codex-implement.sh), JSON receipt artifacts, HMAC sidecar receipts,
+# receipt-based completion gates, lbyl-digest review flow, sandbox
+# enforcement, and error logging that the plugin provides.
 #
 # Blocks: mcp__codex__codex, mcp__codex__codex-reply
 # Redirects to: codex exec via Bash
@@ -25,12 +26,18 @@ output = {
             'BLOCKED: Do NOT use the Codex MCP tool. All Codex interactions '
             'must go through codex exec via the Bash tool.\n\n'
             'The MCP tool bypasses the direction-locked scripts '
-            '(run-codex-verify.sh, run-codex-implement.sh), JSONL monitoring, '
-            'structured result parsing, and error logging.\n\n'
+            '(run-codex-verify.sh, run-codex-implement.sh), the JSON '
+            'receipt artifact, the HMAC sidecar receipt, receipt-based '
+            'completion gates, lbyl-digest review of raw artifacts, and '
+            'error logging.\n\n'
             'For verification:\n'
             '  bash \${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-verify.sh <plan.json> <step>\n\n'
             'For codex-impl steps:\n'
             '  bash \${CLAUDE_PLUGIN_ROOT}/scripts/run-codex-implement.sh <plan.json> <step>\n\n'
+            'Those wrappers produce <plan-dir>/codex-receipt-step-N.json '
+            'plus an HMAC sidecar. The main thread reads receipts and '
+            'bounded lbyl-digest outputs; raw artifacts are handled by the '
+            'digest flow.\n\n'
             'For ad-hoc Codex queries:\n'
             '  codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \"<prompt>\"'
         )

@@ -81,11 +81,6 @@ for s in plan.get('steps', []):
     markers = {'done': '[done]    ', 'in_progress': '[ACTIVE]  ', 'pending': '[pending] ', 'blocked': '[BLOCKED] '}
     marker = markers.get(st, '[?]       ')
     print(f'    {marker} Step {s[\"id\"]}: {s[\"title\"]}')
-    sp = s.get('subPlan')
-    if sp and sp.get('groups'):
-        for g in sp['groups']:
-            gst = g.get('status', 'pending')
-            print(f'      sub-group: {g[\"name\"]} ({gst})')
 " "$plan_json"
   echo ""
 }

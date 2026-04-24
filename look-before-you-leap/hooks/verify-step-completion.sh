@@ -4,9 +4,9 @@
 # After Edit/Write to plan.json/progress.json/masterPlan.md, or after Bash calls that
 # update progress via plan_utils.py, compares step statuses with a cached
 # snapshot. When a step transitions to done/[x]:
-# 1. For codexVerify steps: checks if result field contains a Codex verdict
-#    (pattern: "Codex: PASS" or "Codex: FAIL"). If missing, reverts the
-#    step to in_progress and blocks with instructions to run Codex first.
+# 1. For codexVerify steps: checks signed receipt sidecars and bound
+#    codex-receipt-step-N.json evidence artifacts. If invalid or missing,
+#    reverts the step to in_progress and blocks with repair instructions.
 # 2. For steps that pass the Codex gate (or don't have codexVerify):
 #    creates .verify-pending-N marker and injects directive to dispatch
 #    a verification sub-agent.
@@ -99,6 +99,8 @@ fi
 CACHE_FILE="$PLAN_DIR/.step-status-cache"
 
 PLUGIN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+source "${PLUGIN_ROOT}/hooks/lib/receipt-state.sh"
+
 PLAN_UTILS="${PLUGIN_ROOT}/scripts/plan_utils.py"
 PLAN_JSON="$PLAN_DIR/plan.json"
 MASTER_PLAN="$PLAN_DIR/masterPlan.md"
@@ -108,6 +110,7 @@ export HOOK_PLAN_JSON="$PLAN_JSON"
 export HOOK_MASTER_PLAN="$MASTER_PLAN"
 export HOOK_PLAN_UTILS="$PLAN_UTILS"
 export HOOK_CACHE_FILE="$CACHE_FILE"
+export HOOK_RECEIPT_UTILS="$RECEIPT_UTILS"
 
 # Compare current step statuses with cached, detect done transitions
 RESULT=$(python3 << 'PYEOF'
@@ -211,34 +214,234 @@ plan_name="$(basename "$(dirname "$plan_path")")"
 export HOOK_NEWLY_COMPLETED="$newly_completed"
 export HOOK_PLAN_PATH="$plan_path"
 export HOOK_PLAN_NAME="$plan_name"
+export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
 
 python3 << 'PYEOF'
-import json, os, re, sys
+import hashlib
+import importlib.util
+import json
+import os
+import re
+import sys
 
 
-def count_acceptance_criteria_items(acceptance_criteria):
-    if not isinstance(acceptance_criteria, str):
-        return 0
+def acceptance_criteria_items(value):
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if not isinstance(value, str):
+        return []
 
-    text = acceptance_criteria.strip()
+    text = value.strip()
     if not text:
-        return 0
+        return []
 
     if re.search(r"(?:^|\s)\d+\.\s+", text):
-        items = [
+        return [
             item.strip()
             for item in re.split(r"(?:^|\s)(?=\d+\.\s+)", text)
             if item.strip()
         ]
-        return len(items)
 
-    items = [
+    return [
         item.strip()
         for item in re.split(r"[.;](?:\s+|$)", text)
         if item.strip()
     ]
-    return len(items)
 
+
+def criterion_sha256(text):
+    normalized = re.sub(r"\s+", " ", str(text).strip())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def realpath(path):
+    return os.path.realpath(os.path.abspath(path))
+
+
+def is_within(child, parent):
+    try:
+        return os.path.commonpath([realpath(child), realpath(parent)]) == realpath(parent)
+    except ValueError:
+        return False
+
+
+def load_receipt_utils(path):
+    spec = importlib.util.spec_from_file_location("receipt_utils", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def find_step(plan, step_id):
+    for step in plan.get("steps", []):
+        if int(step.get("id", -1)) == int(step_id):
+            return step
+    return None
+
+
+def required_data_fields():
+    return [
+        "receiptFormatVersion",
+        "step",
+        "stepId",
+        "kind",
+        "artifactPath",
+        "artifactSha256",
+        "artifactSchemaVersion",
+        "finalVerdict",
+        "planJsonSha256",
+        "planPath",
+    ]
+
+
+def verify_signed_artifact_receipt(receipt_utils, receipt_type, expected_kind,
+                                   proj_id, plan_name_val, step, plan,
+                                   plan_dir, plan_json_path):
+    step_id = int(step["id"])
+    artifact_default = os.path.join(plan_dir, f"codex-receipt-step-{step_id}.json")
+    receipt_path = os.path.join(
+        receipt_utils.STATE_ROOT,
+        proj_id,
+        plan_name_val,
+        f"{receipt_type}-step-{step_id}.json",
+    )
+
+    if not os.path.exists(artifact_default):
+        return False, f"missing JSON receipt artifact at {artifact_default}", None
+    if not os.path.exists(receipt_path):
+        return False, f"missing {receipt_type} HMAC sidecar at {receipt_path}", None
+
+    try:
+        valid, receipt = receipt_utils.verify(receipt_path)
+    except Exception as exc:
+        return False, f"cannot verify {receipt_type} sidecar: {exc}", None
+    if not valid:
+        return False, f"invalid HMAC for {receipt_type} sidecar at {receipt_path}", None
+
+    if receipt.get("type") != receipt_type:
+        return False, f"{receipt_type} sidecar has wrong type {receipt.get('type')!r}", None
+    if receipt.get("projectId") != proj_id:
+        return False, f"{receipt_type} sidecar projectId mismatch", None
+    if receipt.get("planId") != plan_name_val:
+        return False, f"{receipt_type} sidecar planId mismatch", None
+
+    data = receipt.get("data")
+    if not isinstance(data, dict):
+        return False, f"{receipt_type} sidecar missing data block", None
+    for field in required_data_fields():
+        if field not in data:
+            return False, f"{receipt_type} sidecar missing data.{field}", None
+
+    if data["receiptFormatVersion"] != "1.0.0":
+        return False, f"{receipt_type} sidecar has unsupported receiptFormatVersion", None
+    if int(data["step"]) != step_id or int(data["stepId"]) != step_id:
+        return False, f"{receipt_type} sidecar step id mismatch", None
+    if data["kind"] != expected_kind:
+        return False, f"{receipt_type} sidecar kind mismatch", None
+    if data["artifactSchemaVersion"] != "1.0.0":
+        return False, f"{receipt_type} sidecar has unsupported artifact schema", None
+    if data["finalVerdict"] != "PASS":
+        return False, f"{receipt_type} sidecar finalVerdict is {data['finalVerdict']}", None
+
+    artifact_path = realpath(data["artifactPath"])
+    if not is_within(artifact_path, plan_dir):
+        return False, f"{receipt_type} artifactPath is outside the plan directory", None
+    if artifact_path != realpath(artifact_default):
+        return False, f"{receipt_type} artifactPath does not match codex-receipt-step-{step_id}.json", None
+    if not os.path.exists(artifact_path):
+        return False, f"missing JSON receipt artifact at {artifact_path}", None
+    if sha256_file(artifact_path) != data["artifactSha256"]:
+        return False, f"{receipt_type} artifact sha256 mismatch", None
+
+    if realpath(data["planPath"]) != realpath(plan_json_path):
+        return False, f"{receipt_type} sidecar planPath mismatch", None
+    if sha256_file(plan_json_path) != data["planJsonSha256"]:
+        return False, f"{receipt_type} sidecar planJsonSha256 mismatch", None
+
+    try:
+        with open(artifact_path, encoding="utf-8") as f:
+            artifact = json.load(f)
+    except Exception as exc:
+        return False, f"cannot parse JSON receipt artifact: {exc}", None
+
+    if artifact.get("schemaVersion") != "1.0.0":
+        return False, "JSON receipt schemaVersion mismatch", None
+    if artifact.get("kind") != expected_kind:
+        return False, f"JSON receipt kind mismatch: expected {expected_kind}", None
+    if int(artifact.get("stepId", -1)) != step_id:
+        return False, "JSON receipt step-id mismatch", None
+    if artifact.get("planName") != plan_name_val:
+        return False, "JSON receipt planName mismatch", None
+    if artifact.get("owner") != step.get("owner", "codex"):
+        return False, "JSON receipt owner mismatch", None
+    if artifact.get("mode") != step.get("mode", "codex-impl"):
+        return False, "JSON receipt mode mismatch", None
+    if artifact.get("finalVerdict") != "PASS":
+        return False, f"JSON receipt finalVerdict is {artifact.get('finalVerdict')}", None
+    if artifact.get("codexExitCode") != 0:
+        return False, f"JSON receipt codexExitCode is {artifact.get('codexExitCode')}", None
+    if artifact.get("findings") != []:
+        return False, "JSON receipt findings must be empty for PASS", None
+
+    expected_criteria = acceptance_criteria_items(step.get("acceptanceCriteria") or "")
+    actual_criteria = artifact.get("criteria")
+    if len(actual_criteria or []) != len(expected_criteria):
+        return False, "JSON receipt criterion count mismatch", None
+    for index, expected_text in enumerate(expected_criteria, start=1):
+        criterion = actual_criteria[index - 1]
+        if criterion.get("id") != index:
+            return False, f"JSON receipt criterion {index} id mismatch", None
+        if criterion.get("acceptanceCriterionSha256") != criterion_sha256(expected_text):
+            return False, f"JSON receipt criterion {index} sha256 mismatch", None
+        if criterion.get("verdict") != "PASS":
+            return False, f"JSON receipt criterion {index} verdict is {criterion.get('verdict')}", None
+
+    return True, "", artifact
+
+
+def verify_claude_review(plan_dir, step_id, artifact):
+    review_path = os.path.join(plan_dir, f"codex-receipt-step-{step_id}.claude-review.json")
+    artifact_path = os.path.join(plan_dir, f"codex-receipt-step-{step_id}.json")
+    if not os.path.exists(review_path):
+        return False, f"missing Claude verification digest at {review_path}"
+
+    try:
+        with open(review_path, encoding="utf-8") as f:
+            review = json.load(f)
+    except Exception as exc:
+        return False, f"cannot parse Claude verification digest: {exc}"
+
+    if review.get("schemaVersion") != "1.0.0":
+        return False, "Claude verification digest schemaVersion mismatch"
+    if review.get("kind") != "claude-verification-digest":
+        return False, "Claude verification digest kind mismatch"
+    if int(review.get("stepId", -1)) != int(step_id):
+        return False, "Claude verification digest step-id mismatch"
+    if realpath(review.get("receiptPath", "")) != realpath(artifact_path):
+        return False, "Claude verification digest receiptPath mismatch"
+    if review.get("receiptSha256") != sha256_file(artifact_path):
+        return False, "Claude verification digest receiptSha256 mismatch"
+    if review.get("claudeVerified") != "PASS":
+        return False, f"Claude verification digest verdict is {review.get('claudeVerified')}"
+    if review.get("findings") not in ([], None):
+        return False, "Claude verification digest findings must be empty for PASS"
+
+    cross_checks = review.get("crossChecks") or {}
+    for key in ("diffMatchesReceipt", "sha256AllMatch", "findingsReceiptConsistent"):
+        if cross_checks.get(key) is not True:
+            return False, f"Claude verification digest crossChecks.{key} is not true"
+
+    if artifact.get("finalVerdict") != "PASS":
+        return False, "Codex artifact was not PASS when Claude reviewed it"
+    return True, ""
 
 steps = os.environ["HOOK_NEWLY_COMPLETED"]
 plan_path = os.environ["HOOK_PLAN_PATH"]
@@ -246,140 +449,90 @@ plan_name = os.environ["HOOK_PLAN_NAME"]
 plan_dir = os.environ["HOOK_PLAN_DIR"]
 plan_json_path = os.environ["HOOK_PLAN_JSON"]
 plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
+receipt_utils_path = os.environ["HOOK_RECEIPT_UTILS"]
 
 step_list = steps.split()
 step_display = ", ".join(f"Step {s}" for s in step_list)
 markers = ", ".join(f".verify-pending-{s}" for s in step_list)
 
-# For strict plans, also check for verification receipts
-receipt_mode = "legacy"
 project_root = os.environ.get("HOOK_PROJECT_ROOT", "")
-receipt_blocked_steps = []
+receipt_blocked = {}
+plan = None
+sys.path.insert(0, os.path.dirname(plan_utils_path))
+import plan_utils
 
 if os.path.isfile(plan_json_path):
     try:
-        with open(plan_json_path) as f:
-            _plan_data = json.load(f)
-        receipt_mode = _plan_data.get("_receiptMode", "legacy")
-    except Exception:
-        pass
-
-if receipt_mode == "strict" and project_root:
-    # Check receipts for each completed step
-    receipt_utils_path = os.path.join(
-        os.path.dirname(plan_utils_path), "receipt_utils.py"
-    )
-    try:
-        import importlib.util
-        sys.path.insert(0, os.path.dirname(plan_utils_path))
-        import plan_utils
-        spec = importlib.util.spec_from_file_location("receipt_utils", receipt_utils_path)
-        receipt_utils = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(receipt_utils)
-
+        receipt_utils = load_receipt_utils(receipt_utils_path)
+        plan = plan_utils.read_plan(plan_json_path)
         proj_id = receipt_utils.project_id(project_root)
-        plan_name_val = _plan_data.get("name", "unknown")
+        plan_name_val = plan.get("name", "unknown")
 
         for sid in step_list:
-            step_id = int(sid)
-            step_data = None
-            for s in _plan_data.get("steps", []):
-                if s["id"] == step_id:
-                    step_data = s
-                    break
-            if not step_data:
+            step = find_step(plan, int(sid))
+            if step is None or not step.get("codexVerify", True):
                 continue
 
-            extra = {"step": step_id}
-            for receipt_type in plan_utils.required_receipt_types(step_data):
-                exists, _ = receipt_utils.check(receipt_type, proj_id, plan_name_val, extra)
-                if not exists:
-                    receipt_blocked_steps.append(sid)
-                    break
-    except Exception:
-        pass
-
-# Check codexVerify steps and enforce direction-locked verification gate
-# - owner=="claude" (claude-impl): result must match "Codex: (PASS|FAIL|skipped)"
-# - owner=="codex" (codex-impl): result must match "Claude: verified" AND
-#   must NOT contain "Codex: PASS" (prevents Codex self-verification)
-codex_blocked_steps = []
-direction_blocked_steps = []
-plan = None
-if os.path.isfile(plan_json_path):
-    try:
-        sys.path.insert(0, os.path.dirname(plan_utils_path))
-        import plan_utils
-        plan = plan_utils.read_plan(plan_json_path)
-        for step in plan.get("steps", []):
-            sid = str(step["id"])
-            if sid not in step_list:
-                continue
-            if not step.get("codexVerify", True):
-                continue
-            result = step.get("result") or ""
-            owner = step.get("owner", "claude")
-            mode = step.get("mode", "claude-impl")
-
-            if mode == "collab-split":
-                # collab-split: inspect groups to determine required verdicts
-                has_codex = re.search(r"Codex:\s*(PASS|FAIL|skipped)", result, re.IGNORECASE)
-                has_claude = re.search(r"Claude:\s*verified", result, re.IGNORECASE)
-                # Check which owner types exist in the groups
-                sub_plan = step.get("subPlan") or {}
-                groups = sub_plan.get("groups", [])
-                has_claude_groups = any(g.get("owner", owner) == "claude" for g in groups)
-                has_codex_groups = any(g.get("owner", owner) == "codex" for g in groups)
-                # Require matching verdicts for each owner type present
-                missing = False
-                if has_claude_groups and not has_codex:
-                    missing = True  # Claude groups need Codex verification
-                if has_codex_groups and not has_claude:
-                    missing = True  # Codex groups need Claude verification
-                if not has_codex and not has_claude:
-                    missing = True  # No verdicts at all
-                if missing:
-                    codex_blocked_steps.append(sid)
-            elif owner == "codex":
-                # codex-impl: Claude must verify independently
-                has_claude_verified = re.search(r"Claude:\s*verified", result, re.IGNORECASE)
-                has_codex_pass = re.search(r"Codex:\s*PASS", result, re.IGNORECASE)
-                if not has_claude_verified:
-                    direction_blocked_steps.append(sid)
-                elif has_codex_pass:
-                    # Codex verified its own work — reject
-                    direction_blocked_steps.append(sid)
+            owner = step.get("owner", "codex")
+            mode = step.get("mode", "codex-impl")
+            if owner == "codex" or mode == "codex-impl":
+                ok, reason, artifact = verify_signed_artifact_receipt(
+                    receipt_utils,
+                    "codex_impl",
+                    "implement",
+                    proj_id,
+                    plan_name_val,
+                    step,
+                    plan,
+                    plan_dir,
+                    plan_json_path,
+                )
+                if not ok:
+                    receipt_blocked[sid] = reason
+                    continue
+                ok, reason = verify_claude_review(plan_dir, int(sid), artifact)
+                if not ok:
+                    receipt_blocked[sid] = reason
+                    continue
             else:
-                # claude-impl: Codex must verify
-                if not re.search(r"Codex:\s*(PASS|FAIL|skipped)", result, re.IGNORECASE):
-                    codex_blocked_steps.append(sid)
-    except Exception:
-        pass
+                ok, reason, _ = verify_signed_artifact_receipt(
+                    receipt_utils,
+                    "codex_verify",
+                    "verify",
+                    proj_id,
+                    plan_name_val,
+                    step,
+                    plan,
+                    plan_dir,
+                    plan_json_path,
+                )
+                if ok:
+                    continue
+                first_reason = reason
+                ok, reason, _ = verify_signed_artifact_receipt(
+                    receipt_utils,
+                    "claude_impl_digest",
+                    "verify",
+                    proj_id,
+                    plan_name_val,
+                    step,
+                    plan,
+                    plan_dir,
+                    plan_json_path,
+                )
+                if not ok:
+                    receipt_blocked[sid] = (
+                        f"{first_reason}; no valid claude_impl_digest alternative: {reason}"
+                    )
+    except Exception as exc:
+        for sid in step_list:
+            receipt_blocked.setdefault(sid, f"receipt verification error: {exc}")
+else:
+    for sid in step_list:
+        receipt_blocked[sid] = "plan.json not found for receipt verification"
 
-criterion_warnings = []
-if plan is not None:
-    for step in plan.get("steps", []):
-        sid = str(step["id"])
-        if sid not in step_list:
-            continue
-        result = step.get("result") or ""
-        criterion_markers = len(re.findall(r"^### Criterion:", result, re.MULTILINE))
-        criteria_count = count_acceptance_criteria_items(step.get("acceptanceCriteria") or "")
-        if criteria_count and criterion_markers < criteria_count:
-            criterion_warnings.append(
-                f"RESULT TEMPLATE WARNING — Step {sid}: "
-                f"Result field has {criterion_markers} criterion markers but "
-                f"acceptanceCriteria has {criteria_count} items. Ensure each "
-                f"criterion is mapped to evidence using ### Criterion markers."
-            )
-
-criterion_warning_text = ""
-if criterion_warnings:
-    criterion_warning_text = "\n".join(criterion_warnings) + "\n\n"
-
-# Handle direction-blocked codex-impl steps
-if direction_blocked_steps:
-    for sid in direction_blocked_steps:
+if receipt_blocked:
+    for sid in receipt_blocked:
         try:
             plan_utils.update_step_status(plan_json_path, int(sid), "in_progress")
         except Exception:
@@ -388,92 +541,24 @@ if direction_blocked_steps:
         if os.path.exists(marker_path):
             os.remove(marker_path)
 
-    blocked_display = ", ".join(f"Step {s}" for s in direction_blocked_steps)
+    blocked_display = ", ".join(f"Step {s}" for s in receipt_blocked)
+    reason_text = "\n".join(
+        f"- Step {sid}: {reason}" for sid, reason in sorted(receipt_blocked.items(), key=lambda item: int(item[0]))
+    )
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
             "additionalContext": (
-                f"CLAUDE INDEPENDENT VERIFICATION REQUIRED — "
-                f"{blocked_display} {'is' if len(direction_blocked_steps) == 1 else 'are'} "
-                "codex-impl (owner: codex) with `codexVerify: true`.\n\n"
-                f"{'This step has' if len(direction_blocked_steps) == 1 else 'These steps have'} "
-                "been reverted to `in_progress`.\n\n"
-                "For codex-impl steps, CLAUDE must verify independently — "
-                "Codex cannot verify its own work.\n\n"
-                "1. Read `git diff --name-only` to see what Codex changed\n"
-                "2. Read EVERY modified file (at least changed sections)\n"
-                "3. Run tsc/lint/tests\n"
-                "4. Check each acceptance criterion against actual code\n"
-                "5. If dep maps exist, run deps-query on modified shared files\n"
-                "6. Set the result field to include 'Claude: verified'\n"
-                "7. Do NOT include 'Codex: PASS' — that would be rejected\n"
-                "8. Then mark the step done again"
-            )
-        }
-    }
-    json.dump(output, sys.stdout)
-    sys.exit(0)
-
-# Handle codex-blocked claude-impl steps
-if codex_blocked_steps:
-    for sid in codex_blocked_steps:
-        try:
-            plan_utils.update_step_status(plan_json_path, int(sid), "in_progress")
-        except Exception:
-            pass
-        marker_path = os.path.join(plan_dir, f".verify-pending-{sid}")
-        if os.path.exists(marker_path):
-            os.remove(marker_path)
-
-    blocked_display = ", ".join(f"Step {s}" for s in codex_blocked_steps)
-    output = {
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": (
-                f"CODEX VERIFICATION REQUIRED BEFORE MARKING DONE — "
-                f"{blocked_display} {'has' if len(codex_blocked_steps) == 1 else 'have'} "
-                "`codexVerify: true` but no Codex verdict in the result field.\n\n"
-                f"{'This step has' if len(codex_blocked_steps) == 1 else 'These steps have'} "
-                "been reverted to `in_progress`.\n\n"
-                "You must run Codex verification via `run-codex-verify.sh` and get a "
-                "PASS verdict BEFORE marking the step done:\n\n"
-                "1. Invoke `Skill(skill: 'look-before-you-leap:codex-dispatch')`\n"
-                "2. The skill runs `run-codex-verify.sh` in the background\n"
-                "3. Fix any findings, then re-run verification\n"
-                "4. Repeat until Codex reports PASS\n"
-                "5. Set the result field to include 'Codex: PASS' (or the verdict)\n"
-                "6. Then mark the step done again\n\n"
-                "If `codex` CLI is not available, note 'Codex: skipped — "
-                "codex CLI not installed' in the result field."
-            )
-        }
-    }
-    json.dump(output, sys.stdout)
-    sys.exit(0)
-
-# Receipt gate for strict plans
-if receipt_blocked_steps:
-    for sid in receipt_blocked_steps:
-        try:
-            plan_utils.update_step_status(plan_json_path, int(sid), "in_progress")
-        except Exception:
-            pass
-        marker_path = os.path.join(plan_dir, f".verify-pending-{sid}")
-        if os.path.exists(marker_path):
-            os.remove(marker_path)
-
-    blocked_display = ", ".join(f"Step {s}" for s in receipt_blocked_steps)
-    output = {
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": (
-                f"RECEIPT VERIFICATION REQUIRED — {blocked_display} in strict plan "
-                "requires signed verification receipts.\n\n"
+                f"RECEIPT VERIFICATION REQUIRED — {blocked_display} "
+                "requires signed JSON receipt evidence before it can be marked done.\n\n"
                 "This step has been reverted to `in_progress`.\n\n"
-                "For claude-impl steps: run run-codex-verify.sh to get a codex_verify receipt.\n"
-                "For codex-impl steps: run run-codex-implement.sh (codex_impl receipt) + "
-                "write-claude-verify-receipt.sh (claude_verify receipt).\n\n"
-                "Use `complete-step` instead of `update-step done` for strict plans."
+                f"{reason_text}\n\n"
+                "For claude-impl steps: run run-codex-verify.sh to mint a "
+                "codex_verify sidecar bound to codex-receipt-step-N.json, or provide "
+                "a valid claude_impl_digest receipt.\n"
+                "For codex-impl steps: run run-codex-implement.sh to mint the "
+                "codex_impl sidecar, then run the lbyl-digest verification flow so "
+                "codex-receipt-step-N.claude-review.json reports PASS."
             )
         }
     }
@@ -488,7 +573,6 @@ output = {
         "additionalContext": (
             f"STEP VERIFICATION REQUIRED — {step_display} just marked [x] in "
             f"plan '{plan_name}'.\n\n"
-            f"{criterion_warning_text}"
             "STOP. Before proceeding to the next step, you MUST dispatch a "
             "verification sub-agent to confirm the completed step was "
             "implemented correctly and fully.\n\n"

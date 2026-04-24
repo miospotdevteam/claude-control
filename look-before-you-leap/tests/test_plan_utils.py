@@ -76,6 +76,44 @@ def make_plan(*, result=None, progress=None):
     }
 
 
+class ModeValidationTests(unittest.TestCase):
+    def test_valid_modes_are_current_step_modes(self):
+        self.assertEqual(
+            plan_utils.VALID_MODES,
+            {"claude-impl", "codex-impl", "dual-pass"},
+        )
+
+    def test_required_receipt_types_cover_current_modes(self):
+        cases = [
+            (
+                make_step(1, owner="claude", mode="claude-impl"),
+                ["codex_verify"],
+            ),
+            (
+                make_step(2, owner="codex", mode="codex-impl"),
+                ["codex_impl", "claude_verify"],
+            ),
+            (
+                make_step(3, owner="claude", mode="dual-pass"),
+                ["codex_verify"],
+            ),
+        ]
+
+        for step, expected in cases:
+            with self.subTest(mode=step["mode"]):
+                self.assertEqual(plan_utils.required_receipt_types(step), expected)
+
+    def test_missing_owner_defaults_to_codex(self):
+        step = make_step(4)
+        del step["owner"]
+
+        self.assertEqual(plan_utils.effective_owner(step), "codex")
+        self.assertEqual(
+            plan_utils.required_receipt_types(step),
+            ["codex_impl", "claude_verify"],
+        )
+
+
 class PlanUtilsCliTests(unittest.TestCase):
     def write_plan(self, temp_dir, plan):
         plan_path = Path(temp_dir) / "plan.json"
@@ -240,6 +278,30 @@ class SessionClaimTests(unittest.TestCase):
             self.assertEqual(payload["id"], 1)
             self.assertEqual(payload["title"], "Regression target")
 
+    def test_active_step_defaults_missing_owner_to_codex(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan = make_plan()
+            del plan["steps"][0]["owner"]
+            plan_path = self.write_plan(temp_dir, plan)
+
+            result = self.run_cli("active-step", str(plan_path))
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["owner"], "codex")
+
+    def test_validate_step_target_defaults_missing_owner_to_codex(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan = make_plan()
+            del plan["steps"][0]["owner"]
+            plan_path = self.write_plan(temp_dir, plan)
+
+            result = self.run_cli("validate-step-target", str(plan_path), "1")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["owner"], "codex")
+
 
 class CompleteStepTests(unittest.TestCase):
     def write_plan(self, temp_dir, plan):
@@ -337,48 +399,6 @@ class CompleteStepTests(unittest.TestCase):
             self.assertEqual(
                 self.read_plan(plan_path)["steps"][0]["status"], "done"
             )
-
-    def test_complete_step_strict_collab_split_requires_both_owner_receipts(self):
-        """Mixed-owner collab-split steps require both receipt families."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            plan = make_plan(result=STRUCTURED_RESULT)
-            plan["_receiptMode"] = "strict"
-            plan["steps"][0]["mode"] = "collab-split"
-            plan["steps"][0]["subPlan"] = {
-                "groups": [
-                    {"name": "Claude group", "owner": "claude", "files": ["a.ts"]},
-                    {"name": "Codex group", "owner": "codex", "files": ["b.ts"]},
-                ]
-            }
-            plan_path = self.write_plan(temp_dir, plan)
-
-            project_root = Path(temp_dir) / "project"
-            project_root.mkdir()
-            receipt_utils_path = PLUGIN_ROOT / "scripts" / "receipt_utils.py"
-            env = {**subprocess.os.environ, "HOME": temp_dir}
-            subprocess.run(
-                [sys.executable, str(receipt_utils_path), "bootstrap"],
-                env=env, capture_output=True, check=True,
-            )
-            proj_id = subprocess.run(
-                [sys.executable, str(receipt_utils_path), "project-id", str(project_root)],
-                env=env, capture_output=True, text=True, check=True,
-            ).stdout.strip()
-            subprocess.run(
-                [sys.executable, str(receipt_utils_path),
-                 "sign", "codex_verify", proj_id, "fixture", "step=1"],
-                env=env, capture_output=True, check=True,
-            )
-
-            with patch.dict(os.environ, {"HOME": temp_dir}):
-                result = self.run_cli(
-                    "complete-step", str(plan_path), "1",
-                    STRUCTURED_RESULT, str(project_root)
-                )
-
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("codex_impl receipt", result.stderr)
-
 
     def test_update_step_done_fails_strict_mode(self):
         """update-step done should fail for strict plans."""
@@ -869,6 +889,92 @@ class ParallelExecutionPlanUtilsTests(unittest.TestCase):
 
             runnable = plan_utils.runnable_steps(self.read_plan(plan_path))
             self.assertEqual([step["id"] for step in runnable], [1, 2, 3])
+
+
+class ValidateDagTests(unittest.TestCase):
+    def write_plan(self, temp_dir, plan):
+        plan_path = Path(temp_dir) / "plan.json"
+        plan_path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+        return plan_path
+
+    def run_cli(self, *args):
+        return subprocess.run(
+            [sys.executable, str(PLAN_UTILS), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def make_dag_plan(self, steps):
+        return {
+            "name": "fixture",
+            "title": "Fixture Plan",
+            "status": "active",
+            "steps": steps,
+        }
+
+    def test_validate_dag_rejects_cycles(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, self.make_dag_plan([
+                make_step(1, files=["a.py"], depends_on=[2]),
+                make_step(2, files=["b.py"], depends_on=[1]),
+            ]))
+
+            result = self.run_cli("validate-dag", str(plan_path))
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("cycle detected: 1 -> 2 -> 1", result.stderr)
+
+    def test_validate_dag_rejects_missing_dependency_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, self.make_dag_plan([
+                make_step(1, files=["a.py"], depends_on=[99]),
+                make_step(2, files=["b.py"]),
+            ]))
+
+            result = self.run_cli("validate-dag", str(plan_path))
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("step 1 dependsOn missing step 99", result.stderr)
+
+    def test_validate_dag_accepts_disjoint_parallel_steps(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, self.make_dag_plan([
+                make_step(1, files=["a.py"]),
+                make_step(2, files=["b.py"]),
+            ]))
+
+            result = self.run_cli("validate-dag", str(plan_path))
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), {"valid": True, "steps": 2})
+
+    def test_validate_dag_accepts_direct_and_transitive_overlap_dependencies(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, self.make_dag_plan([
+                make_step(1, files=["shared.py"]),
+                make_step(2, files=["shared.py"], depends_on=[1]),
+                make_step(3, files=["shared.py"], depends_on=[2]),
+            ]))
+
+            result = self.run_cli("validate-dag", str(plan_path))
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_validate_dag_rejects_overlap_without_dependency(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = self.write_plan(temp_dir, self.make_dag_plan([
+                make_step(1, files=["shared.py"]),
+                make_step(2, files=["shared.py"]),
+            ]))
+
+            result = self.run_cli("validate-dag", str(plan_path))
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "steps 1 and 2 overlap on files without dependsOn connection: shared.py",
+                result.stderr,
+            )
 
 
 if __name__ == "__main__":

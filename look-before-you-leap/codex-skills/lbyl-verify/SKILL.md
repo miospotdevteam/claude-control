@@ -173,26 +173,264 @@ exports):
 
 ## Step 5: Report
 
-### If all acceptance criteria pass
+Your output is consumed by `run-codex-verify.sh`. It is both a human trace
+and the source for `<plan-dir>/codex-receipt-step-N.json`.
 
-Report: `PASS — all acceptance criteria verified.`
+You MUST emit:
 
-Do NOT write a findings file when the result is PASS.
+1. A short human-readable summary.
+2. A final fenced JSON block with this exact delimiter:
 
-### If any issues found
+````text
+```codex-receipt-v1
+{ ...valid JSON... }
+```
+````
 
-Report each finding with this structure:
-- **Severity**: HIGH (blocks shipping, runtime failure, data loss, security) / MEDIUM (should fix before merge) / LOW (nit, style)
-- **File**: relative path to the file
-- **Line**: line number (0 if not applicable)
-- **Category**: one of `INCOMPLETE_WORK`, `MISSED_CONSUMER`, `TYPE_SAFETY`, `SILENT_SCOPE_CUT`, `WRONG_PATTERN`, `MISSING_TEST`, `MISSING_I18N`, `OTHER`
-- **Summary**: one-line description
-- **Detail**: full explanation — what was done, why it is wrong, suggested fix
-- **Preventable**: which instruction or checklist could have caught this
+The fenced block MUST be the last block in the response. Do not put prose
+inside the fence. Do not emit more than one `codex-receipt-v1` fence.
+
+### Receipt JSON contract
+
+The fenced JSON block MUST match `look-before-you-leap/references/codex-receipt-schema.md`
+schema version `1.0.0`.
+
+Required top-level fields:
+- `schemaVersion`: exactly `"1.0.0"`
+- `kind`: exactly `"verify"`
+- `stepId`: numeric plan step id
+- `owner`: step owner from `plan.json`
+- `mode`: step mode from `plan.json`
+- `planName`: plan `.name`
+- `codexExitCode`: `0` when Codex completed normally
+- `criteria`: one entry per acceptance criterion
+- `filesChanged`: changed files inspected during verification
+- `findings`: `[]` on PASS, otherwise structured finding objects
+- `finalVerdict`: `"PASS"` or `"FINDINGS"`; use `"FAIL"` only when Codex
+  itself could not complete verification
+- `generatedAt`: UTC ISO-8601 timestamp
+
+Optional but preferred fields:
+- `projectRoot`, `planPath`
+- `resultTxtPath`, `resultTxtSha256`
+- `streamJsonlPath`, `streamJsonlSha256`
+- `commands`
+- `digestHints`
+
+Each `criteria[]` item MUST include:
+- `id`: 1-based criterion index
+- `acceptanceCriterion`: verbatim criterion text from `plan.json`
+- `acceptanceCriterionSha256`: sha256 of the normalized criterion text
+- `verdict`: `"PASS"`, `"FAIL"`, or `"SKIPPED"`
+- `evidence`: array of addressable evidence
+
+For file evidence, use:
+- `type`: `"file"`
+- `file`: project-relative path
+- `lineStart` and `lineEnd`: the evidence range; these are the schema fields
+  for the required `evidence[].range`
+- `sha256`: sha of the referenced file or relevant excerpt when available
+
+For command evidence, use:
+- `type`: `"command"`
+- `command`: exact command run
+- `exitCode`: command exit code
+- `stdoutSha256` and/or `stderrSha256`: output shas when available
+
+For output evidence, use:
+- `type`: `"output"`
+- `label`: output label
+- `sha256`: output sha
+
+`finalVerdict` MUST be:
+- `"PASS"` only when every `criteria[].verdict` is `"PASS"`, `findings` is
+  empty, and `codexExitCode` is `0`.
+- `"FINDINGS"` when verification completed but any criterion failed, was
+  skipped, or any finding exists.
+- `"FAIL"` only when verification could not complete because Codex or the
+  verification environment failed.
+
+### Human summary headings
+
+Before the fenced JSON, use these exact headings:
+
+```
+VERDICT:
+<PASS|FINDINGS|FAIL> — <one sentence>
+
+CRITERIA:
+- C<id> <PASS|FAIL|SKIPPED>: <brief result>
+
+FINDINGS:
+- none
+```
+
+When findings exist, replace `- none` with one bullet per finding:
+
+```
+- HIGH INCOMPLETE_WORK path/to/file.ts:42 — <summary>
+```
+
+### PASS example
+
+```
+VERDICT:
+PASS — all acceptance criteria verified.
+
+CRITERIA:
+- C1 PASS: Verified exact headings and receipt fence in the modified skill.
+
+FINDINGS:
+- none
+```
+
+```codex-receipt-v1
+{
+  "schemaVersion": "1.0.0",
+  "kind": "verify",
+  "stepId": 15,
+  "owner": "codex",
+  "mode": "codex-impl",
+  "projectRoot": "/Users/me/Projects/claude-code-setup",
+  "planPath": ".temp/plan-mode/active/codex-first-conductor/plan.json",
+  "planName": "codex-first-conductor",
+  "codexExitCode": 0,
+  "criteria": [
+    {
+      "id": 1,
+      "acceptanceCriterion": "Both SKILL.md files specify exact headings / fenced-JSON delimiters.",
+      "acceptanceCriterionSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "verdict": "PASS",
+      "evidence": [
+        {
+          "type": "file",
+          "file": "look-before-you-leap/codex-skills/lbyl-verify/SKILL.md",
+          "lineStart": 176,
+          "lineEnd": 260,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "note": "Output contract includes exact heading and fence delimiters."
+        },
+        {
+          "type": "command",
+          "command": "python3 - <<'PY' ... yaml frontmatter validation ... PY",
+          "exitCode": 0,
+          "stdoutSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ]
+    }
+  ],
+  "filesChanged": [
+    {
+      "path": "look-before-you-leap/codex-skills/lbyl-verify/SKILL.md",
+      "changeType": "modified",
+      "sha256After": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ],
+  "commands": [
+    {
+      "command": "python3 - <<'PY' ... assert removed mode token absent ... PY",
+      "exitCode": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "findings": [],
+  "finalVerdict": "PASS",
+  "generatedAt": "2026-04-24T18:32:11Z"
+}
+```
+
+### FINDINGS example
+
+```
+VERDICT:
+FINDINGS — one acceptance criterion is not satisfied.
+
+CRITERIA:
+- C1 FAIL: Required fenced JSON delimiter is missing.
+- C2 PASS: Frontmatter remains valid.
+
+FINDINGS:
+- HIGH INCOMPLETE_WORK look-before-you-leap/codex-skills/lbyl-verify/SKILL.md:176 — Missing codex-receipt-v1 output fence.
+```
+
+```codex-receipt-v1
+{
+  "schemaVersion": "1.0.0",
+  "kind": "verify",
+  "stepId": 15,
+  "owner": "codex",
+  "mode": "codex-impl",
+  "projectRoot": "/Users/me/Projects/claude-code-setup",
+  "planPath": ".temp/plan-mode/active/codex-first-conductor/plan.json",
+  "planName": "codex-first-conductor",
+  "codexExitCode": 0,
+  "criteria": [
+    {
+      "id": 1,
+      "acceptanceCriterion": "Both SKILL.md files specify exact headings / fenced-JSON delimiters.",
+      "acceptanceCriterionSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "verdict": "FAIL",
+      "rationale": "The output contract still describes prose-only PASS reporting.",
+      "evidence": [
+        {
+          "type": "file",
+          "file": "look-before-you-leap/codex-skills/lbyl-verify/SKILL.md",
+          "lineStart": 176,
+          "lineEnd": 180,
+          "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "note": "No codex-receipt-v1 fence is specified."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "acceptanceCriterion": "Frontmatter stays valid.",
+      "acceptanceCriterionSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "verdict": "PASS",
+      "evidence": [
+        {
+          "type": "command",
+          "command": "python3 - <<'PY' ... yaml frontmatter validation ... PY",
+          "exitCode": 0,
+          "stdoutSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      ]
+    }
+  ],
+  "filesChanged": [
+    {
+      "path": "look-before-you-leap/codex-skills/lbyl-verify/SKILL.md",
+      "changeType": "modified"
+    }
+  ],
+  "commands": [
+    {
+      "command": "rg -n \"codex-receipt-v1\" look-before-you-leap/codex-skills/lbyl-verify/SKILL.md",
+      "exitCode": 1,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "HIGH",
+      "category": "INCOMPLETE_WORK",
+      "file": "look-before-you-leap/codex-skills/lbyl-verify/SKILL.md",
+      "lineStart": 176,
+      "lineEnd": 180,
+      "summary": "Missing codex-receipt-v1 output fence.",
+      "rationale": "The wrapper cannot extract a parseable JSON receipt from prose-only output.",
+      "suggestedFix": "Add the exact codex-receipt-v1 fenced JSON block required by the schema.",
+      "criterionId": 1
+    }
+  ],
+  "finalVerdict": "FINDINGS",
+  "generatedAt": "2026-04-24T18:55:09Z"
+}
+```
 
 ### Findings log
 
-When you find issues (anything other than PASS), write a JSON findings
+When you find issues (`finalVerdict` is not `"PASS"`), write a JSON findings
 report to the plugin repo's `usage-errors/codex-findings/` directory.
 The plugin repo is always at `~/Projects/claude-code-setup` — write
 findings there regardless of which project the plan runs in. Create the

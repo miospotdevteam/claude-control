@@ -31,6 +31,7 @@ Runtime updates to these fields go to `progress.json` via `plan_utils.py`.
   "title": "Descriptive Title",
   "context": "What the user asked for — enough for a fresh context window to understand the task without the original conversation.",
   "status": "active",
+  "conductorMode": true,
   "requiredSkills": ["look-before-you-leap:frontend-design"],
   "disciplines": ["testing-checklist.md", "security-checklist.md"],
   "discovery": {
@@ -46,50 +47,61 @@ Runtime updates to these fields go to `progress.json` via `plan_utils.py`.
   "steps": [
     {
       "id": 1,
-      "title": "Step title",
-      "status": "pending",
-      "owner": "claude",
-      "mode": "claude-impl",
-      "skill": "none",
-      "simplify": false,
-      "codexVerify": true,
-      "files": ["src/foo.ts", "src/bar.ts"],
-      "description": "What needs to happen. Specific enough for a fresh context window.",
-      "acceptanceCriteria": "Concrete, verifiable conditions (e.g., 'tsc --noEmit passes').",
-      "progress": [
-        {"task": "Sub-task description", "status": "pending", "files": ["src/foo.ts"]},
-        {"task": "Another sub-task", "status": "pending", "files": ["src/bar.ts"]}
-      ],
-      "subPlan": null,
-      "result": null,
-      "dependsOn": [],
-      "routingJustification": "Frontend UI / visual design → claude-impl"
-    },
-    {
-      "id": 2,
-      "title": "Large sweep step",
+      "title": "Define shared types",
       "status": "pending",
       "owner": "codex",
       "mode": "codex-impl",
       "skill": "none",
       "simplify": false,
       "codexVerify": true,
-      "files": ["a.tsx", "b.tsx", "c.tsx", "d.tsx"],
-      "description": "A step large enough to warrant a sub-plan.",
-      "acceptanceCriteria": "All files updated, tsc clean.",
+      "files": ["src/types/user.ts"],
+      "description": "Add the shared User type. Self-contained for fresh context.",
+      "acceptanceCriteria": "tsc --noEmit passes; type exported from src/types/user.ts.",
       "progress": [
-        {"task": "Group 1: Dashboard pages", "status": "pending", "files": ["a.tsx", "b.tsx"]},
-        {"task": "Group 2: Modal components", "status": "pending", "files": ["c.tsx", "d.tsx"]}
+        {"task": "Add User type", "status": "pending", "files": ["src/types/user.ts"]}
       ],
-      "subPlan": {
-        "groups": [
-          {"name": "Dashboard pages", "owner": "claude", "files": ["a.tsx", "b.tsx"]},
-          {"name": "Modal components", "owner": "codex", "files": ["c.tsx", "d.tsx"]}
-        ]
-      },
+      "result": null,
+      "dependsOn": [],
+      "routingJustification": "Backend from clear spec → codex-impl (codex default)"
+    },
+    {
+      "id": 2,
+      "title": "Implement user CRUD endpoints",
+      "status": "pending",
+      "owner": "codex",
+      "mode": "codex-impl",
+      "skill": "look-before-you-leap:test-driven-development",
+      "simplify": false,
+      "codexVerify": true,
+      "files": ["src/routes/users.ts", "tests/routes/users.test.ts"],
+      "description": "Implement GET/POST/PATCH/DELETE for /users. TDD per cycle.",
+      "acceptanceCriteria": "All tests pass; tsc --noEmit clean; consumer count via deps-query unchanged.",
+      "progress": [
+        {"task": "Cycle 1 RED+GREEN: GET /users", "status": "pending", "files": ["src/routes/users.ts", "tests/routes/users.test.ts"]},
+        {"task": "Cycle 2 RED+GREEN: POST /users", "status": "pending", "files": ["src/routes/users.ts", "tests/routes/users.test.ts"]}
+      ],
       "result": null,
       "dependsOn": [1],
-      "routingJustification": "Refactor across many files → codex-impl"
+      "routingJustification": "Backend from clear spec → codex-impl (codex default)"
+    },
+    {
+      "id": 3,
+      "title": "User profile UI",
+      "status": "pending",
+      "owner": "claude",
+      "mode": "claude-impl",
+      "skill": "look-before-you-leap:frontend-design",
+      "simplify": false,
+      "codexVerify": true,
+      "files": ["src/app/profile/page.tsx"],
+      "description": "Profile page consuming /users endpoints from step 2.",
+      "acceptanceCriteria": "Visual review passes; tsc --noEmit clean.",
+      "progress": [
+        {"task": "Build profile page", "status": "pending", "files": ["src/app/profile/page.tsx"]}
+      ],
+      "result": null,
+      "dependsOn": [2],
+      "routingJustification": "Frontend UI / visual design → claude-impl (skill in Claude-only list: frontend-design)"
     }
   ],
   "blocked": []
@@ -109,11 +121,7 @@ Auto-created by `plan_utils.py` on first mutation. All mutable state lives here.
       "progress": [
         {"status": "done"},
         {"status": "pending"}
-      ],
-      "groups": {
-        "0": {"status": "done", "notes": "Group 0: Codex: PASS"},
-        "1": {"status": "in_progress"}
-      }
+      ]
     }
   },
   "completedSummary": ["Step 1: implemented auth flow"],
@@ -142,10 +150,12 @@ Auto-created by `plan_utils.py` on first mutation. All mutable state lives here.
 | `steps.<id>.status` | string | `"pending"`, `"in_progress"`, `"done"`, `"blocked"` |
 | `steps.<id>.result` | string | What was implemented (required before marking done) |
 | `steps.<id>.progress` | object[] | Status of each progress item: `{"status": "..."}` |
-| `steps.<id>.groups` | object | Group-level status/notes keyed by index: `{"0": {"status": "done"}}` |
 | `completedSummary` | string[] | Running log of completed steps |
 | `deviations` | string[] | Where implementation deviated from plan |
 | `codexSessions` | object | Per-step Codex CLI session state, keyed by step ID. Each value: `{threadId, phase, interactionCount, lastInteraction}`. Legacy singleton `codexSession` is auto-migrated on first access. |
+
+There is NO `groups` sub-object in progress.json. The schema no longer
+supports per-group execution state — all step ownership is uniform.
 
 ### Legacy fallback
 
@@ -165,6 +175,7 @@ state from `plan.json` into a new `progress.json`.
 | `title` | string | yes | Human-readable title |
 | `context` | string | yes | What the user asked for — survives compaction |
 | `status` | string | yes | `"active"` or `"completed"` |
+| `conductorMode` | boolean | no | Defaults to `true`. When `true`, the main Claude thread does not write code directly — it dispatches every step to a subagent (Opus for `claude-impl`, Codex for `codex-impl`) and reads only structured receipts/digests. The only in-thread exception is the threshold described under "In-thread `claude-impl` threshold" below. Plans omitting this field are treated as `conductorMode: true`. Set to `false` only with explicit, documented reason — almost never. |
 | `requiredSkills` | string[] | yes | Exact skill identifiers (empty array if none) |
 | `disciplines` | string[] | yes | Checklist filenames that apply |
 | `discovery` | object | yes | All 8 exploration sections |
@@ -181,20 +192,28 @@ fields that live in `progress.json`. See the progress.json schema above.
 | `id` | number | yes | Sequential step number (1-based) |
 | `title` | string | yes | Step title |
 | `status` | string | yes | **Mutable** — initial: `"pending"`. Runtime value in progress.json. |
-| `owner` | string | no | Who implements this step: `"claude"` (default) or `"codex"`. Assigned by writing-plans skill based on routing matrix. Claude-owned steps are verified by Codex; Codex-owned steps are verified by Claude. |
-| `mode` | string | no | Collaboration mode for this step. One of: `"claude-impl"` (default), `"codex-impl"`, `"collab-split"`, `"dual-pass"`. Determines how Claude and Codex interact. See collaboration modes below. |
-| `skill` | string | yes | Skill to invoke, or `"none"` |
+| `owner` | string | no | Who implements this step: `"codex"` (default under conductor mode) or `"claude"`. Assigned by `writing-plans` based on the routing matrix. Claude-owned steps are verified by Codex; Codex-owned steps are verified by Claude (independently, via a verification subagent reading the receipt). |
+| `mode` | string | no | Collaboration mode for this step. **Exactly three valid values**: `"codex-impl"` (default — Codex implements, Claude verifies via receipt), `"claude-impl"` (Opus subagent implements, Codex verifies via receipt), `"dual-pass"` (both agents work independently — used for security review and PR review only). No other mode value is accepted. Mixed-ownership work is split into two sequential single-owner steps with `dependsOn`. |
+| `skill` | string | yes | Skill to invoke, or `"none"`. Use `"none"` or `look-before-you-leap:<name>` form. The internal `lbyl-digest` skill is dispatched only by the conductor and MUST NOT appear here. |
 | `simplify` | boolean | yes | Whether to run simplification after step |
 | `qa` | boolean | no | Whether to run fresh-eyes QA sub-agent after step (default false) |
-| `codexVerify` | boolean | no | Always true — no exceptions, no mode-based exemptions. Codex verification is structural. Uses `run-codex-verify.sh` for claude-impl steps. For codex-impl steps, Claude verifies independently. |
+| `codexVerify` | boolean | no | Always true — no exceptions, no mode-based exemptions. Codex verification is structural. Uses `run-codex-verify.sh` for `claude-impl` steps; for `codex-impl` steps, an Opus verification subagent reads the structured receipt independently. |
 | `files` | string[] | yes | Files involved in this step |
 | `description` | string | yes | What to do — self-contained for fresh context |
 | `acceptanceCriteria` | string | yes | How to know the step is done |
 | `progress` | Progress[] | yes | Sub-task checklist (empty array for simple steps) |
-| `subPlan` | SubPlan? | no | Inline sub-plan for large steps (null if none) |
 | `result` | string? | no | **Mutable** — initial: null. Runtime value in progress.json. Uses `### Criterion:` template. See Result Field Format below. |
-| `dependsOn` | number[] | no | Step IDs that must complete before this step can start. Computed by writing-plans from file overlap + dep-map enrichment. Steps with empty `dependsOn` (or all predecessors done) are immediately runnable. Defaults to `[]`. |
-| `routingJustification` | string | no | Why this step was assigned to this owner/mode — routing matrix category and justification. Format: `"<category> → <mode> [override reason]"`. Required by writing-plans skill for auditability. Example: `"Refactor across many files → codex-impl"` |
+| `dependsOn` | number[] | no | Step IDs that must complete before this step can start. Computed by writing-plans from file overlap + dep-map enrichment. Steps with empty `dependsOn` (or all predecessors done) are immediately runnable. Defaults to `[]`. **This is the sole DAG signal** under parallel-dispatch — under-specified `dependsOn` causes races. |
+| `routingJustification` | string | yes | Why this step was assigned to this owner/mode — routing matrix category and justification. Required for auditability. Examples: `"Backend from clear spec → codex-impl (codex default)"`, `"Frontend UI / visual design → claude-impl (skill in Claude-only list: frontend-design)"`, `"react-native-mobile UI/UX per Routing Directive → claude-impl"`. |
+
+### Disallowed step fields (do not emit)
+
+`writing-plans` MUST NOT emit any per-step inline grouping object
+(historically named `subPlan`) and MUST NOT emit any `mode` value
+outside the three listed above. Validators reject both. Decompose
+oversized or mixed-ownership work into multiple smaller single-owner
+steps linked by `dependsOn` — each has its own `id`, `owner`, `mode`,
+and `files`. There is no inline per-step grouping mechanism.
 
 ### Progress item fields
 
@@ -203,22 +222,6 @@ fields that live in `progress.json`. See the progress.json schema above.
 | `task` | string | yes | Sub-task description |
 | `status` | string | yes | **Mutable** — runtime value in progress.json. One of: `pending`, `in_progress`, `done` |
 | `files` | string[] | yes | Files involved in this sub-task |
-
-### SubPlan fields
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `groups` | Group[] | yes | Ordered list of file groups |
-
-### Group fields
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | string | yes | Logical cluster name |
-| `owner` | string | no | Who implements this group: `"claude"` or `"codex"`. Defaults to the parent step's `owner` if omitted. For `collab-split` steps, each group gets its own owner — the executor checks the effective owner (`group.owner ?? step.owner`) to dispatch to the correct agent. Assigned by writing-plans skill using the routing matrix. |
-| `files` | string[] | yes | Files in this group |
-| `status` | string | yes | **Mutable** — runtime value in progress.json. One of: `pending`, `in_progress`, `done` |
-| `notes` | string? | no | **Mutable** — runtime value in progress.json. Execution notes (null before, filled during) |
 
 ## Result Field Format
 
@@ -268,7 +271,7 @@ once the enforcement is implemented.
 
 ## Status Values
 
-Steps, progress items, and groups all use the same status values:
+Steps and progress items use the same status values:
 
 | Value | Meaning |
 |---|---|
@@ -281,9 +284,13 @@ Steps, progress items, and groups all use the same status values:
 
 Some plans set `_receiptMode` to `"strict"`. In strict mode, completed
 steps must have the required verification receipts before the plan can move
-to `completed/`. If a plan is intended to use strict mode, call that out in
-the proposal so the reviewer knows the completion gate is stricter than the
-default legacy flow.
+to `completed/`. Under conductor mode, both `codex-impl` and `claude-impl`
+steps emit signed sidecar receipts (paired with in-tree evidence
+artifacts). See `look-before-you-leap/references/codex-receipt-schema.md`
+for the dual-authority binding (HMAC-signed sidecar + sha256-bound
+evidence artifact). If a plan is intended to use strict mode, call that
+out in the proposal so the reviewer knows the completion gate is stricter
+than the default legacy flow.
 
 ## Updating Progress
 
@@ -305,25 +312,70 @@ python3 /path/to/plan_utils.py add-summary /path/to/plan.json "Step 3: Migrated 
 # Get plan status overview
 python3 /path/to/plan_utils.py status /path/to/plan.json
 
-# Get next step to work on
+# Get next single step (legacy)
 python3 /path/to/plan_utils.py next-step /path/to/plan.json
+
+# Get the full DAG frontier (preferred under parallel-dispatch conductor mode)
+python3 /path/to/plan_utils.py runnable-steps /path/to/plan.json
 ```
 
 ## Collaboration Modes
 
-Four distinct collaboration patterns determine how Claude and Codex interact
-on each step. The `mode` field on each step selects the pattern:
+**Exactly three valid modes.** Mixed ownership is expressed as two
+sequential single-owner steps with `dependsOn` rather than as a single
+mixed-mode step.
 
 | Mode | `owner` | Description |
 |---|---|---|
-| `claude-impl` | `claude` | Claude implements, Codex verifies afterward. The default mode — matches the existing codexVerify flow. |
-| `codex-impl` | `codex` | Codex implements via `codex exec`, Claude verifies afterward independently. For backend, refactoring, debugging, CI. |
-| `collab-split` | mixed | Both discuss approach first, then execution splits into sub-steps with mixed ownership. For complex features, migrations, integrations. |
-| `dual-pass` | both | Both agents work independently, Claude synthesizes findings. For security review, PR review. |
+| `codex-impl` | `codex` | **Default under conductor mode.** Codex implements via `run-codex-implement.sh`; emits a structured receipt. A Claude verification subagent reads the receipt JSON (NOT raw `.codex-result-step-N.txt`) and reports a bounded digest to the conductor. For backend, refactoring, debugging, CI, performance, i18n, migrations, sweeps. |
+| `claude-impl` | `claude` | An Opus subagent implements (or, under the in-thread threshold below, the main thread implements). Codex verifies afterward via `run-codex-verify.sh`; the verification produces a signed sidecar + evidence artifact. Used for steps whose `skill` is in the Claude-only set or that the RN Routing Directive sends to Claude. |
+| `dual-pass` | both | Both agents work independently, Claude synthesizes. Used for security review and PR review only. |
 
 The `owner` field is the primary dispatch signal during execution. The
 `mode` field provides additional context about HOW the owner interacts
-with the other agent. `codex-dispatch` skill reads both fields.
+with the other agent. `codex-dispatch` reads both fields.
+
+### In-thread `claude-impl` threshold
+
+Conductor mode is the default. The main thread never writes code
+directly — every step dispatches to a subagent — with one narrow
+exception:
+
+A `claude-impl` step MAY run inside the main thread iff BOTH:
+1. the step's `files` array has **≤1 file**, AND
+2. the step's `skill` is one of `{brainstorming, writing-plans,
+   doc-coauthoring}`.
+
+Every other `claude-impl` step dispatches to an Opus subagent. Every
+`codex-impl` step dispatches via `run-codex-implement.sh`.
+
+## Receipt-first verification
+
+Under conductor mode, both directions of verification produce structured
+artifacts the main thread reads via digest subagents — never raw text:
+
+- **`codex-impl` step**: `run-codex-implement.sh` writes
+  `<plan-dir>/codex-receipt-step-N.json` (evidence artifact) plus an
+  HMAC-signed sidecar receipt under
+  `~/.claude/look-before-you-leap/state/<projectId>/<planId>/`. The
+  Claude verification subagent reads the receipt; the
+  `.codex-result-step-N.txt` trace is preserved for human debugging
+  only and its sha256 is bound into the sidecar.
+- **`claude-impl` step**: `run-codex-verify.sh` writes the verify
+  evidence artifact + signed sidecar with the same dual-authority
+  binding.
+
+See `look-before-you-leap/references/codex-receipt-schema.md` for the
+authoritative schema and the strict verifier contract enforced by
+`verify-step-completion.sh`.
+
+## Machine defaults — never downgrade
+
+Default models are configured at the machine level — Claude Code = Opus
+4.7 high; Codex = gpt-5.5 high fast. Dispatch scripts and skill prompts
+MUST NOT pass `--model` flags that downgrade these defaults. Plan steps
+MUST NOT include such flags in their descriptions or acceptance
+criteria. See `look-before-you-leap/references/machine-defaults.md`.
 
 ## masterPlan.md (companion file)
 

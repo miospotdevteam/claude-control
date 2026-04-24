@@ -53,11 +53,11 @@ Respond with ONLY valid JSON (no markdown fences, no extra text) in this exact f
 """
 
 
-def run_claude(prompt, timeout=300, model="sonnet"):
+def run_claude(prompt, timeout=300):
     """Invoke claude -p and return stdout. Returns None on failure."""
     try:
         result = subprocess.run(
-            ["claude", "--model", model, "-p", prompt],
+            ["claude", "-p", prompt],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -112,7 +112,7 @@ def parse_grade_json(text):
     return None
 
 
-def run_single_eval(skill_dir, prompt, output_dir, run_index, model):
+def run_single_eval(skill_dir, prompt, output_dir, run_index):
     """Execute one evaluation run: generate output then grade it."""
     skill_md_path = os.path.join(skill_dir, "SKILL.md")
     parsed = parse_skill_md(skill_md_path)
@@ -129,7 +129,7 @@ def run_single_eval(skill_dir, prompt, output_dir, run_index, model):
     )
 
     print(f"  Run {run_index}: generating output...", file=sys.stderr)
-    output = run_claude(gen_prompt, model=model)
+    output = run_claude(gen_prompt)
     if output is None:
         return False
 
@@ -144,7 +144,7 @@ def run_single_eval(skill_dir, prompt, output_dir, run_index, model):
     grader_prompt = GRADER_PROMPT_TEMPLATE.format(
         prompt=prompt, output=output[:10000]  # Cap at 10k chars for grading
     )
-    grade_text = run_claude(grader_prompt, model=model)
+    grade_text = run_claude(grader_prompt)
     if grade_text is None:
         return False
 
@@ -163,7 +163,7 @@ def run_single_eval(skill_dir, prompt, output_dir, run_index, model):
     # Add metadata
     grade["_meta"] = {
         "run_index": run_index,
-        "model": model,
+        "model": "machine-default",
         "skill_dir": skill_dir,
         "prompt": prompt,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -203,11 +203,6 @@ def main():
         default=3,
         help="Number of evaluation runs (default: 3)",
     )
-    parser.add_argument(
-        "--model",
-        default="sonnet",
-        help="Model to use (default: sonnet)",
-    )
     args = parser.parse_args()
 
     # Validate inputs
@@ -226,7 +221,7 @@ def main():
     failures = 0
     for i in range(1, args.runs + 1):
         ok = run_single_eval(
-            args.skill_dir, args.prompt, args.output_dir, i, args.model
+            args.skill_dir, args.prompt, args.output_dir, i
         )
         if not ok:
             failures += 1

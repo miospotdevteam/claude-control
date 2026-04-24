@@ -121,8 +121,6 @@ def sign(receipt_type, proj_id, p_id, extra=None):
     if extra:
         if "step" in extra:
             detail_parts.append(f"step-{extra['step']}")
-        if "group" in extra:
-            detail_parts.append(f"group-{extra['group']}")
     detail = "-".join(detail_parts) if detail_parts else "default"
     filename = f"{receipt_type}-{detail}.json"
 
@@ -166,8 +164,6 @@ def check(receipt_type, proj_id, p_id, extra=None):
     if extra:
         if "step" in extra:
             detail_parts.append(f"step-{extra['step']}")
-        if "group" in extra:
-            detail_parts.append(f"group-{extra['group']}")
     detail = "-".join(detail_parts) if detail_parts else "default"
     filename = f"{receipt_type}-{detail}.json"
 

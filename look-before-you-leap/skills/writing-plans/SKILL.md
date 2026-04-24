@@ -98,15 +98,69 @@ not planning):
 
 ### 3. Classify step ownership (mandatory — before writing JSON)
 
-**This step is the #1 defense against all-claude-impl plans.** You MUST
-complete this before writing plan.json. If you skip this, every step
-defaults to `claude-impl` and Codex is reduced to a verification-only
-role — wasting its implementation capacity on mechanical tasks it could
-own.
+**Codex is the default implementer.** Under the conductor-mode
+architecture (plan-level `conductorMode: true`), every step is presumed
+`codex-impl` unless an explicit, justified override applies. Claude-impl
+requires a written justification on the step, and that justification MUST
+cite either:
+
+- the step's `skill` is in the **Claude-only skill list** (see below), OR
+- the step matches the conditional `react-native-mobile` Routing
+  Directive (see "RN-mobile conditional routing" below), OR
+- the routing matrix's documented overrides (security-sensitive design,
+  external-tool reasoning, etc.) apply.
+
+This step is the #1 defense against accidental all-claude-impl plans.
+You MUST complete it before writing plan.json. If you skip it, the
+default kicks in: every step gets `codex-impl` and only the Claude-only
+skill list (and RN routing directive) can move a step back to Claude.
+Treat an all-claude-impl first draft as a planning failure — every step
+that could be Codex must be Codex unless the routing matrix exempts it.
 
 Read `references/routing-matrix.md` now (you should have already read it
 in Step 2). For each step you plan to create, classify it against the
 routing matrix task categories.
+
+#### Claude-only skill list (exact, exhaustive)
+
+A step's `skill` field forces `owner: "claude"` if and only if the
+skill is one of EXACTLY these six:
+
+```
+frontend-design, svg-art, immersive-frontend,
+brainstorming, writing-plans, doc-coauthoring
+```
+
+Notes on this list:
+
+- `react-native-mobile` is NOT in the Claude-only list — it is
+  **conditional** (see RN routing rule below).
+- `lbyl-digest` is **internal-only**: it is dispatched by the conductor
+  for receipt and consensus digesting, and MUST NOT appear as a
+  plan-step `skill` value. Do not assign it to any plan step.
+- Any step whose `skill` is NOT in this list defaults to `codex-impl`
+  unless a routing-matrix override applies and is documented in
+  `routingJustification`.
+
+#### RN-mobile conditional routing rule
+
+If a step's `skill` would be `react-native-mobile`, do NOT auto-assign
+ownership. Instead, read the **Routing Directive** section in
+`look-before-you-leap/skills/react-native-mobile/SKILL.md` and pick:
+
+- **UI/UX work** (visual layout, animation polish, gesture taste,
+  haptic feel, native look-and-feel) → `owner: "claude"`,
+  `mode: "claude-impl"`. Justification: "react-native-mobile UI/UX
+  per Routing Directive → claude-impl".
+- **Code-heavy work** (state-machine wiring, refactors, list
+  virtualization plumbing, mechanical platform-API integration with no
+  visual taste call) → `owner: "codex"`, `mode: "codex-impl"`.
+  Justification: "react-native-mobile code-heavy per Routing Directive
+  → codex-impl".
+
+The Routing Directive in the RN skill is the source of truth. If the
+step blends UI/UX and code-heavy work, split it into two sequential
+steps with `dependsOn` rather than forcing a single owner.
 
 #### Produce a routing classification table
 
@@ -124,50 +178,64 @@ This table is the auditable artifact that proves routing was considered.
 Copy each row's justification into the step's `routingJustification`
 field in plan.json.
 
-#### Aggressive Codex routing — the default stance
+#### Codex-default routing — the only valid stance
 
-The routing matrix defaults most task types to `codex-impl`. Claude keeps
-only: frontend UI / visual design, creative / marketing, product copy,
-documentation, and security-sensitive design. **Everything mechanical goes
-to Codex**: backend, refactoring, testing, debugging, CI/CD, performance,
-i18n, migrations, dependency upgrades.
+Codex owns implementation by default. Claude only owns a step when its
+`skill` is in the Claude-only list above, when the RN-mobile Routing
+Directive sends it to Claude, or when a routing-matrix override applies
+(e.g., security-sensitive design, MCP/external-tool reasoning).
+**Everything else — backend, refactoring, testing, debugging, CI/CD,
+performance, i18n, migrations, dependency upgrades, sweeps — is
+codex-impl.**
 
-When classifying steps, start by asking: "Does this step require visual
-taste, creative judgment, or direct user interaction?" If no, it likely
-belongs to Codex.
+When classifying, start by asking: "Is this step's `skill` in the
+Claude-only list, OR does the RN Routing Directive send it to Claude,
+OR does a documented routing-matrix override apply?" If the answer to
+all three is no, the step is `codex-impl`.
 
-#### Anti-pattern: all-claude-impl plans
+#### Anti-pattern: undefaulted claude-impl
 
-**If every step in a multi-step plan (3+ steps) ends up as `claude-impl`,
-re-read the routing matrix — this is almost certainly wrong.** Mechanical
-sweeps, file-wide refactoring, test writing, CI setup, and verification
-steps should route to Codex. The only valid all-claude-impl plan is one
-where every step requires visual taste, creative judgment, or user
-interaction — and even then, test-writing sub-steps should still route
-to Codex.
+**Any `claude-impl` step without an explicit `routingJustification`
+citing one of the three allowed reasons is a planning bug.** If a
+multi-step plan ends up with a majority of `claude-impl` steps and you
+can't point each one at the Claude-only list, the RN directive, or a
+named routing-matrix override, re-classify — Codex should be carrying
+the mechanical work.
 
-Treat an all-claude-impl first draft as a planning failure, not as an
-acceptable outcome. Re-read the routing matrix and classify again until
-you can justify each Claude-owned step against the matrix explicitly.
+The only valid mostly-Claude plans are ones whose steps all touch
+Claude-only skills (e.g., a multi-step `frontend-design` build). Even
+those should split out test-writing into separate `codex-impl` steps
+with `dependsOn`.
 
 #### Classification rules
 
 1. For each step, identify its **primary task category** from the routing
    matrix table (e.g., "Backend from clear spec", "Frontend UI", "Refactor
    across many files")
-2. Read the **Default Owner** and **Default Mode** columns
+2. Read the **Default Owner** and **Default Mode** columns; the
+   conductor-mode default for unmatched/mechanical work is
+   `codex-impl`
 3. Check the **Override Conditions** — if any apply, use the override
-4. Check **skill injection rules** — if the step needs a Claude-only
-   skill (`frontend-design`, `svg-art`, `immersive-frontend`,
-   `react-native-mobile`, `brainstorming`, `doc-coauthoring`), it MUST
-   stay `owner: "claude"` regardless of routing matrix
-5. Set `owner`, `mode`, and `routingJustification` on the step
+   and cite it in `routingJustification`
+4. Check **skill injection rules** — if the step's `skill` is in the
+   Claude-only list (`frontend-design`, `svg-art`, `immersive-frontend`,
+   `brainstorming`, `writing-plans`, `doc-coauthoring`), it MUST stay
+   `owner: "claude"` regardless of routing matrix
+5. If the step's `skill` is `react-native-mobile`, apply the RN
+   conditional routing rule above instead of defaulting
+6. Set `owner`, `mode`, and `routingJustification` on the step
 
 **The `routingJustification` field is required on every step.** Format:
 `"<category match> → <owner>-<mode> [reason if override]"`. Examples:
-- `"Frontend UI / visual design → claude-impl"`
-- `"Refactor across many files → codex-impl"`
+- `"Frontend UI / visual design → claude-impl (skill in Claude-only list: frontend-design)"`
+- `"Refactor across many files → codex-impl (codex default)"`
 - `"Backend from clear spec → claude-impl (override: needs MCP tool reasoning)"`
+- `"react-native-mobile UI/UX per Routing Directive → claude-impl"`
+- `"react-native-mobile code-heavy per Routing Directive → codex-impl"`
+
+Valid `mode` values are exactly: `claude-impl`, `codex-impl`,
+`dual-pass`. Mixed-ownership steps must be split into two sequential
+single-owner steps linked by `dependsOn`. See "Mode reference" below.
 
 #### Dynamic routing
 
@@ -327,12 +395,54 @@ template). These skills CAN be injected into Codex:
 - `test-driven-development`, `refactoring`, `systematic-debugging`,
   `webapp-testing`, `mcp-builder`
 
-These skills stay Claude-only and MUST NOT have `owner: "codex"`:
-- `frontend-design`, `svg-art`, `immersive-frontend`, `react-native-mobile`,
+These six skills stay **Claude-only** and MUST NOT have `owner: "codex"`:
+- `frontend-design`, `svg-art`, `immersive-frontend`,
   `brainstorming`, `writing-plans`, `doc-coauthoring`
 
-If a step needs a Claude-only skill, its owner MUST be `"claude"` regardless
-of what the routing matrix says. This is a hard constraint.
+`react-native-mobile` is **conditional** (see RN routing rule above) —
+it MAY be `owner: "codex"` for code-heavy work or `owner: "claude"` for
+UI/UX work, per its Routing Directive.
+
+`lbyl-digest` is **internal-only** and MUST NOT appear in any plan
+step's `skill` field. The conductor dispatches it to digest receipts and
+consensus output; it is not a plan-routable skill.
+
+If a step needs a Claude-only skill (one of the six above), its owner
+MUST be `"claude"` regardless of what the routing matrix says. This is a
+hard constraint.
+
+#### In-thread vs. dispatched execution (conductor mode)
+
+Conductor mode is the default (`conductorMode: true` at plan level).
+The main thread never writes code directly; everything dispatches to a
+subagent. There is exactly one narrow exception:
+
+**Threshold for in-thread `claude-impl`**: a `claude-impl` step MAY run
+in the main thread iff BOTH conditions hold:
+
+1. The step's `files` array has **≤1 file**, AND
+2. The step's `skill` is one of `{brainstorming, writing-plans,
+   doc-coauthoring}`.
+
+Every other `claude-impl` step dispatches to an Opus subagent. All
+`codex-impl` steps dispatch through `run-codex-implement.sh`.
+
+#### Mode reference
+
+Only three modes are valid: `claude-impl`, `codex-impl`, `dual-pass`.
+
+- `claude-impl` — Opus subagent (or main thread under the threshold
+  above) implements; Codex verifies via receipt.
+- `codex-impl` — Codex implements via `run-codex-implement.sh`; emits a
+  structured receipt; an Opus verification subagent reads the receipt
+  (NOT the raw artifact).
+- `dual-pass` — both agents review; used for security review and PR
+  review where each angle (design vs. correctness) needs an
+  independent pass.
+
+Only the three modes above are valid. Do not emit any other mode
+value. If a step needs mixed ownership across files, split it into two
+sequential single-owner steps with `dependsOn`.
 
 #### When to set `simplify: true`
 
@@ -373,10 +483,35 @@ checker and tests, and checks consumer integrity via dep maps. It catches
 issues Claude might miss due to compaction or tunnel vision.
 
 If the `codex` CLI is unavailable at runtime, Codex verification is
-skipped gracefully (noted under `### Verdict` in the structured result).
+skipped gracefully (noted in the structured receipt).
 
 Codex verification uses `run-codex-verify.sh` (direction-locked). See
 the `codex-dispatch` skill for the full flow.
+
+#### Receipt-first verification (codex-impl steps)
+
+`codex-impl` steps emit a structured receipt:
+`<plan-dir>/codex-receipt-step-N.json`. The receipt is produced from a
+fenced ` ```codex-receipt-v1 ` block written by the wrapper script and
+HMAC-signed via a sidecar in
+`~/.claude/look-before-you-leap/state/<projectId>/<planId>/`. See
+`look-before-you-leap/references/codex-receipt-schema.md` for the full
+schema.
+
+The verification subagent dispatched after a `codex-impl` step MUST
+read the receipt JSON, NOT the raw `.codex-result-step-N.txt` trace.
+The TXT file is preserved as a human-readable trace only — its sha256
+is bound into the receipt so post-mint tampering is detectable, but the
+main thread and verification subagent read the receipt.
+
+#### Model pinning — rely on machine defaults
+
+NEVER pass `--model` flags that downgrade the configured machine
+defaults. Claude Code = Opus 4.7 high; Codex = gpt-5.5 high fast. See
+`look-before-you-leap/references/machine-defaults.md` for the full
+no-downgrade rule and verification commands. Do not write step
+descriptions, acceptance criteria, or wrapper invocations that override
+these settings.
 
 #### Key rules
 
@@ -408,30 +543,35 @@ updates. Treat the step as incomplete and expand the `files` array first.
 
 ### 5. Design for maximum parallelism, then compute the DAG
 
-Parallelism is the #1 speed lever in plan execution. The executor
-dispatches all runnable steps simultaneously — every unnecessary
-`dependsOn` edge serializes work and wastes time. **Design steps to
-minimize dependencies first, then compute edges on the result.**
+Parallel dispatch is the **default**: the conductor's execution loop
+dispatches the entire DAG frontier — all currently runnable steps —
+concurrently on every tick. Every unnecessary `dependsOn` edge
+serializes work and wastes a parallel slot. **Design steps to minimize
+dependencies first, then compute edges on the result.**
 
 #### Design principles (apply BEFORE computing edges)
 
-1. **Isolate file sets.** If two steps both need `shared.ts`, consider
+1. **Bias toward small, independent steps.** Prefer many 1-3-file
+   steps with `dependsOn: []` over a few large steps. Small
+   independent steps fan out across the parallel-dispatch frontier;
+   large ones serialize work behind themselves.
+2. **Isolate file sets.** If two steps both need `shared.ts`, consider
    whether one step can own the shared file and the other can consume
    it read-only (no edit). Only steps that *write* to the same file
    need a `dependsOn` edge.
-2. **Split shared-file steps.** If step A creates a utility and step B
+3. **Split shared-file steps.** If step A creates a utility and step B
    uses it, put the utility file in step A's `files` only. Step B
    lists only its own files and gets an explicit `dependsOn: [A]`.
    Don't dump the utility file into both steps — that forces serial
    execution even when step B only reads it.
-3. **Front-load foundations.** Definitions (types, schemas, interfaces)
+4. **Front-load foundations.** Definitions (types, schemas, interfaces)
    go in early low-ID steps. Consumer steps depend on them. All
    consumer steps that don't share files with each other can then run
    in parallel once the foundation step finishes.
-4. **Avoid monolith steps.** A single step touching 10+ files often
+5. **Avoid monolith steps.** A single step touching 10+ files often
    blocks everything behind it. Split it into smaller, file-disjoint
    steps that can run in parallel.
-5. **Audit the result.** After computing edges, count steps with empty
+6. **Audit the result.** After computing edges, count steps with empty
    `dependsOn`. If fewer than half the steps are parallelizable in a
    plan with 4+ steps, revisit the step design — you may be able to
    split or restructure to unlock more parallelism.
@@ -482,9 +622,16 @@ If the plan has no file overlaps and no manual edges, every step gets
 `dependsOn: []` — the plan is fully parallel. This is valid and common
 for plans with well-isolated steps.
 
-### 6. Evaluate sub-plan needs (mandatory checkpoint)
+### 6. Decompose large steps into independent small steps (mandatory checkpoint)
 
-#### Graph-informed grouping (when dep maps are configured)
+Under the conductor-mode + parallel-dispatch architecture,
+**decomposition happens at the step level**, not inside a step.
+Split one large step into multiple small steps, each with 1-3 files
+and explicit `dependsOn` edges. The execution loop will fan them out
+across the DAG frontier. Inline `subPlan.groups` are no longer
+emitted by this skill.
+
+#### Graph-informed splitting (when dep maps are configured)
 
 Before evaluating thresholds, run `dep_partition.py` on the scoped
 entry-point files to get graph-informed groups:
@@ -494,84 +641,96 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/dep_partition.py <project_root> <file_path
 ```
 
 The partition output tells you:
-- Which files belong in the same group (connected components via shared deps)
-- Which groups are safe to parallelize (`safeParallel` hint)
+- Which files belong in the same connected component (shared deps)
+- Which components are safe to parallelize (`safeParallel` hint)
 - Suggested execution order (`suggestedOrder` — cross-module boundaries first)
 
-Use these groups to shape `subPlan.groups` directly when the thresholds
-below are met. The partition output feeds group structure inline — do NOT
-create a separate `dep-partition.json` artifact. When dep maps are **not**
-configured, skip `dep_partition.py` and use existing threshold-based
-grouping unchanged.
+**Use the partition output to shape multiple plan-level steps**, not
+inline groups. Each connected component becomes one or more small
+steps; the `safeParallel` hint tells you which steps can have
+`dependsOn: []` and run concurrently. The `suggestedOrder` informs the
+`dependsOn` edges between sequential components. When dep maps are
+**not** configured, skip `dep_partition.py` and apply the threshold
+criteria below using just the `files` array.
 
-#### Threshold criteria
+#### Threshold criteria — when to split
 
-**Before saving the plan, evaluate EVERY step against these criteria:**
+**Before saving the plan, evaluate EVERY step against these criteria.**
 
 For each step, count the files in its `files` array. If dep maps are
 configured, also count the DEPENDENTS from `deps-query.py` — a file with
-6 direct dependents means the step actually touches 7 files, not 1. This
-is the primary input for sub-plan decisions.
+6 direct dependents means the step actually touches 7 files, not 1.
 
-If ANY of these are true, the step MUST have an inline `subPlan` with groups:
+If ANY of these are true, the step MUST be split into multiple smaller
+steps with `dependsOn` edges:
 
 1. **More than 10 files** in the `files` array (including consumers from dep maps)
-2. **Repetitive sweep** — the description contains words like "all", "every",
+2. **Repetitive sweep** — description contains words like "all", "every",
    "sweep", "migrate all", "across the codebase"
 3. **More than 5 progress items** that are independently completable
 4. **More than 8 files to read** just to understand what to change
 5. **The step is a migration** that touches the same pattern in many files
+6. **Mixed ownership** — the step would naturally need both Claude and
+   Codex work (e.g., a UI component plus its data hook). Split into
+   one Claude step and one Codex step linked by `dependsOn`.
 
-If ANY criterion is met, restructure the step NOW:
+#### How to split: many small steps with explicit `dependsOn`
+
+Aim for 1-3 files per step. Each step has a single `owner`. Cross-step
+dependencies live in `dependsOn`. Independent steps have
+`dependsOn: []` and run in parallel under conductor-mode dispatch.
+
+Example — replacing what was previously a single mixed-ownership step
+("Build dashboard with charts: Claude UI / Codex hooks") with three
+single-owner steps:
 
 ```json
-{
-  "subPlan": {
-    "groups": [
-      {"name": "Dashboard pages", "owner": "claude", "files": ["a.tsx", "b.tsx", "c.tsx"]},
-      {"name": "Modal components", "owner": "codex", "files": ["d.tsx", "e.tsx"]}
-    ]
-  }
-}
+[
+  {"id": 7,  "title": "Dashboard layout shell",     "owner": "claude", "mode": "claude-impl",
+   "skill": "look-before-you-leap:frontend-design",
+   "files": ["src/app/dashboard/page.tsx", "src/app/dashboard/Layout.tsx"],
+   "dependsOn": [],
+   "routingJustification": "Frontend UI / visual design → claude-impl (skill in Claude-only list)"},
+
+  {"id": 8,  "title": "Dashboard data hooks",       "owner": "codex",  "mode": "codex-impl",
+   "skill": "look-before-you-leap:test-driven-development",
+   "files": ["src/app/dashboard/hooks/useMetrics.ts", "src/app/dashboard/hooks/useMetrics.test.ts"],
+   "dependsOn": [],
+   "routingJustification": "Backend from clear spec → codex-impl (codex default)"},
+
+  {"id": 9,  "title": "Wire charts to hooks",       "owner": "claude", "mode": "claude-impl",
+   "skill": "look-before-you-leap:frontend-design",
+   "files": ["src/app/dashboard/Chart.tsx"],
+   "dependsOn": [7, 8],
+   "routingJustification": "Frontend UI / visual design → claude-impl (skill in Claude-only list)"}
+]
 ```
 
-Groups should have 3-8 files each. If a group exceeds 8, split it.
+Steps 7 and 8 fan out in parallel; step 9 waits for both. No
+`subPlan`, no `groups`, no mixed-mode steps. Each step has one owner
+and a small file set.
 
-#### Group ownership for collab-split steps
-
-When the step's `mode` is `"collab-split"`, each group MUST have an
-`owner` field. Classify each group against the routing matrix the same
-way you classified steps in Step 3:
-
-1. For each group, identify its primary task category from the routing
-   matrix (e.g., "Frontend UI", "Backend from clear spec", "Refactor")
-2. Set `owner` to `"claude"` or `"codex"` based on the routing matrix
-3. The executor dispatches each group to the correct agent based on
-   `group.owner` — Claude-owned groups get Codex verification,
-   Codex-owned groups get Claude verification
-
-For non-collab-split steps, `group.owner` is optional and defaults to
-the parent step's `owner`. But for collab-split steps, making ownership
-explicit on every group prevents the failure mode where Claude implements
-all groups (including Codex-owned ones) because ownership was only hinted
-in group names, not enforced by schema.
-
-**Progress item naming**: include the owner designation for readability:
-`"Group 3 (Codex): Account hooks"`. But the formal `owner` field on
-the group object is what the executor reads — the name is informational.
-
-**This is a hard checkpoint.** Do not proceed to Step 7 until every step
-has been evaluated. If you skip this, large steps will fail mid-execution
-when context runs out.
+**This is a hard checkpoint.** Do not proceed to Step 7 until every
+large step has been split. If you skip it, oversized steps will fail
+mid-execution when context runs out, and you will have lost the
+parallel-dispatch wins by serializing work behind monoliths.
 
 ### 7. Plan consensus with Codex (before Orbit)
 
 After saving both files to disk, run the plan consensus protocol with
 Codex before presenting to the user. Both agents must agree on the plan.
 
+**Receipt-first principle**: the main thread MUST NOT read raw Codex
+consensus output (`codex-consensus-*.md`, batch files, cross-cutting
+files). Under conductor mode, every raw artifact is digested by an
+`lbyl-digest` subagent dispatch and the main thread reads only the
+bounded digest the subagent returns. This keeps the main thread context
+small and predictable, preventing consensus prose from polluting the
+plan-mode handoff.
+
 **Apply the Codex output batching principle** (see conductor SKILL.md):
 batch into groups of 5 items, never retry oversized prompts, cap output
-scope to structured bullets.
+scope to structured bullets per batch.
 
 **IMPORTANT: Run all consensus `codex exec` calls in foreground (no
 `run_in_background`).** Background Codex notifications arriving during
@@ -580,9 +739,12 @@ call to complete before proceeding. Also close stdin on every `codex exec`
 call with `</dev/null>`; otherwise Codex can hang waiting for additional
 stdin from the Bash tool.
 
+Do NOT pass `--model` flags to `codex exec` — rely on machine defaults
+(`look-before-you-leap/references/machine-defaults.md`).
+
 **Round 1 — Codex reviews:**
 
-If the plan has **≤5 steps**, dispatch a single call:
+If the plan has **≤5 steps**, dispatch a single Codex consensus call:
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
@@ -597,7 +759,16 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    ownership assignments that contradict the routing matrix."
 ```
 
-Claude reads `codex-consensus-round1.md` after the call completes.
+Then dispatch an `lbyl-digest` subagent to read
+`codex-consensus-round1.md` and return ONLY a bounded digest:
+
+- per step: ACCEPT / REJECT / MODIFY plus a one-line summary of the
+  proposed change
+- cross-cutting flags (missing steps, wrong ordering, ownership
+  contradictions)
+- nothing else (no quoted prose, no reasoning paragraphs)
+
+The main thread reads the digest, NOT the raw `.md`.
 
 If the plan has **>5 steps**, batch into groups of 5:
 
@@ -621,26 +792,31 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    - ACCEPT / REJECT <reason> / MODIFY <changes>"
 
 # Continue batching until all steps are covered.
-# After all batches, Claude merges batch files into consensus-round1.md,
-# then dispatches a cross-cutting check:
+# After all batches, dispatch a cross-cutting Codex check:
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
   -o <plan-dir>/codex-consensus-cross-cutting.md \
   </dev/null \
-  "Read <plan-dir>/consensus-round1.md (merged batch results). \
+  "Read <plan-dir>/codex-consensus-batch-*.md. \
    Flag: missing steps, wrong ordering across the full plan, \
    ownership assignments that contradict the routing matrix."
 ```
 
-Claude reads each `-o` output file after the call completes and merges
-batch results into `consensus-round1.md`. Append cross-cutting notes.
+Then dispatch a single `lbyl-digest` subagent that reads ALL of
+`codex-consensus-batch-*.md` AND `codex-consensus-cross-cutting.md`
+and returns one merged, bounded digest in the same format as the
+≤5-step case (per-step verdicts + cross-cutting flags). The main
+thread reads only that digest. Do NOT have the main thread merge batch
+files itself — that re-introduces raw-prose pollution.
 
-**Round 2 — Claude responds** to each proposal (ACCEPT / REJECT with
-reasoning / COUNTER-PROPOSE). Update plan files with accepted changes.
+**Round 2 — Claude responds** to each digest entry (ACCEPT / REJECT
+with reasoning / COUNTER-PROPOSE). Update plan files with accepted
+changes via `plan_utils.py` (deviations to progress.json after
+approval; direct plan.json edits before approval).
 
 **Round 3 (if needed)** — Final resolution. If disagreements remain
 after Round 2, dispatch Codex one more time. If **≤5 disagreements**,
 use a single call. If **>5**, batch into groups of 5 disagreements per
-call, merging results between batches.
+call:
 
 ```bash
 codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
@@ -651,6 +827,10 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    - ACCEPT Claude's reasoning, or \
    - ESCALATE with both positions stated (for the user to decide in Orbit)"
 ```
+
+Then dispatch `lbyl-digest` once more to read the round-3 output(s)
+and return only the per-disagreement verdict plus any escalations.
+Main thread reads the digest only.
 
 **Max 3 rounds.** Unresolved items go to Orbit with both positions clearly
 stated so the user can decide.

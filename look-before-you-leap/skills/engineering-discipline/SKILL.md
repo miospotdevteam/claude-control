@@ -872,7 +872,7 @@ If you catch yourself doing any of these, stop and reconsider:
 | Constructing a plausible-looking value instead of reading the real one | Trace to the actual data source — fabricated values pass type checks but break at runtime |
 | Verifying acceptance criteria by recall ("I added idempotency keys") instead of mechanically | Run the grep, read the file, execute the command — recall drifts, mechanical checks don't |
 | Implementing a codex-impl step yourself because it seems "trivially small" | Dispatch Codex via `run-codex-implement.sh` — ownership exists for independent verification, not complexity |
-| Implementing a codex-owned sub-plan group yourself in a collab-split step | Check `group.owner` — dispatch codex-owned groups via `run-codex-implement.sh`, never implement them directly |
+| Treating a large or mixed-owner unit as one step | Split it into small plan-level steps with explicit `dependsOn` edges — follow `writing-plans` Step 5/6 DAG guidance |
 | Writing result field as "Done" or "Created X" without mapping each criterion | Use the `### Criterion:` template — map every acceptance criterion to file:line evidence |
 | Fixing a type error with the same approach that failed last reverify round | After the same category appears in 2 consecutive reverify logs, invoke `look-before-you-leap:systematic-debugging` |
 | Writing step descriptions, Codex consensus, file lists, or transcript refs into the plan mode scratch pad | Scratch pad is a POINTER: plan title, path, step count, one-liner context, "Read plan.json to begin execution." Nothing else — everything lives on disk |

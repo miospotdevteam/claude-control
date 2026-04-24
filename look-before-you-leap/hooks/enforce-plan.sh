@@ -376,7 +376,7 @@ fi
 # SESSION_PLAN was already computed above via find-for-session
 if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
   # --- Step ownership enforcement (merged from enforce-step-ownership.sh) ---
-  # Block Claude edits to files owned by codex-impl steps/groups
+  # Block Claude edits to files owned by codex-impl steps
   export HOOK_FILE_PATH="$FILE_PATH"
   export HOOK_PLAN_PATH="$SESSION_PLAN"
   export HOOK_PROJECT_ROOT="$PROJECT_ROOT"
@@ -430,19 +430,9 @@ for step in plan.get("steps", []):
     step_owner = step.get("owner", "claude")
     step_files = step.get("files", [])
 
-    # Check sub-plan groups for collab-split
-    sub_plan = step.get("subPlan")
-    if sub_plan and "groups" in sub_plan:
-        for group in sub_plan["groups"]:
-            group_owner = group.get("owner", step_owner)
-            if group_owner == "codex":
-                group_files = group.get("files", [])
-                if file_path in group_files:
-                    print(f"deny:step {step['id']}:group {group.get('title', 'unknown')}:codex")
-                    sys.exit(0)
-    elif step_owner == "codex":
+    if step_owner == "codex":
         if file_path in step_files:
-            print(f"deny:step {step['id']}::codex")
+            print(f"deny:step {step['id']}:codex")
             sys.exit(0)
 
 print("allow")
@@ -455,12 +445,8 @@ PYEOF
 
   # Parse the deny result and emit deny JSON
   STEP_INFO=$(echo "$OWNERSHIP_RESULT" | cut -d: -f2)
-  GROUP_INFO=$(echo "$OWNERSHIP_RESULT" | cut -d: -f3)
 
   DENY_MSG="BLOCKED: This file is owned by a codex-impl step ($STEP_INFO"
-  if [ -n "$GROUP_INFO" ]; then
-    DENY_MSG="$DENY_MSG, $GROUP_INFO"
-  fi
   DENY_MSG="$DENY_MSG). Claude cannot directly edit files in Codex-owned steps.\n\nTo modify this file:\n1. Dispatch Codex via run-codex-implement.sh to make changes\n2. Then verify Codex's work independently\n\nIf ownership is wrong, update the step's owner field in plan.json."
 
   hook_deny "$DENY_MSG"

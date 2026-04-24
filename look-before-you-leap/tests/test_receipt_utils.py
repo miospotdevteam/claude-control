@@ -164,12 +164,11 @@ class TestSignAndVerify(unittest.TestCase):
         exists, _ = receipt_utils.check("bypass", "proj1", "plan2")
         self.assertFalse(exists, "Cross-plan replay should be rejected")
 
-    def test_sign_with_step_and_group(self):
+    def test_sign_with_step_detail(self):
         path = receipt_utils.sign(
-            "codex_verify", "proj1", "plan1",
-            {"step": 2, "group": 1}
+            "codex_verify", "proj1", "plan1", {"step": 2}
         )
-        self.assertIn("step-2-group-1", path)
+        self.assertIn("step-2", path)
         valid, _ = receipt_utils.verify(path)
         self.assertTrue(valid)
 
