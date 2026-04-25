@@ -188,9 +188,15 @@ def merge_plan_progress(plan, progress):
     merged = copy.deepcopy(plan)
 
     steps_prog = progress.get("steps", {})
+    if isinstance(steps_prog, list):
+        steps_prog = {str(i + 1): item for i, item in enumerate(steps_prog)}
+    elif not isinstance(steps_prog, dict):
+        steps_prog = {}
     for step in merged.get("steps", []):
         step_id = str(step["id"])
         sp = steps_prog.get(step_id, {})
+        if not isinstance(sp, dict):
+            sp = {}
         if "status" in sp:
             step["status"] = sp["status"]
         if "result" in sp:
