@@ -48,9 +48,16 @@ artifacts during execution:
   `<plan-dir>/consensus-round-<N>-digest.md`, and the bounded JSON
   payloads digesters return.
 - The bounded payload returned directly by any dispatched sub-agent
-  (Claude implementation Agents, `lbyl-digest` Skill calls).
+  (Claude implementation Agents, `lbyl-digest` Agent calls).
 - Project metadata: CLAUDE.md, README.md, `.claude/look-before-you-leap.local.md`,
   package.json / Cargo.toml / etc. Plain reference docs are fine.
+
+### Auto-resume after lbyl-digest returns
+
+After the `lbyl-digest` Agent returns, the conductor MUST immediately
+consume the returned payload and proceed to the next step in the flow
+without waiting for user input — the JSON payload IS the trigger to
+continue.
 
 The main thread MUST NOT read:
 
@@ -309,9 +316,10 @@ The conductor never reads `codex-exploration.md` or
 `codex-convergence.md` directly. Dispatch `lbyl-digest`:
 
 ```
-Skill(
-  skill: "look-before-you-leap:lbyl-digest",
-  args: "mode=co-exploration plan-dir=<plan-dir>"
+Agent(
+  description: "lbyl-digest co-exploration",
+  subagent_type: "general-purpose",
+  prompt: "Load <project-root>/look-before-you-leap/skills/lbyl-digest/SKILL.md as primary guidance. Run mode=co-exploration with plan-dir=<plan-dir>. Return ONLY the bounded co-exploration payload shape defined by that skill: { kind, digestPath, topicsCount, openQuestionsCount, summary }. Do not include prose, markdown fences, or follow-up text."
 )
 ```
 
@@ -319,6 +327,9 @@ The sub-agent reads `discovery.md`, `codex-exploration.md`, and
 `codex-convergence.md`, writes
 `<plan-dir>/discovery-digest.md`, and returns a bounded payload
 `{ kind, digestPath, topicsCount, openQuestionsCount, summary }`.
+After the `lbyl-digest` Agent returns, the conductor MUST
+auto-resume by consuming that payload and continuing; the JSON payload
+IS the trigger to continue.
 
 The conductor reads only the bounded payload — `summary` and
 `openQuestionsCount` to decide whether to surface open questions to
@@ -488,9 +499,10 @@ Each call writes a separate `codex-consensus-*.md` file under
 After all batches finish, dispatch `lbyl-digest`:
 
 ```
-Skill(
-  skill: "look-before-you-leap:lbyl-digest",
-  args: "mode=consensus plan-dir=<plan-dir> round-N=1"
+Agent(
+  description: "lbyl-digest consensus",
+  subagent_type: "general-purpose",
+  prompt: "Load <project-root>/look-before-you-leap/skills/lbyl-digest/SKILL.md as primary guidance. Run mode=consensus with plan-dir=<plan-dir>, round-N=1. Return ONLY the bounded consensus payload shape defined by that skill: { kind, round, digestPath, counts, decisions, openDisagreements, summary }. Do not include prose, markdown fences, or follow-up text."
 )
 ```
 
@@ -499,6 +511,9 @@ The sub-agent reads every `codex-consensus-round1.md` and/or
 writes `<plan-dir>/consensus-round-1-digest.md`, and returns
 `{ kind, round, digestPath, counts, decisions, openDisagreements,
 summary }`.
+After the `lbyl-digest` Agent returns, the conductor MUST
+auto-resume by consuming that payload and continuing; the JSON payload
+IS the trigger to continue.
 
 The conductor reads only the bounded payload:
 - `counts` to decide whether the plan can advance.
@@ -523,6 +538,17 @@ If `codex` CLI is not available, skip consensus and proceed directly
 to Orbit review.
 
 ### Plan review via Orbit
+
+**Mandatory Orbit review rule:** Orbit review is MANDATORY for every plan.
+Claude MUST NOT skip Orbit review based on its own assessment of task size,
+complexity, or interactivity. The ONLY valid skip path is when the user has
+typed one of these exact override phrases verbatim in this turn: "no orbit",
+"skip orbit", "no review", "skip review". Phrases like "small fix", "this is
+simple", "user is interactive", or any inference Claude makes from context are
+NOT valid override phrases. If Claude believes Orbit should be skipped, it MUST
+ask the user explicitly with the exact phrase "Should I skip the Orbit review
+for this plan? Please type 'skip orbit' to confirm." and wait for the literal
+answer.
 
 After plan consensus (or directly after writing-plans if Codex is
 unavailable), present masterPlan.md to the user for review using the
@@ -565,12 +591,15 @@ The plan mode handoff happens **after** Orbit approval, not before.
 This ensures the user has reviewed and approved the plan before
 context clears.
 
-Exception: the user explicitly says "just do it" or "no plan" for a
-trivially obvious single-line change.
+The only valid skip path is the explicit override phrase rule above.
 
 ---
 
 ## Step 3: Execute (the loop)
+
+Do NOT begin Step 3 execution unless step 8 of writing-plans (Orbit review)
+has actually been invoked AND returned approved — the `.handoff-pending`
+marker MUST have been cleared via Orbit approval, not bypassed.
 
 Follow **persistent-plans Phase 2** (Execute the Plan) for the
 execution loop, checkpointing, and result tracking. Follow
@@ -650,6 +679,8 @@ LOOP:
   5. For each completed step:
      - Read codex-receipt-step-N.json
      - For codex-impl: dispatch lbyl-digest (verification mode)
+       and auto-resume as soon as the JSON payload returns — the
+       payload IS the trigger to continue.
      - Apply receipt-first gate (PASS / FINDINGS / FAIL)
      - Fix findings (sequentially per step), re-verify until PASS
   6. complete-step for each verified step → new steps may now be
@@ -707,7 +738,7 @@ parallel batch), the execution flow is determined entirely by
 IF step.owner == "codex":               # codex-impl (default)
   → Bash run-codex-implement.sh (background)
   → On completion: read codex-receipt-step-N.json
-  → Dispatch Skill lbyl-digest (mode=verification)
+  → Dispatch Agent lbyl-digest (mode=verification)
   → Read digester payload: claudeVerified ∈ {PASS, FINDINGS}
   → If FINDINGS: read claude-review.json + receipt findings, fix
     (re-dispatch Codex or patch via Claude Agent), re-run digester
@@ -745,11 +776,23 @@ sha256 cross-checks, writes
 a bounded payload `{ kind, stepId, claudeVerified, findingCount,
 reviewPath, criteria, summary }`.
 
+```
+Agent(
+  description: "lbyl-digest verification",
+  subagent_type: "general-purpose",
+  prompt: "Load <project-root>/look-before-you-leap/skills/lbyl-digest/SKILL.md as primary guidance. Run mode=verification with plan-dir=<plan-dir>, step-N=<N>, project-root=<project-root>. Return ONLY the bounded verification payload shape defined by that skill: { kind, stepId, claudeVerified, findingCount, reviewPath, criteria, summary }. Do not include prose, markdown fences, or follow-up text."
+)
+```
+
 The conductor gates on `claudeVerified`:
 - `PASS` → write the step result, mark done.
 - `FINDINGS` → identify failing criteria, decide whether to
   re-dispatch Codex or patch via a Claude Agent, then re-run the
   digester on the new receipt.
+
+After the `lbyl-digest` Agent returns in verification mode, the
+conductor MUST auto-resume by consuming that payload and applying the
+receipt-first gate; the JSON payload IS the trigger to continue.
 
 **Do NOT implement codex-impl steps yourself.** Even if the change
 seems trivial (adding a value to a union type, updating a switch

@@ -34,6 +34,11 @@ assert_not_exists() {
   [[ ! -e "$path" ]] || fail "expected file to be absent: $path"
 }
 
+assert_empty() {
+  local value="$1"
+  [[ -z "$value" ]] || fail "expected empty output, got: $value"
+}
+
 make_root() {
   mktemp -d "${TMPDIR:-/tmp}/verify-step-completion.XXXXXX"
 }
@@ -353,7 +358,7 @@ test_step_id_mismatch_is_blocked() {
   assert_contains "$output" "step-id mismatch"
 }
 
-test_codex_owned_requires_impl_receipt_and_claude_review() {
+test_codex_owned_with_claude_review_skips_generic_marker() {
   local root home_dir output
   root="$(make_root)"
   home_dir="$(make_home)"
@@ -365,8 +370,9 @@ test_codex_owned_requires_impl_receipt_and_claude_review() {
 
   output="$(run_hook "$root" "$home_dir")"
 
-  assert_contains "$output" "STEP VERIFICATION REQUIRED"
+  assert_empty "$output"
   assert_not_contains "$output" "RECEIPT VERIFICATION REQUIRED"
+  assert_not_exists "$root/.temp/plan-mode/active/demo/.verify-pending-1"
 }
 
 test_codex_owned_without_claude_review_is_blocked() {
@@ -404,7 +410,7 @@ test_missing_json_is_blocked
 test_invalid_hmac_is_blocked
 test_failed_criterion_is_blocked
 test_step_id_mismatch_is_blocked
-test_codex_owned_requires_impl_receipt_and_claude_review
+test_codex_owned_with_claude_review_skips_generic_marker
 test_codex_owned_without_claude_review_is_blocked
 test_claude_owned_accepts_digest_receipt_alternative
 

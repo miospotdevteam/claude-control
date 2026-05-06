@@ -125,8 +125,8 @@ MUTATING_COMMANDS = [
 
 # --- File-writing patterns (require active plan, from enforce-plan-bash) ---
 FILE_WRITE_PATTERNS = [
-    r'[^-=]>\s*\S',             # redirect: > file (but not -> or =>)
-    r'>>\s*\S',                  # append: >> file
+    r'[^-=]>(?!&)\s*\S',        # redirect: > file (but not ->, =>, or >& fd dup)
+    r'>>(?!&)\s*\S',             # append: >> file (but not >>& fd dup)
     r'\bsed\b.*\s-i',           # sed in-place
     r'\bawk\b.*-i',             # awk in-place (gawk)
     r'\btee\b',                  # tee writes to files

@@ -759,8 +759,16 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    ownership assignments that contradict the routing matrix."
 ```
 
-Then dispatch an `lbyl-digest` subagent to read
+Then dispatch an `lbyl-digest` Agent to read
 `codex-consensus-round1.md` and return ONLY a bounded digest:
+
+```
+Agent(
+  description: "lbyl-digest consensus",
+  subagent_type: "general-purpose",
+  prompt: "Load <project-root>/look-before-you-leap/skills/lbyl-digest/SKILL.md as primary guidance. Run mode=consensus with plan-dir=<plan-dir>, round-N=1. Return ONLY the bounded consensus payload shape defined by that skill: { kind, round, digestPath, counts, decisions, openDisagreements, summary }. Do not include prose, markdown fences, or follow-up text."
+)
+```
 
 - per step: ACCEPT / REJECT / MODIFY plus a one-line summary of the
   proposed change
@@ -801,12 +809,20 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
    ownership assignments that contradict the routing matrix."
 ```
 
-Then dispatch a single `lbyl-digest` subagent that reads ALL of
+Then dispatch a single `lbyl-digest` Agent that reads ALL of
 `codex-consensus-batch-*.md` AND `codex-consensus-cross-cutting.md`
 and returns one merged, bounded digest in the same format as the
 ≤5-step case (per-step verdicts + cross-cutting flags). The main
 thread reads only that digest. Do NOT have the main thread merge batch
 files itself — that re-introduces raw-prose pollution.
+
+```
+Agent(
+  description: "lbyl-digest consensus",
+  subagent_type: "general-purpose",
+  prompt: "Load <project-root>/look-before-you-leap/skills/lbyl-digest/SKILL.md as primary guidance. Run mode=consensus with plan-dir=<plan-dir>, round-N=1. Read all codex-consensus-batch-*.md files and codex-consensus-cross-cutting.md if present. Return ONLY the bounded consensus payload shape defined by that skill: { kind, round, digestPath, counts, decisions, openDisagreements, summary }. Do not include prose, markdown fences, or follow-up text."
+)
+```
 
 **Round 2 — Claude responds** to each digest entry (ACCEPT / REJECT
 with reasoning / COUNTER-PROPOSE). Update plan files with accepted
@@ -832,12 +848,31 @@ Then dispatch `lbyl-digest` once more to read the round-3 output(s)
 and return only the per-disagreement verdict plus any escalations.
 Main thread reads the digest only.
 
+```
+Agent(
+  description: "lbyl-digest consensus",
+  subagent_type: "general-purpose",
+  prompt: "Load <project-root>/look-before-you-leap/skills/lbyl-digest/SKILL.md as primary guidance. Run mode=consensus with plan-dir=<plan-dir>, round-N=3. Return ONLY the bounded consensus payload shape defined by that skill: { kind, round, digestPath, counts, decisions, openDisagreements, summary }. Do not include prose, markdown fences, or follow-up text."
+)
+```
+
 **Max 3 rounds.** Unresolved items go to Orbit with both positions clearly
 stated so the user can decide.
 
 If `codex` CLI is not available, skip consensus and proceed to Orbit.
 
 ### 8. Present for review via Orbit
+
+**Mandatory Orbit review rule:** Orbit review is MANDATORY for every plan.
+Claude MUST NOT skip Orbit review based on its own assessment of task size,
+complexity, or interactivity. The ONLY valid skip path is when the user has
+typed one of these exact override phrases verbatim in this turn: "no orbit",
+"skip orbit", "no review", "skip review". Phrases like "small fix", "this is
+simple", "user is interactive", or any inference Claude makes from context are
+NOT valid override phrases. If Claude believes Orbit should be skipped, it MUST
+ask the user explicitly with the exact phrase "Should I skip the Orbit review
+for this plan? Please type 'skip orbit' to confirm." and wait for the literal
+answer.
 
 After plan consensus (or directly after saving if Codex is unavailable),
 present masterPlan.md to the user for interactive review using the Orbit
@@ -942,8 +977,16 @@ This skill must NOT:
   If you find gaps, go back to Step 1 (Explore) first.
 - **Overwrite an existing plan without user consent** — if a plan already
   exists in the target directory, ask before replacing it.
-- **Skip the Orbit review** — every plan must be presented to the user
-  for review via Orbit MCP before execution.
+- **Skip the Orbit review** — Orbit review is MANDATORY for every plan.
+  Claude MUST NOT skip Orbit review based on its own assessment of task size,
+  complexity, or interactivity. The ONLY valid skip path is when the user has
+  typed one of these exact override phrases verbatim in this turn: "no orbit",
+  "skip orbit", "no review", "skip review". Phrases like "small fix", "this is
+  simple", "user is interactive", or any inference Claude makes from context are
+  NOT valid override phrases. If Claude believes Orbit should be skipped, it
+  MUST ask the user explicitly with the exact phrase "Should I skip the Orbit
+  review for this plan? Please type 'skip orbit' to confirm." and wait for the
+  literal answer.
 - **Skip the plan mode handoff** — after Orbit approval, every plan must
   go through plan mode handoff before execution begins.
 - **Write implementation code** — this skill produces plans, not code files.

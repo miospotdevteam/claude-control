@@ -27,6 +27,55 @@ if [[ "$FILE_PATH" == *"/.temp/"* ]] || [[ "$FILE_PATH" == *"/.temp" ]]; then
     PLAN_UTILS_EARLY="${PLUGIN_ROOT_EARLY}/scripts/plan_utils.py"
     is_fresh=$(python3 "$PLAN_UTILS_EARLY" is-fresh "$FILE_PATH" 2>/dev/null) || true
     if [ "$is_fresh" = "false" ]; then
+      # User-approved bypasses can edit plan.json, but only through this
+      # plan.json-specific immutability branch.
+      source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+      source "${BASH_SOURCE[0]%/*}/lib/receipt-state.sh"
+
+      CWD_EARLY=$(hook_get_cwd)
+      PROJECT_ROOT_EARLY="$(find_project_root "${CWD_EARLY:-$PWD}")"
+
+      receipt_bootstrap 2>/dev/null || true
+      PROJ_ID_EARLY=$(receipt_project_id "$PROJECT_ROOT_EARLY" 2>/dev/null) || true
+      if [ -n "$PROJ_ID_EARLY" ]; then
+        BYPASS_DIR_EARLY="${RECEIPT_STATE_ROOT}/${PROJ_ID_EARLY}"
+        if [ -d "$BYPASS_DIR_EARLY" ]; then
+          for plan_dir in "$BYPASS_DIR_EARLY"/*/; do
+            [ -d "$plan_dir" ] || continue
+            if [ -f "${plan_dir}bypass-default.json" ]; then
+              if receipt_verify_bypass "${plan_dir}bypass-default.json" "$PPID" 2>/dev/null; then
+                exit 0
+              fi
+            fi
+          done
+        fi
+      fi
+
+      NO_PLAN_FILE_EARLY="$PROJECT_ROOT_EARLY/.temp/plan-mode/.no-plan-$PPID"
+      if [ -f "$NO_PLAN_FILE_EARLY" ]; then
+        bypass_content=$(cat "$NO_PLAN_FILE_EARLY" 2>/dev/null) || true
+        if [[ "$bypass_content" == *:* ]]; then
+          bypass_pid="${bypass_content%%:*}"
+          bypass_count="${bypass_content##*:}"
+        else
+          rm -f "$NO_PLAN_FILE_EARLY"
+          bypass_pid=""
+          bypass_count=""
+        fi
+        if [[ -n "$bypass_pid" && "$bypass_pid" = "$PPID" &&
+              "$bypass_count" =~ ^[0-9]+$ && "$bypass_count" -gt 0 ]]; then
+          new_count=$((bypass_count - 1))
+          if [ "$new_count" -le 0 ]; then
+            rm -f "$NO_PLAN_FILE_EARLY"
+          else
+            echo "${bypass_pid}:${new_count}" > "$NO_PLAN_FILE_EARLY"
+          fi
+          exit 0
+        else
+          rm -f "$NO_PLAN_FILE_EARLY"
+        fi
+      fi
+
       python3 << 'PYEOF'
 import json, sys
 

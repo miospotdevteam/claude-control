@@ -118,6 +118,7 @@ from pathlib import Path
 out_file = Path(sys.argv[1])
 prompt = sys.argv[2]
 mode = sys.argv[3]
+pass_like = mode in {"pass", "trailing-period"}
 
 if mode == "exec-fail":
     out_file.write_text("Codex failed before producing a receipt.\n", encoding="utf-8")
@@ -150,11 +151,12 @@ for idx, text in enumerate(criteria_items, start=1):
     verdict = "PASS"
     if mode == "findings" and idx == 1:
         verdict = "FAIL"
+    emitted_text = f"{text}." if mode == "trailing-period" else text
     criteria.append(
         {
             "id": idx,
-            "acceptanceCriterion": text,
-            "acceptanceCriterionSha256": criterion_sha(text),
+            "acceptanceCriterion": emitted_text,
+            "acceptanceCriterionSha256": criterion_sha(emitted_text),
             "verdict": verdict,
             "evidence": [
                 {
@@ -198,11 +200,11 @@ artifact = {
     "commands": [
         {
             "command": "bash -n look-before-you-leap/scripts/run-codex-implement.sh",
-            "exitCode": 0 if mode == "pass" else 1,
+            "exitCode": 0 if pass_like else 1,
         }
     ],
     "findings": findings,
-    "finalVerdict": "PASS" if mode == "pass" else "FINDINGS",
+    "finalVerdict": "PASS" if pass_like else "FINDINGS",
     "generatedAt": datetime.datetime.now(datetime.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
 }
 
@@ -298,6 +300,26 @@ PY
   fi
 }
 
+assert_trailing_period_criteria() {
+  local artifact="$1"
+  local desc="$2"
+  if python3 - "$artifact" <<'PY'
+import json
+import sys
+
+artifact = json.load(open(sys.argv[1], encoding="utf-8"))
+criteria = artifact["criteria"]
+assert criteria
+assert all(item["acceptanceCriterion"].endswith(".") for item in criteria)
+PY
+  then
+    pass
+    echo "  PASS: $desc"
+  else
+    fail "$desc"
+  fi
+}
+
 run_case() {
   local mode="$1"
   local plan_name="$2"
@@ -333,6 +355,9 @@ run_case() {
   assert_file "$artifact" "$plan_name receipt artifact"
   assert_file "$result_txt" "$plan_name TXT trace preserved"
   assert_artifact_verdict "$artifact" "$expected_verdict" "$plan_name artifact verdict $expected_verdict"
+  if [ "$mode" = "trailing-period" ]; then
+    assert_trailing_period_criteria "$artifact" "$plan_name preserves trailing-period criteria"
+  fi
 
   if [ "$expected_exit" -eq 0 ]; then
     assert_file "$sidecar" "$plan_name HMAC sidecar"
@@ -351,6 +376,10 @@ trap 'export HOME="$ORIG_HOME"; rm -rf "$TEST_HOME"' EXIT
 
 echo "=== Test: PASS receipt emission ==="
 run_case "pass" "pass-plan" 0 "PASS"
+
+echo ""
+echo "=== Test: trailing-period criterion drift accepted ==="
+run_case "trailing-period" "trailing-period-plan" 0 "PASS"
 
 echo ""
 echo "=== Test: FINDINGS receipt emission ==="

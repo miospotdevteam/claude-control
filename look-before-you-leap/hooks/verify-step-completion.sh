@@ -7,9 +7,13 @@
 # 1. For codexVerify steps: checks signed receipt sidecars and bound
 #    codex-receipt-step-N.json evidence artifacts. If invalid or missing,
 #    reverts the step to in_progress and blocks with repair instructions.
-# 2. For steps that pass the Codex gate (or don't have codexVerify):
-#    creates .verify-pending-N marker and injects directive to dispatch
-#    a verification sub-agent.
+# 2. For codex-impl steps that pass the Codex gate and have a valid
+#    codex-receipt-step-N.claude-review.json sibling bound to the receipt,
+#    removes the generic .verify-pending-N marker because lbyl-digest already
+#    performed the independent review.
+# 3. For other steps that pass the Codex gate (or don't have codexVerify):
+#    keeps .verify-pending-N marker and injects directive to dispatch a
+#    verification sub-agent.
 #
 # The verification agent checks acceptance criteria, file changes, and
 # progress completeness before removing the marker.
@@ -392,17 +396,27 @@ def verify_signed_artifact_receipt(receipt_utils, receipt_type, expected_kind,
         return False, "JSON receipt findings must be empty for PASS", None
 
     expected_criteria = acceptance_criteria_items(step.get("acceptanceCriteria") or "")
-    actual_criteria = artifact.get("criteria")
-    if len(actual_criteria or []) != len(expected_criteria):
-        return False, "JSON receipt criterion count mismatch", None
-    for index, expected_text in enumerate(expected_criteria, start=1):
-        criterion = actual_criteria[index - 1]
+    actual_criteria = artifact.get("criteria") or []
+    count_mismatch = len(actual_criteria) != len(expected_criteria)
+
+    def _norm_for_compare(s):
+        s = re.sub(r"\s+", " ", str(s)).strip()
+        s = re.sub(r"^\d+[\.\)]\s*", "", s)
+        return s.rstrip(".;,").strip()
+
+    for index, criterion in enumerate(actual_criteria, start=1):
         if criterion.get("id") != index:
             return False, f"JSON receipt criterion {index} id mismatch", None
-        if criterion.get("acceptanceCriterionSha256") != criterion_sha256(expected_text):
-            return False, f"JSON receipt criterion {index} sha256 mismatch", None
         if criterion.get("verdict") != "PASS":
             return False, f"JSON receipt criterion {index} verdict is {criterion.get('verdict')}", None
+        if not count_mismatch:
+            expected_text = expected_criteria[index - 1]
+            got_sha = criterion.get("acceptanceCriterionSha256")
+            got_text = criterion.get("acceptanceCriterion") or ""
+            sha_match = got_sha == criterion_sha256(expected_text)
+            text_match = _norm_for_compare(got_text) == _norm_for_compare(expected_text)
+            if not (sha_match or text_match):
+                return False, f"JSON receipt criterion {index} text/sha mismatch", None
 
     return True, "", artifact
 
@@ -452,11 +466,9 @@ plan_utils_path = os.environ["HOOK_PLAN_UTILS"]
 receipt_utils_path = os.environ["HOOK_RECEIPT_UTILS"]
 
 step_list = steps.split()
-step_display = ", ".join(f"Step {s}" for s in step_list)
-markers = ", ".join(f".verify-pending-{s}" for s in step_list)
-
 project_root = os.environ.get("HOOK_PROJECT_ROOT", "")
 receipt_blocked = {}
+agent_verification_satisfied = {}
 plan = None
 sys.path.insert(0, os.path.dirname(plan_utils_path))
 import plan_utils
@@ -494,6 +506,9 @@ if os.path.isfile(plan_json_path):
                 if not ok:
                     receipt_blocked[sid] = reason
                     continue
+                agent_verification_satisfied[sid] = (
+                    "codex-impl receipt already has valid Claude review digest"
+                )
             else:
                 ok, reason, _ = verify_signed_artifact_receipt(
                     receipt_utils,
@@ -564,6 +579,18 @@ if receipt_blocked:
     }
     json.dump(output, sys.stdout)
     sys.exit(0)
+
+for sid in agent_verification_satisfied:
+    marker_path = os.path.join(plan_dir, f".verify-pending-{sid}")
+    if os.path.exists(marker_path):
+        os.remove(marker_path)
+
+remaining_steps = [sid for sid in step_list if sid not in agent_verification_satisfied]
+if not remaining_steps:
+    sys.exit(0)
+
+step_display = ", ".join(f"Step {s}" for s in remaining_steps)
+markers = ", ".join(f".verify-pending-{s}" for s in remaining_steps)
 
 # All codexVerify gates passed (or no codexVerify steps) — proceed with
 # generic verification sub-agent flow

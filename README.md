@@ -114,6 +114,14 @@ The conductor dispatches Codex via `codex exec` through direction-locked
 wrapper scripts (`run-codex-implement.sh`, `run-codex-verify.sh`). The
 wrappers — not the conductor and not Codex — mint the trusted artifacts.
 
+### Development loop
+
+During plugin development, hooks and slash commands execute from the installed
+cache under `~/.claude/plugins/cache/`, not directly from this source checkout.
+After editing files in `look-before-you-leap/`, run `/refresh` to copy the
+source plugin into the active cache with `scripts/refresh-from-source.sh`.
+Refresh is explicit only; it never runs automatically after edits.
+
 ### Receipt protocol
 
 Every Codex run produces two coupled artifacts:
@@ -175,12 +183,13 @@ blast radius and consumers without grepping the codebase every time.
 
 ### Commands
 
-The repo also ships four slash commands: `/bypass` writes a signed override
+The repo also ships five slash commands: `/bypass` writes a signed override
 receipt when the user explicitly wants to skip the plan, `/commit-msg`
 generates a 1-line commit message from the current diff, `/generate-deps`
-sets up or refreshes dependency maps, and `/tangent` loads discovery context
-from another active plan so a new session can explore a related thread
-without starting from zero.
+sets up or refreshes dependency maps, `/refresh` copies source edits into the
+installed plugin cache for the development loop, and `/tangent` loads
+discovery context from another active plan so a new session can explore a
+related thread without starting from zero.
 
 ## Prerequisites
 
@@ -248,6 +257,7 @@ look-before-you-leap/
 │   ├── bypass.md                           # Slash command: write a signed override receipt
 │   ├── commit-msg.md                      # Slash command: generate a 1-line commit message
 │   ├── generate-deps.md                   # Slash command: configure and build dep maps
+│   ├── refresh.md                         # Slash command: refresh installed cache from source
 │   └── tangent.md                         # Slash command: load discovery from another session
 ├── hooks/
 │   ├── auto-complete-plan.sh              # PostToolUse: migrates discovery + detects plan completion
@@ -288,6 +298,7 @@ look-before-you-leap/
 │   ├── plan-status.sh                     # Shows all plan statuses
 │   ├── plan_utils.py                      # Plan state management (incl. runnable-steps DAG frontier + receipt commands)
 │   ├── receipt_utils.py                   # HMAC sidecar mint/verify (binds codex-receipt-step-N.json sha256)
+│   ├── refresh-from-source.sh             # Copies local plugin source into the installed cache for dev-loop edits
 │   ├── resume.sh                          # Finds what to resume
 │   ├── run-codex-implement.sh             # Direction-locked Codex implementation entrypoint (mints codex-receipt-step-N.json + sidecar)
 │   ├── run-codex-verify.sh                # Direction-locked Codex verification entrypoint (mints codex-receipt-step-N.json + sidecar)

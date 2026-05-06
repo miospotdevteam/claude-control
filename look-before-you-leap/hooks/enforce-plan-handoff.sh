@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# PostToolUse hook: Enforce plan review handoff for fresh plans.
+# Hook: Enforce plan review handoff for fresh plans.
+#
+# Blocks while .handoff-pending exists:
+#   - Edit/Write tool calls are blocked by enforce-plan.sh before code edits.
+#   - Bash execution-phase wrapper calls are blocked here when the command
+#     invokes run-codex-implement.sh or run-codex-verify.sh for the pending
+#     plan.
+#
+# Creates .handoff-pending:
+#   - PostToolUse after Edit/Write to a fresh plan.json or masterPlan.md.
 #
 # After every Edit/Write to a masterPlan.md, checks if the plan is fresh
 # (all steps are [ ], none are [x] or [~]). If so:
@@ -15,12 +24,69 @@
 # is recorded. It is NOT auto-cleared on session start or EnterPlanMode.
 # Bypass: ask the user to run /bypass
 #
-# Input: JSON on stdin with tool_name, tool_input.file_path, cwd
+# Input: JSON on stdin with tool_name, tool_input.file_path or
+# tool_input.command, cwd
 
 set -euo pipefail
 
 source "${BASH_SOURCE[0]%/*}/lib/hook-json.sh"
+source "${BASH_SOURCE[0]%/*}/lib/find-root.sh"
+source "${BASH_SOURCE[0]%/*}/lib/plan-state.sh"
 hook_read_input
+
+TOOL_NAME=$(hook_get_tool_name)
+COMMAND=$(hook_get_command)
+CWD=$(hook_get_cwd)
+
+if [ "$TOOL_NAME" = "Bash" ]; then
+  CMD_TRIMMED="${COMMAND#"${COMMAND%%[![:space:]]*}"}"
+  if [[ "$CMD_TRIMMED" =~ ^bash[[:space:]] ]] && \
+     [[ ! "$CMD_TRIMMED" =~ ^bash[[:space:]]+-n[[:space:]] ]] && \
+     [[ "$CMD_TRIMMED" =~ run-codex-(implement|verify)\.sh([[:space:]]|$) ]]; then
+    PROJECT_ROOT="$(find_project_root "${CWD:-$PWD}")"
+    WRAPPER_PLAN=$(HOOK_COMMAND="$COMMAND" HOOK_CWD="${CWD:-$PWD}" python3 << 'PYEOF'
+import os
+import shlex
+
+cmd = os.environ.get("HOOK_COMMAND", "")
+cwd = os.environ.get("HOOK_CWD", "") or os.getcwd()
+
+try:
+    parts = shlex.split(cmd)
+except ValueError:
+    parts = cmd.split()
+
+for part in parts:
+    if not part.endswith("plan.json"):
+        continue
+    path = os.path.expanduser(part)
+    if not os.path.isabs(path):
+        path = os.path.abspath(os.path.join(cwd, path))
+    if os.path.isfile(path):
+        print(path)
+        break
+PYEOF
+    ) || true
+
+    SESSION_PLAN="$WRAPPER_PLAN"
+    if [ -z "$SESSION_PLAN" ]; then
+      SESSION_PLAN=$(plan_resolve_session "$PROJECT_ROOT") || true
+    fi
+
+    if [ -n "$SESSION_PLAN" ] && [ -f "$SESSION_PLAN" ]; then
+      HANDOFF_MARKER="$(dirname "$SESSION_PLAN")/.handoff-pending"
+      if [ -f "$HANDOFF_MARKER" ]; then
+        plan_sync_review_approval "$SESSION_PLAN" "$PPID" >/dev/null 2>&1 || true
+      fi
+      if [ -f "$HANDOFF_MARKER" ]; then
+        hook_deny "BLOCKED: Fresh plan requires Orbit review before Codex execution wrappers can run.\n\nThe pending-review marker is still present: $HANDOFF_MARKER\n\nCall orbit_await_review for the plan and wait for approval before running run-codex-implement.sh or run-codex-verify.sh. The marker must be cleared by Orbit approval, not by inference from task size or interactivity.\n\nTo bypass, ask the user to run exactly /bypass."
+        exit 0
+      fi
+    fi
+  fi
+
+  exit 0
+fi
 
 # Extract file path from tool input
 FILE_PATH=$(hook_get_file_path)

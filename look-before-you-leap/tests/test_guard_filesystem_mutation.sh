@@ -247,6 +247,20 @@ assert_allowed "python3 -c passes safe regex"
 
 # ============================================================
 echo ""
+echo "=== File descriptor duplication redirects pass through ==="
+# ============================================================
+
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "some-command 2>&1"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed "2>&1 fd duplication is not a file write"
+
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "some-command >&2"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_allowed ">&2 fd duplication is not a file write"
+
+run_hook '{"tool_name": "Bash", "tool_input": {"command": "some-command > '"$FAKE_PROJECT"'/output.txt"}, "cwd": "'"$FAKE_PROJECT"'"}'
+assert_denied "> file redirect remains a file write"
+
+# ============================================================
+echo ""
 echo "=== File-writing commands denied without plan ==="
 # ============================================================
 

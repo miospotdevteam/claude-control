@@ -70,6 +70,11 @@ batch MD on the main thread to "check what really happened", **stop**.
 Either the receipt is sufficient, or you dispatch `lbyl-digest`. There
 is no third path.
 
+After the `lbyl-digest` Agent returns, the conductor MUST immediately
+consume the returned payload and proceed to the next step in the flow
+without waiting for user input — the JSON payload IS the trigger to
+continue.
+
 ---
 
 ## Prerequisites
@@ -174,9 +179,10 @@ Each invocation produces:
 4. **Dispatch the verification digester sub-agent.** This is
    mandatory for every codex-impl step:
    ```
-   Skill(
-     skill: "lbyl-digest",
-     args: "mode=verification plan-dir=<plan-dir> step-N=<N> project-root=<project-root>"
+   Agent(
+     description: "lbyl-digest verification",
+     subagent_type: "general-purpose",
+     prompt: "Load <project-root>/look-before-you-leap/skills/lbyl-digest/SKILL.md as primary guidance. Run mode=verification with plan-dir=<plan-dir>, step-N=<N>, project-root=<project-root>. Return ONLY the bounded verification payload shape defined by that skill: { kind, stepId, claudeVerified, findingCount, reviewPath, criteria, summary }. Do not include prose, markdown fences, or follow-up text."
    )
    ```
    The sub-agent reads the receipt + the cited file ranges + runs the
@@ -184,6 +190,9 @@ Each invocation produces:
    `<plan-dir>/codex-receipt-step-<N>.claude-review.json`. It returns
    a bounded payload `{ kind, stepId, claudeVerified, findingCount,
    reviewPath, criteria, summary }`.
+   After the `lbyl-digest` Agent returns, the conductor MUST
+   auto-resume by consuming that payload and continuing; the JSON
+   payload IS the trigger to continue.
 5. **Gate on the digester's payload:**
    - `claudeVerified == "PASS"` → write the step result using the
      `### Criterion:` template (driven by the returned `criteria[]`
@@ -450,15 +459,19 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
 dispatches `lbyl-digest` in co-exploration mode:
 
 ```
-Skill(
-  skill: "lbyl-digest",
-  args: "mode=co-exploration plan-dir=<plan-dir>"
+Agent(
+  description: "lbyl-digest co-exploration",
+  subagent_type: "general-purpose",
+  prompt: "Load <project-root>/look-before-you-leap/skills/lbyl-digest/SKILL.md as primary guidance. Run mode=co-exploration with plan-dir=<plan-dir>. Return ONLY the bounded co-exploration payload shape defined by that skill: { kind, digestPath, topicsCount, openQuestionsCount, summary }. Do not include prose, markdown fences, or follow-up text."
 )
 ```
 
 The sub-agent reads `discovery.md`, `codex-exploration.md`, and
 `codex-convergence.md`, writes `<plan-dir>/discovery-digest.md`, and
 returns `{ kind, digestPath, topicsCount, openQuestionsCount, summary }`.
+After the `lbyl-digest` Agent returns, the conductor MUST auto-resume
+by consuming that payload and continuing; the JSON payload IS the
+trigger to continue.
 The conductor reads only `summary` and `openQuestionsCount` to decide
 whether to surface open questions to the user before proceeding to
 `writing-plans`. The conductor opens `discovery-digest.md` only if the
@@ -554,9 +567,10 @@ codex exec -C <project-root> --dangerously-bypass-approvals-and-sandbox \
 batch MD files itself. It dispatches `lbyl-digest` in consensus mode:
 
 ```
-Skill(
-  skill: "lbyl-digest",
-  args: "mode=consensus plan-dir=<plan-dir> round-N=1"
+Agent(
+  description: "lbyl-digest consensus",
+  subagent_type: "general-purpose",
+  prompt: "Load <project-root>/look-before-you-leap/skills/lbyl-digest/SKILL.md as primary guidance. Run mode=consensus with plan-dir=<plan-dir>, round-N=1. Return ONLY the bounded consensus payload shape defined by that skill: { kind, round, digestPath, counts, decisions, openDisagreements, summary }. Do not include prose, markdown fences, or follow-up text."
 )
 ```
 
@@ -568,6 +582,9 @@ summary }`. The conductor reads only the bounded payload —
 `counts` to decide whether the plan can advance, `decisions` to know
 which steps need plan edits, `openDisagreements` to know what to
 respond to in Round 2.
+After the `lbyl-digest` Agent returns, the conductor MUST auto-resume
+by consuming that payload and continuing; the JSON payload IS the
+trigger to continue.
 
 **Round 2 — Claude responds** to each `decision` from the digester
 (ACCEPT / REJECT with reasoning / COUNTER-PROPOSE). Update plan files

@@ -602,3 +602,13 @@ Before returning the payload, the digester MUST verify:
 
 If any check fails, fix before returning. Returning a bad digest
 silently corrupts every downstream conductor decision.
+
+## End-of-turn contract
+
+This contract applies to all three modes: co-exploration, consensus,
+and verification. After emitting the returned bounded payload, you
+MUST immediately end your turn. You MUST NOT generate further text.
+You MUST NOT ask follow-up questions. You MUST NOT run additional tool
+calls. The bounded JSON-shaped payload is the FINAL thing this skill
+outputs. The parent conductor consumes the payload programmatically
+and resumes — your job ends when the payload is emitted.
